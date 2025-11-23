@@ -1,10 +1,10 @@
 "use client"
 
-import { PhoneCall, MessageSquare, Video } from "lucide-react"
 import { useState } from "react"
+import { PhoneCall, MessageSquare, Video } from "lucide-react"
 
-import ServiceFeatures from "@/components/service-features"
 import { HomeHero } from "@/components/home-hero"
+import ServiceFeatures from "@/components/service-features"
 import ContactSection from "@/components/contact-section"
 import { ContactMethodCard } from "@/components/contact-method-card"
 import AIChatDialog from "@/components/ai-chat-dialog"
@@ -14,21 +14,22 @@ import { useLanguage } from "@/lib/i18n/language-context"
 
 export default function Home() {
   const { t } = useLanguage()
+
   const [isChatOpen, setIsChatOpen] = useState(false)
   const [isVoiceCallOpen, setIsVoiceCallOpen] = useState(false)
   const [isVideoCallOpen, setIsVideoCallOpen] = useState(false)
 
   return (
-    <div className="bg-white">
+    <div className="bg-slate-50">
       <HomeHero />
 
       {/* Contact Methods Section */}
       <section
         id="assistant"
-        className="relative z-10 -mt-10 bg-gradient-to-b from-transparent via-slate-50 to-white px-4 pb-16 pt-14 md:px-6 lg:px-8"
+        className="-mt-6 pb-20 pt-0 px-4 md:px-6 lg:px-8"
       >
-        <div className="mx-auto max-w-6xl rounded-3xl border border-slate-100 bg-white/95 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.16)] md:p-10">
-          <h2 className="mb-10 text-center text-3xl font-bold tracking-tight text-gray-900 md:text-4xl">
+        <div className="mx-auto max-w-6xl rounded-3xl border border-slate-200 bg-white/95 p-6 shadow-[0_24px_70px_rgba(15,23,42,0.12)] backdrop-blur-sm sm:p-8 lg:p-10">
+          <h2 className="mb-8 text-center text-3xl font-bold text-slate-900 md:text-4xl">
             Как вы хотите связаться с нами?
           </h2>
 
@@ -49,8 +50,9 @@ export default function Home() {
               onClick={() => {
                 if (
                   typeof window !== "undefined" &&
+                  // @ts-ignore
                   !window.SpeechRecognition &&
-                  // @ts-expect-error webkitSpeechRecognition есть не во всех браузерах
+                  // @ts-ignore
                   !window.webkitSpeechRecognition &&
                   !navigator.mediaDevices
                 ) {
@@ -90,6 +92,7 @@ export default function Home() {
         <ContactSection />
       </section>
 
+      {/* Модальные окна ассистентов */}
       <AIChatDialog
         isOpen={isChatOpen}
         onClose={() => setIsChatOpen(false)}
