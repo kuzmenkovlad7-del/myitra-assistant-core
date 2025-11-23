@@ -13,12 +13,63 @@ import Footer from "@/components/footer"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Myitra",
-  description: "Professional AI-powered psychological support and counseling services",
+  title: {
+    default: "MyITRA — AI-psychologist nearby 24/7",
+    template: "%s | MyITRA",
+  },
+  description:
+    "MyITRA — AI-psychologist nearby 24/7. Live psychological support in chat, voice or video when you feel exhausted, anxious or alone.",
+  keywords: [
+    "MyITRA",
+    "AI psychologist",
+    "AI therapist",
+    "online therapy",
+    "mental health support",
+    "чат с психологом",
+    "онлайн психолог",
+    "психолог 24/7",
+    "ШІ-психолог",
+  ],
   icons: {
     icon: "/icon.svg",
     shortcut: "/icon.svg",
     apple: "/apple-touch-icon.png",
+  },
+  alternates: {
+    canonical: "/",
+    languages: {
+      en: "/",
+      uk: "/uk",
+      ru: "/ru",
+    },
+  },
+  openGraph: {
+    title: "MyITRA — AI-psychologist nearby 24/7",
+    description:
+      "Talk to an AI-powered psychologist in chat, voice or video. Gentle, always-on support when it feels bad, anxious or lonely.",
+    url: "/",
+    siteName: "MyITRA",
+    type: "website",
+    locale: "en_US",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "MyITRA — AI-powered psychological support",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "MyITRA — AI-powered psychological support",
+    description:
+      "AI-psychologist nearby 24/7. Talk in chat, voice or video when you need support.",
+    images: ["/og-image.png"],
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
   generator: "v0.app",
 }
@@ -29,7 +80,6 @@ export const viewport: Viewport = {
   maximumScale: 5,
   userScalable: true,
   viewportFit: "cover",
-  // Myitra light theme only
   themeColor: "#F7F8FF",
 }
 
