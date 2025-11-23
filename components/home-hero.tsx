@@ -1,7 +1,7 @@
 "use client"
 
 import Image from "next/image"
-import { MessageSquare, PhoneCall, Video } from "lucide-react"
+import { Heart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useLanguage } from "@/lib/i18n/language-context"
 
@@ -16,87 +16,63 @@ export function HomeHero() {
   }
 
   return (
-    <section className="relative w-full overflow-hidden bg-gradient-to-br from-white via-slate-50 to-slate-100 py-16 md:py-24 lg:py-32">
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#e2e8f0_1px,transparent_1px),linear-gradient(to_bottom,#e2e8f0_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_110%)] opacity-30" />
+    <section className="relative w-full overflow-hidden bg-background">
+      <div className="container relative mx-auto px-4 py-12 md:py-16 lg:py-20">
+        <div className="grid gap-12 lg:grid-cols-2 lg:gap-16 items-center">
+          {/* Left Column - Text Content */}
+          <div className="space-y-6">
+            <h1 className="text-4xl font-bold leading-tight text-gray-900 md:text-5xl lg:text-6xl">
+              Живая психологическая поддержка, усиленная ИИ
+            </h1>
 
-      <div className="container relative mx-auto px-4">
-        <div className="grid gap-10 lg:grid-cols-2 lg:gap-16 items-center">
-          <div className="space-y-8">
-            <div className="inline-flex items-center rounded-full border border-slate-200 bg-white/80 px-4 py-1.5 text-sm backdrop-blur-sm shadow-sm">
-              <span className="text-slate-600 font-medium">{t("Myitra Platform · AI + Psychology")}</span>
-            </div>
+            <p className="text-lg text-muted-foreground md:text-xl">
+              Лицензированные психологи с поддержкой ИИ-ассистентов. Помогаем снизить уровень стресса, разобраться в эмоциях и выстроить привычку заботы о себе.
+            </p>
 
-            <div className="space-y-4">
-              <h1 className="text-4xl font-bold leading-tight tracking-tighter text-slate-900 md:text-5xl lg:text-6xl">
-                {t("Live Psychological Support,")}{" "}
-                <span className="text-accent">
-                  {t("AI-Enhanced")}
-                </span>
-              </h1>
-              <p className="text-lg text-slate-600 md:text-xl">
-                {t("Licensed psychologists supported by AI assistants. We help gather history, maintain journals, and remind about sessions.")}
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-4 sm:flex-row">
+            <div className="flex flex-col gap-3 sm:flex-row pt-2">
               <Button
                 onClick={() => scrollToSection("#assistant")}
-                className="h-12 px-8 text-base bg-gradient-to-r from-primary to-accent text-primary-foreground shadow-xl animate-pulse-soft hover:shadow-2xl transition-shadow"
+                size="lg"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
               >
-                {t("Talk Now")}
+                Поговорить сейчас
               </Button>
               <Button
                 variant="outline"
-                className="h-12 border-primary bg-white px-8 text-base text-primary hover:bg-primary/5 shadow-sm"
+                size="lg"
+                className="border-border"
                 onClick={() => scrollToSection("#assistant")}
               >
-                {t("View Services")}
+                Посмотреть программы
               </Button>
-            </div>
-
-            <div className="grid grid-cols-3 gap-4 pt-4">
-              <div className="flex items-center gap-2">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 border border-blue-100">
-                  <MessageSquare className="h-5 w-5 text-blue-600" />
-                </div>
-                <span className="text-sm text-slate-600 font-medium">{t("AI Chat 24/7")}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-50 border border-cyan-100">
-                  <PhoneCall className="h-5 w-5 text-cyan-600" />
-                </div>
-                <span className="text-sm text-slate-600 font-medium">{t("Voice Calls")}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-lavender-50 border border-lavender-100">
-                  <Video className="h-5 w-5 text-lavender-600" />
-                </div>
-                <span className="text-sm text-slate-600 font-medium">{t("Video Sessions")}</span>
-              </div>
             </div>
           </div>
 
+          {/* Right Column - Character Card */}
           <div className="relative mt-8 lg:mt-0">
-            <div className="relative aspect-[4/5] w-full max-w-md mx-auto overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <div className="relative aspect-[4/5] w-full max-w-md mx-auto overflow-hidden rounded-2xl border border-border bg-white shadow-lg">
               <Image
                 src="/ai-psychology-hero.png"
-                alt={t("Myitra Psychology Session")}
+                alt="AI Psychology Character"
                 fill
                 className="object-cover"
                 priority
               />
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-white/60 via-transparent to-white/20" />
 
-              <div className="absolute bottom-6 left-6 right-6 rounded-2xl border border-slate-200 bg-white/90 p-4 backdrop-blur-xl shadow-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">{t("3 Assistant Modes")}</p>
-                    <p className="text-xs text-slate-600">{t("chat · voice · video")}</p>
+              {/* Bottom Pill */}
+              <div className="absolute bottom-4 left-4 right-4 rounded-full border border-border bg-white/95 backdrop-blur-sm shadow-md px-4 py-3">
+                <div className="flex items-center gap-3">
+                  {/* Pulsating Circle Icon */}
+                  <div className="relative flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-br from-[#6366F1] to-[#EC4899]">
+                    <Heart className="h-5 w-5 text-white z-10" />
+                    <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[#6366F1] to-[#EC4899] animate-pulse-circle" />
                   </div>
-                  <div className="flex gap-1.5">
-                    <div className="h-2 w-2 rounded-full bg-blue-500"></div>
-                    <div className="h-2 w-2 rounded-full bg-cyan-500"></div>
-                    <div className="h-2 w-2 rounded-full bg-lavender-500"></div>
+
+                  {/* Text */}
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900">
+                      3 режима ассистента · чат · голос · видео
+                    </p>
                   </div>
                 </div>
               </div>
