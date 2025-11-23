@@ -1,19 +1,19 @@
 "use client"
 
+import type React from "react"
 import Image from "next/image"
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
+import { MessageCircle, ArrowRight } from "lucide-react"
 import { useLanguage } from "@/lib/i18n/language-context"
+import { RainbowButton } from "@/components/ui/rainbow-button"
+import { Button } from "@/components/ui/button"
 
 export function HomeHero() {
   const { t } = useLanguage()
 
   const scrollToAssistant = () => {
-    if (typeof window === "undefined") return
-    const element = document.querySelector("#assistant")
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "start" })
-    }
+    if (typeof document === "undefined") return
+    const el = document.getElementById("assistant")
+    el?.scrollIntoView({ behavior: "smooth", block: "start" })
   }
 
   return (
@@ -21,97 +21,95 @@ export function HomeHero() {
       id="hero"
       className="relative overflow-hidden bg-gradient-to-br from-white via-slate-50 to-slate-100"
     >
-      {/* лёгкое свечение справа, чтобы был плавный переход вниз */}
-      <div className="pointer-events-none absolute -right-40 top-10 hidden h-[520px] w-[520px] rounded-full bg-[radial-gradient(circle_at_top,_rgba(129,140,248,0.35),transparent_60%)] blur-3xl lg:block" />
+      {/* мягкий фон от фото */}
+      <div className="pointer-events-none absolute inset-y-0 right-[-10%] w-[60%] bg-[radial-gradient(circle_at_top,_rgba(129,140,248,0.35),transparent_60%)]" />
 
-      <div className="container mx-auto px-4 md:px-6 lg:px-10 pt-16 pb-20 lg:pt-20 lg:pb-28">
-        <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-          {/* Левая колонка: текст */}
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm backdrop-blur">
+      <div className="relative z-10 mx-auto flex min-h-[calc(100vh-96px)] max-w-6xl items-center px-4 pb-24 pt-20 md:px-6 md:pt-24 lg:px-8 lg:pb-32">
+        <div className="grid w-full items-center gap-12 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+          {/* Левая часть */}
+          <div className="space-y-8">
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm ring-1 ring-slate-200">
               <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              <span>{t("AI-psychologist nearby 24/7")}</span>
+              {t("AI-psychologist nearby 24/7")}
             </div>
 
-            <h1 className="mt-6 text-4xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-5xl lg:text-[3.25rem] lg:leading-[1.1]">
-              Live psychological
-              <br />
-              support, powered by AI
-            </h1>
+            <div>
+              <h1 className="text-3xl leading-tight text-slate-900 sm:text-4xl md:text-5xl md:leading-tight">
+                {t("Live psychological support, powered by AI")}
+              </h1>
+              <p className="mt-4 max-w-xl text-sm text-slate-600 sm:text-base">
+                {t(
+                  "Talk to an AI-powered psychologist when you feel exhausted, anxious or alone. They listen, ask clarifying questions and gently guide you with exercises — in chat, voice or video.",
+                )}
+              </p>
+            </div>
 
-            <p className="mt-4 max-w-xl text-base text-slate-600 sm:text-lg">
-              Talk to an AI-powered psychologist when you feel exhausted,
-              anxious or alone. They listen, ask clarifying questions and gently
-              guide you with exercises — in chat, voice or video.
-            </p>
-
-            {/* Кнопки: на мобиле обе на всю ширину, основная пульсирует */}
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Button
-                size="lg"
+            {/* CTA-кнопки */}
+            <div className="flex flex-wrap items-center gap-4">
+              <RainbowButton
+                type="button"
                 onClick={scrollToAssistant}
-                className="w-full sm:w-auto rounded-full bg-slate-900 px-8 py-6 text-base font-semibold text-white shadow-[0_18px_45px_rgba(15,23,42,0.35)] transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-[0_22px_60px_rgba(15,23,42,0.45)] animate-pulse"
+                className="shadow-xl shadow-indigo-500/30"
               >
-                {t("Talk Now")}
-              </Button>
+                {t("Talk now")}
+                <ArrowRight className="h-4 w-4" />
+              </RainbowButton>
 
-              <Link href="/programs" className="w-full sm:w-auto">
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="w-full rounded-full border-slate-300 bg-white/80 px-8 py-6 text-base font-semibold text-slate-900 hover:bg-slate-100"
-                >
-                  Programs
-                </Button>
-              </Link>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 rounded-full border-slate-200 bg-white px-6 text-sm font-medium text-slate-900 shadow-sm hover:bg-slate-100 hover:text-slate-900"
+              >
+                {t("Programs")}
+              </Button>
             </div>
 
-            {/* Чипы-состояния как на макете */}
-            <div className="mt-6 flex flex-wrap gap-3">
-              <span className="inline-flex items-center rounded-full bg-white px-4 py-2 text-xs font-medium text-slate-600 shadow-sm">
-                When it feels bad right now
-              </span>
-              <span className="inline-flex items-center rounded-full bg-white px-4 py-2 text-xs font-medium text-slate-600 shadow-sm">
-                Anxiety & stress programs
-              </span>
-              <span className="inline-flex items-center rounded-full bg-white px-4 py-2 text-xs font-medium text-slate-600 shadow-sm">
-                Gentle long-term support
-              </span>
+            {/* Теги-сценарии */}
+            <div className="flex flex-wrap gap-3">
+              {[
+                t("When it feels bad right now"),
+                t("Anxiety & stress programs"),
+                t("Gentle long-term support"),
+              ].map((label) => (
+                <button
+                  key={label}
+                  type="button"
+                  className="rounded-full border border-slate-200 bg-white px-4 py-1 text-xs font-medium text-slate-600 shadow-sm hover:border-indigo-300 hover:text-slate-800"
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Правая колонка: фото психолога без рамки */}
-          <div className="relative flex justify-center lg:justify-end">
-            <div className="relative">
-              {/* мягкий ореол за фигурой */}
-              <div className="pointer-events-none absolute inset-[-18%] rounded-[999px] bg-[radial-gradient(circle_at_top,_rgba(148,163,253,0.45),transparent_65%)] blur-2xl" />
+          {/* Правая часть: психолог + плашка ассистентов */}
+          <div className="relative mt-6 flex items-center justify-center lg:mt-0 lg:justify-end">
+            {/* радиальный градиент под фото */}
+            <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(circle_at_bottom,_rgba(15,23,42,0.25),transparent_65%)]" />
 
-              <div className="relative h-[320px] w-[230px] sm:h-[360px] sm:w-[260px] md:h-[420px] md:w-[310px] lg:h-[460px] lg:w-[340px] xl:h-[500px] xl:w-[380px]">
-                <Image
-                  // ЕСЛИ у тебя картинка лежит в другом месте,
-                  // просто поменяй путь здесь.
-                  src="/psychologist.png"
-                  alt={t("MyITRA AI psychologist")}
-                  fill
-                  priority
-                  sizes="(min-width: 1024px) 380px, 60vw"
-                  className="object-contain"
-                />
-              </div>
+            <div className="relative flex flex-col items-center">
+              <Image
+                src="/ai-psychology-hero.png"
+                alt="MyITRA AI psychologist"
+                width={420}
+                height={520}
+                priority
+                className="h-auto w-[260px] sm:w-[320px] md:w-[360px] lg:w-[400px] object-contain drop-shadow-[0_30px_90px_rgba(15,23,42,0.45)]"
+              />
 
-              {/* Бейдж с 3 режимами ассистента */}
-              <div className="absolute -bottom-7 left-1/2 w-[260px] -translate-x-1/2 rounded-3xl bg-white/95 px-4 py-3 shadow-xl shadow-slate-300/60 backdrop-blur">
+              {/* Плашка про 3 режима ассистента */}
+              <div className="mt-5 w-full max-w-[360px] rounded-full border border-slate-200 bg-white/95 px-5 py-3 shadow-lg shadow-indigo-500/15 backdrop-blur-sm">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-tr from-purple-500 to-pink-500 text-white shadow-md">
-                    💬
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-tr from-fuchsia-500 to-indigo-500 text-white shadow-md">
+                    <MessageCircle className="h-4 w-4" />
                   </div>
-                  <div className="space-y-0.5">
-                    <p className="text-xs font-semibold text-slate-900">
-                      3 assistant modes · chat · voice · video
-                    </p>
-                    <p className="text-[11px] text-slate-500">
-                      Choose how it&apos;s more comfortable for you to talk.
-                    </p>
+                  <div className="flex-1 text-xs leading-snug text-slate-700">
+                    <div className="font-semibold">
+                      {t("3 assistant modes · chat · voice · video")}
+                    </div>
+                    <div className="text-slate-500">
+                      {t("Choose how it's more comfortable for you to talk.")}
+                    </div>
                   </div>
                 </div>
               </div>
