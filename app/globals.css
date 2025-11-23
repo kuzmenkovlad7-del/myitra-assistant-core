@@ -412,3 +412,19 @@ video {
 .animate-pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
 }
+
+/* Violet pulsing glow for hero CTA */
+@keyframes pulse-glow-violet {
+  0%, 100% {
+    box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 4px 30px rgba(139, 92, 246, 0.5);
+    transform: scale(1.02);
+  }
+}
+
+.animate-pulse-glow-violet {
+  animation: pulse-glow-violet 2.5s ease-in-out infinite;
+}

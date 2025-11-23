@@ -1,6 +1,7 @@
 "use client"
 
 import Image from "next/image"
+import Link from "next/link"
 import { HandHeart } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useLanguage } from "@/lib/i18n/language-context"
@@ -34,18 +35,19 @@ export function HomeHero() {
               <Button
                 onClick={() => scrollToSection("#assistant")}
                 size="lg"
-                className="bg-primary text-primary-foreground hover:bg-primary/90 animate-pulse-glow shadow-lg"
+                className="bg-slate-900 text-white hover:bg-slate-800 rounded-full px-8 shadow-lg animate-pulse-glow-violet"
               >
                 {t("Talk Now")}
               </Button>
-              <Button
-                variant="outline"
-                size="lg"
-                className="border-border hover:bg-accent/5 hover:border-accent"
-                onClick={() => scrollToSection("#assistant")}
-              >
-                {t("View Services")}
-              </Button>
+              <Link href="/programs">
+                <Button
+                  variant="outline"
+                  size="lg"
+                  className="border-gray-300 text-slate-900 hover:bg-accent/10 hover:border-accent rounded-full px-8"
+                >
+                  {t("Programs")}
+                </Button>
+              </Link>
             </div>
           </div>
 
