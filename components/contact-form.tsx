@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,7 +23,7 @@ export default function ContactForm() {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
     setFormState((prev) => ({ ...prev, [name]: value }))
-    // Clear error when user types
+
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: "" }))
     }
@@ -60,14 +59,12 @@ export default function ContactForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!validateForm()) {
-      return
-    }
+    if (!validateForm()) return
 
     setIsSubmitting(true)
 
-    // Simulate API call
     try {
+      // Здесь потом легко заменить на реальный API-запрос
       await new Promise((resolve) => setTimeout(resolve, 1500))
       setIsSubmitted(true)
       setFormState({
@@ -84,22 +81,27 @@ export default function ContactForm() {
   }
 
   return (
-    <div className="w-full max-w-2xl mx-auto">
+    <div className="mx-auto w-full max-w-2xl">
       {isSubmitted ? (
-        <div className="bg-primary/10 p-8 rounded-xl text-center">
-          <CheckCircle className="h-16 w-16 text-primary mx-auto mb-4" />
-          <h3 className="text-2xl font-bold text-primary mb-2">{t("Thank you for your message!")}</h3>
-          <p className="text-foreground mb-4">
+        <div className="rounded-xl bg-primary/10 p-8 text-center">
+          <CheckCircle className="mx-auto mb-4 h-16 w-16 text-primary" />
+          <h3 className="mb-2 text-2xl font-bold text-primary">
+            {t("Thank you for your message!")}
+          </h3>
+          <p className="mb-4 text-foreground">
             {t("We've received your inquiry and will get back to you as soon as possible.")}
           </p>
-          <Button onClick={() => setIsSubmitted(false)} className="bg-primary-600 hover:bg-primary-700 text-white">
+          <Button
+            onClick={() => setIsSubmitted(false)}
+            className="rounded-full bg-primary-600 px-6 py-2 text-white hover:bg-primary-700"
+          >
             {t("Send another message")}
           </Button>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="name" className="mb-1 block text-sm font-medium text-gray-700">
               {t("Your Name")} <span className="text-red-500">*</span>
             </label>
             <Input
@@ -108,7 +110,7 @@ export default function ContactForm() {
               value={formState.name}
               onChange={handleChange}
               placeholder={t("Enter your full name")}
-              className={`${errors.name ? "border-red-500" : "border-gray-300"}`}
+              className={errors.name ? "border-red-500" : "border-gray-300"}
               aria-invalid={!!errors.name}
               aria-describedby={errors.name ? "name-error" : undefined}
             />
@@ -120,7 +122,7 @@ export default function ContactForm() {
           </div>
 
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="email" className="mb-1 block text-sm font-medium text-gray-700">
               {t("Email Address")} <span className="text-red-500">*</span>
             </label>
             <Input
@@ -130,7 +132,7 @@ export default function ContactForm() {
               value={formState.email}
               onChange={handleChange}
               placeholder={t("Enter your email address")}
-              className={`${errors.email ? "border-red-500" : "border-gray-300"}`}
+              className={errors.email ? "border-red-500" : "border-gray-300"}
               aria-invalid={!!errors.email}
               aria-describedby={errors.email ? "email-error" : undefined}
             />
@@ -142,7 +144,7 @@ export default function ContactForm() {
           </div>
 
           <div>
-            <label htmlFor="subject" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="subject" className="mb-1 block text-sm font-medium text-gray-700">
               {t("Subject")} <span className="text-red-500">*</span>
             </label>
             <Input
@@ -151,7 +153,7 @@ export default function ContactForm() {
               value={formState.subject}
               onChange={handleChange}
               placeholder={t("Enter the subject of your message")}
-              className={`${errors.subject ? "border-red-500" : "border-gray-300"}`}
+              className={errors.subject ? "border-red-500" : "border-gray-300"}
               aria-invalid={!!errors.subject}
               aria-describedby={errors.subject ? "subject-error" : undefined}
             />
@@ -163,7 +165,7 @@ export default function ContactForm() {
           </div>
 
           <div>
-            <label htmlFor="message" className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="message" className="mb-1 block text-sm font-medium text-gray-700">
               {t("Your Message")} <span className="text-red-500">*</span>
             </label>
             <Textarea
@@ -188,11 +190,11 @@ export default function ContactForm() {
             <Button
               type="submit"
               disabled={isSubmitting}
-              className="bg-primary-700 hover:bg-primary-800 text-white px-8 py-6 text-lg flex items-center gap-2"
+              className="flex items-center gap-2 rounded-full bg-slate-900 px-8 py-6 text-lg text-white hover:bg-slate-800"
             >
               {isSubmitting ? (
                 <>
-                  <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full mr-2"></div>
+                  <div className="mr-2 h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
                   {t("Sending...")}
                 </>
               ) : (
