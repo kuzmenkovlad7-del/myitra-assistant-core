@@ -19,33 +19,33 @@ const config: Config = {
     },
     extend: {
       colors: {
-        // New blue palette replacing the purple one
+        // Myitra brand colors - psychological blue + soft purple (no green)
         primary: {
-          50: "#f0f7ff",
-          100: "#e0eefe",
-          200: "#bae0fd",
-          300: "#7cc8fb",
-          400: "#36aaf5",
-          500: "#0c8ee7",
-          600: "#0271c5",
-          700: "#025aa0",
-          800: "#064d85",
-          900: "#0a416f",
-          950: "#072a4a",
+          50: "#eff6ff",
+          100: "#dbeafe",
+          200: "#bfdbfe",
+          300: "#93c5fd",
+          400: "#60a5fa",
+          500: "#3b82f6",
+          600: "#2563eb", // Main brand blue
+          700: "#1d4ed8",
+          800: "#1e40af",
+          900: "#1e3a8a",
+          950: "#172554",
         },
-        // Background blue color replacing lavender
+        // Lavender/Purple accent color
         lavender: {
-          50: "#f0f9ff",
-          100: "#e0f2fe",
-          200: "#bae5fd",
-          300: "#7dd3fc",
-          400: "#38bdf8",
-          500: "#0ea5e9",
-          600: "#0284c7",
-          700: "#0369a1",
-          800: "#075985",
-          900: "#0c4a6e",
-          950: "#082f49",
+          50: "#faf5ff",
+          100: "#f3e8ff",
+          200: "#e9d5ff",
+          300: "#d8b4fe",
+          400: "#c084fc",
+          500: "#a855f7",
+          600: "#9333ea",
+          700: "#7e22ce",
+          800: "#6b21a8",
+          900: "#581c87",
+          950: "#3b0764",
         },
         // Rainbow gradient colors
         "color-1": "hsl(var(--color-1))",

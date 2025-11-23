@@ -28,10 +28,7 @@ export const viewport: Viewport = {
   maximumScale: 5,
   userScalable: true,
   viewportFit: "cover",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f0f9ff" },
-    { media: "(prefers-color-scheme: dark)", color: "#0a416f" },
-  ],
+  themeColor: "#F7F8FF", // Myitra light theme only
 }
 
 export default function RootLayout({
@@ -41,7 +38,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} min-h-screen bg-white text-slate-900 antialiased`} suppressHydrationWarning>
+      <body className={`${inter.className} min-h-screen bg-background text-foreground antialiased`} suppressHydrationWarning>
         <AuthProvider>
           <LanguageProvider>
             <RTLWrapper>

@@ -283,7 +283,13 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl, onError }: A
 
   if (!isOpen) return null
 
-  const userEmail = user?.email || "guest@example.com"
+  // Get user email or translated guest label based on language
+  const guestLabels: Record<string, string> = {
+    en: "Guest (not signed in)",
+    ru: "Гость (без входа)",
+    uk: "Гість (без входу)",
+  }
+  const userEmail = user?.email || guestLabels[currentLanguage.code] || guestLabels.en
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">

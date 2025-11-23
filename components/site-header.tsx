@@ -10,10 +10,10 @@ import { useLanguage } from "@/lib/i18n/language-context"
 import Logo from "@/components/logo"
 
 const mainLinks = [
-  { href: "/", label: "Главная" },
-  { href: "#programs", label: "Программы" },
-  { href: "#stories", label: "Истории клиентов" },
-  { href: "#contacts", label: "Контакты" },
+  { href: "/", label: "Home" },
+  { href: "#programs", label: "Programs" },
+  { href: "#stories", label: "Client Stories" },
+  { href: "#contacts", label: "Contacts" },
 ]
 
 export function SiteHeader() {
@@ -68,7 +68,7 @@ export function SiteHeader() {
             }}
             className="bg-primary-600 hover:bg-primary-700 text-white"
           >
-            {t("Поговорить сейчас")}
+            {t("Talk Now")}
           </Button>
         </div>
 
@@ -119,7 +119,7 @@ export function SiteHeader() {
                   }}
                   className="w-full bg-primary-600 hover:bg-primary-700 text-white"
                 >
-                  {t("Поговорить сейчас")}
+                  {t("Talk Now")}
                 </Button>
               </div>
             </div>

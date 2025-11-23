@@ -604,4 +604,12 @@ export const en = {
     "Get professional psychological support through AI technology. Voice, video, and text chat available 24/7.",
   "AI psychology, mental health support, online therapy, psychological counseling":
     "AI psychology, mental health support, online therapy, psychological counseling",
+
+  // Navigation
+  "Programs": "Programs",
+  "Client Stories": "Client Stories",
+
+  // Chat Dialog
+  "AI Psychologist Chat": "AI Psychologist Chat",
+  "Chat communication in {{language}}": "Chat communication in {{language}}",
 }

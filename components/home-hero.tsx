@@ -68,8 +68,8 @@ export function HomeHero() {
                 <span className="text-sm text-slate-600 font-medium">{t("Voice Calls")}</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-50 border border-teal-100">
-                  <Video className="h-5 w-5 text-teal-600" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-lavender-50 border border-lavender-100">
+                  <Video className="h-5 w-5 text-lavender-600" />
                 </div>
                 <span className="text-sm text-slate-600 font-medium">{t("Video Sessions")}</span>
               </div>
@@ -96,7 +96,7 @@ export function HomeHero() {
                   <div className="flex gap-1.5">
                     <div className="h-2 w-2 rounded-full bg-blue-500"></div>
                     <div className="h-2 w-2 rounded-full bg-cyan-500"></div>
-                    <div className="h-2 w-2 rounded-full bg-teal-500"></div>
+                    <div className="h-2 w-2 rounded-full bg-lavender-500"></div>
                   </div>
                 </div>
               </div>
