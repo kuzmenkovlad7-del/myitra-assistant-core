@@ -64,7 +64,7 @@ export function SiteFooter() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className="text-sm transition-colors hover:text-accent"
+                  className="text-sm no-underline transition-colors hover:text-accent"
                 >
                   {t(link.label)}
                 </Link>
@@ -76,7 +76,7 @@ export function SiteFooter() {
                 <Link
                   key={link.href}
                   href={link.href}
-                  className="text-sm transition-colors hover:text-accent"
+                  className="text-sm no-underline transition-colors hover:text-accent"
                 >
                   {t(link.label)}
                 </Link>

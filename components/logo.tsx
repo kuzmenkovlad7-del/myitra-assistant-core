@@ -64,23 +64,10 @@ const AnimatedContainer = styled.div`
 `
 
 export default function Logo() {
-  const handleReload = () => {
-    if (typeof window !== "undefined") {
-      window.location.reload()
-    }
-  }
-
   return (
     <AnimatedContainer>
-      <div
-        className="relative flex items-center cursor-pointer"
-        onClick={handleReload}
-        role="button"
-        tabIndex={0}
-        aria-label="Reload page"
-        title="Click to reload the page"
-      >
-        <div className="w-10 h-10 mr-2 relative">
+      <div className="relative flex items-center">
+        <div className="w-10 h-10 relative">
           <div className="absolute inset-0 bg-lavender-200 rounded-full animate-brain-pulse">
             <div className="absolute inset-0 rounded-full opacity-0 animate-brain-glow"></div>
           </div>
@@ -88,7 +75,6 @@ export default function Logo() {
             <Brain className="w-6 h-6 text-primary-700 animate-brain" />
           </div>
         </div>
-        <span className="text-2xl font-bold text-primary-800">Myitra</span>
       </div>
     </AnimatedContainer>
   )

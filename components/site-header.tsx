@@ -45,7 +45,7 @@ export function SiteHeader() {
               key={link.href}
               href={link.href}
               onClick={(e) => scrollToSection(e, link.href)}
-              className="text-sm font-medium text-muted-foreground transition-colors hover:text-accent relative after:absolute after:bottom-[-4px] after:left-0 after:h-[2px] after:w-0 after:bg-accent after:transition-all hover:after:w-full"
+              className="text-sm font-medium text-foreground no-underline transition-colors hover:text-accent relative pb-1 after:absolute after:bottom-0 after:left-0 after:h-[2px] after:w-0 after:bg-accent after:transition-all hover:after:w-full"
             >
               {t(link.label)}
             </Link>
@@ -93,7 +93,7 @@ export function SiteHeader() {
                     key={link.href}
                     href={link.href}
                     onClick={(e) => scrollToSection(e, link.href)}
-                    className="text-base font-medium text-muted-foreground transition-colors hover:text-accent"
+                    className="text-base font-medium text-foreground no-underline transition-colors hover:text-accent"
                   >
                     {t(link.label)}
                   </Link>
