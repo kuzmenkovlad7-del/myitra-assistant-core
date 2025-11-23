@@ -29,7 +29,7 @@ export function HomeHero() {
             <div className="space-y-4">
               <h1 className="text-4xl font-bold leading-tight tracking-tighter text-slate-900 md:text-5xl lg:text-6xl">
                 {t("Live Psychological Support,")}{" "}
-                <span className="bg-gradient-to-r from-blue-600 via-cyan-600 to-teal-600 bg-clip-text text-transparent">
+                <span className="text-accent">
                   {t("AI-Enhanced")}
                 </span>
               </h1>
@@ -41,7 +41,7 @@ export function HomeHero() {
             <div className="flex flex-col gap-4 sm:flex-row">
               <Button
                 onClick={() => scrollToSection("#assistant")}
-                className="h-12 px-8 text-base bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white shadow-lg hover:shadow-xl transition-all"
+                className="h-12 px-8 text-base bg-gradient-to-r from-primary via-accent to-primary text-primary-foreground shadow-xl animate-pulse-soft"
               >
                 {t("Talk Now")}
               </Button>

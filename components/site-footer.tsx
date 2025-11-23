@@ -7,14 +7,14 @@ import { useLanguage } from "@/lib/i18n/language-context"
 import Logo from "@/components/logo"
 
 const mainLinks = [
-  { href: "/programs", label: "Программы" },
-  { href: "/stories", label: "Истории клиентов" },
-  { href: "/contacts", label: "Контакты" },
+  { href: "/programs", label: "Programs" },
+  { href: "/stories", label: "Client Stories" },
+  { href: "/contacts", label: "Contacts" },
 ]
 
 const legalLinks = [
-  { href: "/privacy", label: "Политика конфиденциальности" },
-  { href: "/terms", label: "Пользовательское соглашение" },
+  { href: "/privacy-policy", label: "Privacy Policy" },
+  { href: "/terms-of-use", label: "Terms of Use" },
 ]
 
 const socialLinks = [
