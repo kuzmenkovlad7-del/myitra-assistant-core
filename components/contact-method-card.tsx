@@ -1,7 +1,8 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { LucideIcon } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
+import { GlareCard } from "@/components/ui/glare-card"
 
 interface ContactMethodCardProps {
   icon: LucideIcon
@@ -19,32 +20,22 @@ export function ContactMethodCard({
   onClick,
 }: ContactMethodCardProps) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group relative h-full text-left"
-    >
-      {/* градиентный бордер как у 21st.dev */}
-      <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-purple-500/0 via-indigo-500/20 to-sky-500/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-
-      <div className="relative flex h-full flex-col rounded-2xl border border-slate-100 bg-white/90 p-6 shadow-sm backdrop-blur transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-xl">
-        <div className="mb-4 flex items-center justify-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#6366F1] to-[#EC4899] text-white shadow-md shadow-indigo-500/30">
-            <Icon className="h-7 w-7" />
+    <GlareCard className="flex h-full flex-col justify-between p-6">
+      <div className="relative z-10 flex h-full flex-col">
+        <div className="mb-4 flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 ring-1 ring-white/20">
+            <Icon className="h-6 w-6 text-white" />
           </div>
+          <h3 className="text-lg font-semibold text-white">{title}</h3>
         </div>
-
-        <h3 className="mb-2 text-lg font-semibold text-slate-900">
-          {title}
-        </h3>
-        <p className="mb-6 flex-1 text-sm text-slate-600">{description}</p>
-
+        <p className="mb-6 flex-1 text-sm text-slate-200/85">{description}</p>
         <Button
-          className="w-full rounded-full bg-slate-900 text-sm font-semibold text-white hover:bg-slate-800"
+          onClick={onClick}
+          className="mt-auto w-full rounded-full bg-white text-slate-900 hover:bg-slate-100"
         >
           {buttonText}
         </Button>
       </div>
-    </button>
+    </GlareCard>
   )
 }
