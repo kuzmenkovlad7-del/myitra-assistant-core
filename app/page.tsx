@@ -1,15 +1,16 @@
 "use client"
 
 import { PhoneCall, MessageSquare, Video } from "lucide-react"
+import { useState } from "react"
+
 import ServiceFeatures from "@/components/service-features"
 import { HomeHero } from "@/components/home-hero"
 import ContactSection from "@/components/contact-section"
 import { ContactMethodCard } from "@/components/contact-method-card"
-import { useLanguage } from "@/lib/i18n/language-context"
-import { useState } from "react"
 import AIChatDialog from "@/components/ai-chat-dialog"
 import VoiceCallDialog from "@/components/voice-call-dialog"
 import VideoCallDialog from "@/components/video-call-dialog"
+import { useLanguage } from "@/lib/i18n/language-context"
 
 export default function Home() {
   const { t } = useLanguage()
@@ -18,17 +19,20 @@ export default function Home() {
   const [isVideoCallOpen, setIsVideoCallOpen] = useState(false)
 
   return (
-    <div>
+    <div className="bg-white">
       <HomeHero />
 
       {/* Contact Methods Section */}
-      <section id="assistant" className="py-16 px-4 md:px-6 lg:px-8 bg-background">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="text-3xl md:text-4xl font-bold text-center mb-12 text-gray-900">
+      <section
+        id="assistant"
+        className="relative z-10 -mt-10 bg-gradient-to-b from-transparent via-slate-50 to-white px-4 pb-16 pt-14 md:px-6 lg:px-8"
+      >
+        <div className="mx-auto max-w-6xl rounded-3xl border border-slate-100 bg-white/95 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.16)] md:p-10">
+          <h2 className="mb-10 text-center text-3xl font-bold tracking-tight text-gray-900 md:text-4xl">
             Как вы хотите связаться с нами?
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
             <ContactMethodCard
               icon={MessageSquare}
               title="Чат с ИИ-психологом"
@@ -46,6 +50,7 @@ export default function Home() {
                 if (
                   typeof window !== "undefined" &&
                   !window.SpeechRecognition &&
+                  // @ts-expect-error webkitSpeechRecognition есть не во всех браузерах
                   !window.webkitSpeechRecognition &&
                   !navigator.mediaDevices
                 ) {
@@ -80,6 +85,7 @@ export default function Home() {
       </section>
 
       <ServiceFeatures />
+
       <section id="contacts">
         <ContactSection />
       </section>
@@ -89,6 +95,7 @@ export default function Home() {
         onClose={() => setIsChatOpen(false)}
         webhookUrl="https://nzzsd.app.n8n.cloud/webhook/coachai"
       />
+
       <VoiceCallDialog
         isOpen={isVoiceCallOpen}
         onClose={() => setIsVoiceCallOpen(false)}
@@ -100,6 +107,7 @@ export default function Home() {
           setIsVoiceCallOpen(false)
         }}
       />
+
       <VideoCallDialog
         isOpen={isVideoCallOpen}
         onClose={() => setIsVideoCallOpen(false)}
