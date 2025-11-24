@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+
 import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,35 +25,33 @@ interface AIChatDialogProps {
   onError?: (error: Error) => void
 }
 
+// 1) базовый URL вебхука: сначала берём проп, потом .env, потом дефолт
+const DEFAULT_CHAT_WEBHOOK =
+  "https://myitra.app.n8n.cloud/webhook/99d30fb7-c3c8-44e8-8231-224d1c394c59"
+
+const CHAT_WEBHOOK_URL =
+  (typeof window === "undefined"
+    ? process.env.NEXT_PUBLIC_CHAT_WEBHOOK_URL
+    : (process.env.NEXT_PUBLIC_CHAT_WEBHOOK_URL as string)) || DEFAULT_CHAT_WEBHOOK
+
 export default function AIChatDialog({ isOpen, onClose, webhookUrl, onError }: AIChatDialogProps) {
   const { t, currentLanguage } = useLanguage()
   const { user } = useAuth()
 
-  // --- безопасные значения языка, чтобы нигде не было undefined ---
-  const languageCode = currentLanguage?.code || "en"
+  const langCode = currentLanguage?.code || "en"
+  const langName = currentLanguage?.name || "English"
 
-  const languageName =
-    currentLanguage?.name ||
-    (languageCode === "ru" ? "Русский" : languageCode === "uk" ? "Українська" : "English")
-
-  const languageFlag = currentLanguage?.flag || "🇬🇧"
-
-  const effectiveWebhookUrl =
-    webhookUrl ||
-    process.env.NEXT_PUBLIC_N8N_CHAT_WEBHOOK_URL ||
-    "https://myitra.app.n8n.cloud/webhook/99d30fb7-c3c8-44e8-8231-224d1c394c59"
-
-  // --- состояние ---
+  // State
   const [messages, setMessages] = useState<Message[]>([])
   const [inputValue, setInputValue] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isTyping, setIsTyping] = useState(false)
 
-  // refs
+  // Refs
   const inputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const lastLanguageRef = useRef<string | null>(null)
 
+  // Scroll to bottom
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [])
@@ -61,62 +60,76 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl, onError }: A
     scrollToBottom()
   }, [messages, scrollToBottom])
 
-  // фокус при открытии
+  // Focus input on open
   useEffect(() => {
     if (isOpen && inputRef.current) {
       inputRef.current.focus()
     }
   }, [isOpen])
 
-  // создаём приветствие каждый раз, когда:
-  // - чат только что открылся
-  // - сменился язык
+  // 2) Приветствие только для uk/ru/en
   useEffect(() => {
     if (!isOpen) return
+    if (messages.length > 0) return
 
-    const languageChanged = lastLanguageRef.current && lastLanguageRef.current !== languageCode
-
-    if (messages.length === 0 || languageChanged) {
-      const greetings: Record<string, string> = {
-        en: "Hello! I'm your AI psychologist. How can I help you today?",
-        ru: "Здравствуйте! Я ваш ИИ-психолог. Как я могу помочь вам сегодня?",
-        uk: "Вітаю! Я ваш ШІ-психолог. Як я можу допомогти вам сьогодні?",
-      }
-
-      const greeting = greetings[languageCode] || greetings.en
-
-      const initialMessage: Message = {
-        id: `initial-${languageCode}`,
-        content: greeting,
-        sender: "ai",
-        timestamp: new Date(),
-        language: languageCode,
-      }
-
-      setMessages([initialMessage])
-      lastLanguageRef.current = languageCode
+    const greetings: Record<string, string> = {
+      en: "Hello! I'm your AI psychologist. How can I help you today?",
+      ru: "Здравствуйте! Я ваш ИИ-психолог. Как я могу помочь вам сегодня?",
+      uk: "Вітаю! Я ваш ШІ-психолог. Як я можу допомогти вам сьогодні?",
     }
-  }, [isOpen, languageCode]) // специально без messages в зависимостях
 
-  // обработка сообщения
+    const greeting = greetings[langCode] || greetings.en
+
+    const initialMessage: Message = {
+      id: "initial",
+      content: greeting,
+      sender: "ai",
+      timestamp: new Date(),
+      language: langCode,
+    }
+
+    setMessages([initialMessage])
+  }, [isOpen, messages.length, langCode])
+
+  // 3) отправка в n8n
   const processMessage = useCallback(
     async (message: string) => {
       if (!message.trim()) return
+
+      const finalWebhook = webhookUrl || CHAT_WEBHOOK_URL
+
+      // если урл пустой — не ломаем UI, а аккуратно говорим пользователю
+      if (!finalWebhook) {
+        const offlineMessage: Message = {
+          id: Date.now().toString() + "-offline",
+          content: t("Chat is temporarily unavailable. Please try again later."),
+          sender: "ai",
+          timestamp: new Date(),
+          language: langCode,
+        }
+        setMessages((prev) => [...prev, offlineMessage])
+        return
+      }
 
       setIsLoading(true)
       setIsTyping(true)
 
       try {
+        console.log(`📤 Sending chat message to n8n in ${langName}`, { langCode, message })
+
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 15000)
 
         const params = new URLSearchParams({
           text: message,
-          language: languageCode,
+          language: langCode,
           user: user?.email || "guest@example.com",
+          source: "chat",
         })
 
-        const response = await fetch(`${effectiveWebhookUrl}?${params.toString()}`, {
+        const urlWithParams = `${finalWebhook}?${params.toString()}`
+
+        const webhookResponse = await fetch(urlWithParams, {
           method: "GET",
           headers: { Accept: "application/json" },
           signal: controller.signal,
@@ -124,104 +137,119 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl, onError }: A
 
         clearTimeout(timeoutId)
 
-        if (!response.ok) throw new Error(`Webhook error: ${response.status}`)
+        if (!webhookResponse.ok) {
+          const text = await webhookResponse.text().catch(() => "")
+          console.warn("❗ n8n webhook error", webhookResponse.status, text)
+          throw new Error(`Webhook error: ${webhookResponse.status}`)
+        }
 
-        const contentType = response.headers.get("content-type")
-        let data: any
+        let responseData: any
+        const contentType = webhookResponse.headers.get("content-type")
 
         if (contentType && contentType.includes("application/json")) {
-          data = await response.json()
+          responseData = await webhookResponse.json()
         } else {
-          const text = await response.text()
+          const textResponse = await webhookResponse.text()
           try {
-            data = JSON.parse(text)
+            responseData = JSON.parse(textResponse)
           } catch {
-            data = { response: text }
+            responseData = { response: textResponse }
           }
         }
 
-        let aiText = ""
+        console.log("📥 n8n response:", responseData)
 
-        if (typeof data === "string") {
-          aiText = data
-        } else if (Array.isArray(data) && data.length > 0) {
-          const first = data[0]
-          aiText =
-            first.output || first.response || first.text || first.message || first.content || JSON.stringify(first)
-        } else if (data && typeof data === "object") {
-          aiText =
-            data.response ||
-            data.text ||
-            data.message ||
-            data.output ||
-            data.content ||
-            data.result ||
-            JSON.stringify(data)
+        // вытаскиваем текст
+        let aiResponseText = ""
+
+        if (typeof responseData === "string") {
+          aiResponseText = responseData
+        } else if (Array.isArray(responseData) && responseData.length > 0) {
+          const first = responseData[0]
+          aiResponseText =
+            first?.response || first?.text || first?.message || first?.output || JSON.stringify(first)
+        } else if (responseData && typeof responseData === "object") {
+          aiResponseText =
+            responseData.response ||
+            responseData.text ||
+            responseData.message ||
+            responseData.output ||
+            responseData.content ||
+            responseData.result ||
+            JSON.stringify(responseData)
         }
 
-        const cleaned = aiText
+        const cleanedResponse = aiResponseText
           .replace(/^\s*[{[]|\s*[}\]]$/g, "")
-          .replace(/"output":|"response":|"text":|"message":/g, "")
-          .replace(/["{}[\],]/g, "")
+          .replace(/"output":|"response":|"text":|"message":|"content":/g, "")
+          .replace(/["{}[\]]/g, "")
           .replace(/\s+/g, " ")
           .trim()
 
-        if (!cleaned) throw new Error("Empty response")
+        if (!cleanedResponse) {
+          throw new Error("Empty response")
+        }
 
         const aiMessage: Message = {
-          id: `${Date.now()}-ai`,
-          content: cleaned,
+          id: Date.now().toString() + "-ai",
+          content: cleanedResponse,
           sender: "ai",
           timestamp: new Date(),
-          language: languageCode,
+          language: langCode,
         }
 
         setMessages((prev) => [...prev, aiMessage])
       } catch (error: any) {
-        console.error("Chat error:", error)
-        const msg =
-          error?.name === "AbortError"
-            ? t("Connection timeout. Please try again.")
-            : t("I'm sorry, I couldn't process your message. Please try again.")
+        console.error("Chat process error:", error)
 
-        const errMessage: Message = {
-          id: `${Date.now()}-error`,
-          content: msg,
-          sender: "ai",
-          timestamp: new Date(),
-          language: languageCode,
+        let errorMessage: string
+        if (error.name === "AbortError") {
+          errorMessage = t("Connection timeout. Please try again.")
+        } else {
+          errorMessage = t("I'm sorry, I couldn't process your message. Please try again.")
         }
 
-        setMessages((prev) => [...prev, errMessage])
+        const errorAiMessage: Message = {
+          id: Date.now().toString() + "-error",
+          content: errorMessage,
+          sender: "ai",
+          timestamp: new Date(),
+          language: langCode,
+        }
+
+        setMessages((prev) => [...prev, errorAiMessage])
+
         onError?.(error)
       } finally {
         setIsLoading(false)
         setIsTyping(false)
       }
     },
-    [effectiveWebhookUrl, languageCode, user?.email, t, onError],
+    [langCode, langName, user?.email, webhookUrl, t, onError],
   )
 
+  // 4) submit
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault()
       if (!inputValue.trim() || isLoading) return
 
-      const msgText = inputValue.trim()
+      const text = inputValue.trim()
 
       const userMessage: Message = {
-        id: `${Date.now()}-user`,
-        content: msgText,
+        id: Date.now().toString() + "-user",
+        content: text,
         sender: "user",
         timestamp: new Date(),
-        language: languageCode,
+        language: langCode,
       }
 
       setMessages((prev) => [...prev, userMessage])
       setInputValue("")
-      await processMessage(msgText)
+
+      await processMessage(text)
     },
-    [inputValue, isLoading, languageCode, processMessage],
+    [inputValue, isLoading, langCode, processMessage],
   )
 
   const handleKeyPress = useCallback(
@@ -236,11 +264,11 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl, onError }: A
 
   const formatTime = useCallback(
     (date: Date) =>
-      date.toLocaleTimeString(languageCode === "uk" ? "uk-UA" : languageCode === "ru" ? "ru-RU" : "en-US", {
+      date.toLocaleTimeString(langCode, {
         hour: "2-digit",
         minute: "2-digit",
       }),
-    [languageCode],
+    [langCode],
   )
 
   if (!isOpen) return null
@@ -251,21 +279,21 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl, onError }: A
     uk: "Гість (без входу)",
   }
 
-  const userEmail = user?.email || guestLabels[languageCode] || guestLabels.en
+  const userEmail = user?.email || guestLabels[langCode] || guestLabels.en
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl flex flex-col h-[80vh] max-h-[600px] overflow-hidden">
-        {/* Header */}
-        <div className="p-4 border-b flex justify-between items-center bg-primary-600 text-white rounded-t-xl">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col h-[80vh] max-h-[640px] overflow-hidden">
+        {/* HEADER */}
+        <div className="p-4 border-b flex justify-between items-center bg-primary-600 text-white">
           <div className="flex flex-col">
-            <h3 className="font-bold text-lg">AI Psychologist Chat</h3>
-            <div className="text-xs text-lavender-200">
-              User: {userEmail}
+            <h3 className="font-semibold text-lg">{t("AI Psychologist Chat")}</h3>
+            <div className="text-xs text-primary-100">
+              {t("User")}: {userEmail}
             </div>
-            <div className="text-xs text-lavender-200 mt-1 flex items-center">
+            <div className="text-xs text-primary-100 mt-1 flex items-center">
               <Globe className="h-3 w-3 mr-1" />
-              Language: {languageName} {languageFlag}
+              {t("Language")}: {langName} {currentLanguage?.flag}
             </div>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} className="text-white hover:bg-primary-700">
@@ -273,14 +301,15 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl, onError }: A
           </Button>
         </div>
 
-        {/* Info strip */}
+        {/* INFO BAR */}
         <div className="px-4 py-2 bg-blue-50 border-b">
           <p className="text-sm text-blue-700 text-center">
-            Chat communication in {languageName} • AI will understand and respond in this language
+            {t("Chat communication in {{language}}", { language: langName })} •{" "}
+            {t("AI will understand and respond in this language")}
           </p>
         </div>
 
-        {/* Messages */}
+        {/* MESSAGES */}
         <ScrollArea className="flex-1 p-4">
           <div className="space-y-4">
             {messages.map((message) => (
@@ -292,25 +321,31 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl, onError }: A
                 >
                   <div
                     className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-                      message.sender === "user" ? "bg-primary-600 text-white ml-2" : "bg-gray-200 text-gray-600 mr-2"
+                      message.sender === "user" ? "bg-primary-600 text-white ml-2" : "bg-slate-100 text-slate-600 mr-2"
                     }`}
                   >
                     {message.sender === "user" ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
                   </div>
 
                   <div
-                    className={`rounded-lg px-4 py-2 ${
-                      message.sender === "user" ? "bg-primary-600 text-white" : "bg-gray-100 text-gray-800"
+                    className={`rounded-2xl px-4 py-2 text-sm leading-relaxed ${
+                      message.sender === "user" ? "bg-primary-600 text-white" : "bg-slate-50 text-slate-900"
                     }`}
                   >
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    <p className="whitespace-pre-wrap">{message.content}</p>
                     <div className="flex items-center justify-between mt-1">
-                      <p className={`text-xs ${message.sender === "user" ? "text-primary-200" : "text-gray-500"}`}>
-                        {formatTime(message.timestamp)}
-                      </p>
                       <span
-                        className={`text-xs ml-2 px-1 py-0.5 rounded ${
-                          message.sender === "user" ? "bg-primary-700 text-primary-200" : "bg-gray-200 text-gray-600"
+                        className={`text-[11px] ${
+                          message.sender === "user" ? "text-primary-100" : "text-slate-500"
+                        }`}
+                      >
+                        {formatTime(message.timestamp)}
+                      </span>
+                      <span
+                        className={`text-[10px] ml-2 px-1.5 py-0.5 rounded ${
+                          message.sender === "user"
+                            ? "bg-primary-700 text-primary-100"
+                            : "bg-slate-200 text-slate-700"
                         }`}
                       >
                         {message.language.toUpperCase()}
@@ -324,19 +359,19 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl, onError }: A
             {isTyping && (
               <div className="flex justify-start">
                 <div className="flex items-start space-x-2">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center mr-2">
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mr-2">
                     <Bot className="h-4 w-4" />
                   </div>
-                  <div className="bg-gray-100 rounded-lg px-4 py-2">
+                  <div className="bg-slate-50 rounded-2xl px-4 py-2">
                     <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
+                      <div className="w-2 h-2 rounded-full bg-slate-400 animate-pulse" />
                       <div
-                        className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"
-                        style={{ animationDelay: "0.2s" }}
+                        className="w-2 h-2 rounded-full bg-slate-400 animate-pulse"
+                        style={{ animationDelay: "0.15s" }}
                       />
                       <div
-                        className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"
-                        style={{ animationDelay: "0.4s" }}
+                        className="w-2 h-2 rounded-full bg-slate-400 animate-pulse"
+                        style={{ animationDelay: "0.3s" }}
                       />
                     </div>
                   </div>
@@ -348,28 +383,28 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl, onError }: A
           </div>
         </ScrollArea>
 
-        {/* Input */}
-        <div className="p-4 border-t bg-gray-50">
+        {/* INPUT */}
+        <div className="p-4 border-t bg-slate-50">
           <form onSubmit={handleSubmit} className="flex space-x-2">
             <Input
               ref={inputRef}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder={`Type your message in ${languageName}...`}
+              placeholder={t("Type your message in {{language}}...", { language: langName })}
               disabled={isLoading}
               className="flex-1"
             />
             <Button
               type="submit"
               disabled={!inputValue.trim() || isLoading}
-              className="bg-primary-600 hover:bg-primary-700"
+              className="bg-primary-600 hover:bg-primary-700 rounded-xl"
             >
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </form>
-          <p className="text-xs text-gray-500 mt-2 text-center">
-            Press Enter to send • AI responds in {languageName}
+          <p className="text-[11px] text-slate-500 mt-2 text-center">
+            {t("Press Enter to send • AI responds in {{language}}", { language: langName })}
           </p>
         </div>
       </div>
