@@ -12,8 +12,8 @@ export function HomeHero() {
 
   const chips = [
     t("When it feels bad right now"),
-    t("Anxiety & stress programs"),
-    t("Gentle long-term support"),
+    t("Anxiety, stress & burnout"),
+    t("7–21 day support programs"),
   ]
 
   return (
@@ -45,12 +45,12 @@ export function HomeHero() {
           </div>
 
           <h1 className="mb-5 text-3xl font-bold leading-tight text-slate-900 sm:text-4xl md:text-5xl">
-            {t("Live psychological support, powered by AI")}
+            {t("Psychological support when it feels hard, powered by AI")}
           </h1>
 
           <p className="mb-7 max-w-lg text-sm text-slate-600 sm:text-base">
             {t(
-              "Talk to an AI-powered psychologist when you feel exhausted, anxious or alone. They listen, ask clarifying questions and gently guide you with exercises — in chat, voice or video.",
+              "MyITRA listens without judgement, asks clarifying questions and gently guides you through breathing, grounding and simple exercises based on psychological books. In chat, voice or video — when you feel anxious, exhausted or alone.",
             )}
           </p>
 
@@ -58,7 +58,7 @@ export function HomeHero() {
           <div className="mb-6 flex flex-wrap items-center gap-3">
             <a href="#assistant">
               <RainbowButton className="h-12 rounded-full px-7 text-sm font-semibold text-white">
-                <span>{t("Talk now")}</span>
+                <span>{t("Start for free")}</span>
                 <ArrowRight className="h-4 w-4" />
               </RainbowButton>
             </a>
@@ -73,7 +73,7 @@ export function HomeHero() {
                 hover:bg-slate-100 hover:text-slate-900
               "
             >
-              {t("Programs")}
+              {t("How it works")}
             </button>
           </div>
 
