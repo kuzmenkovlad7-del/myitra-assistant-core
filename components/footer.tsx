@@ -5,25 +5,18 @@ import { Instagram, Facebook, Github } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useLanguage } from "@/lib/i18n/language-context"
 import Logo from "@/components/logo"
-import { APP_NAME, SUPPORT_EMAIL } from "@/lib/app-config"
+import { APP_NAME, APP_SUPPORT_EMAIL } from "@/lib/app-config"
 
-type NavLink = {
-  href: string
-  labelKey?: string
-  label?: string
-}
-
-const mainLinks: NavLink[] = [
-  { href: "/", labelKey: "nav.home" },
-  { href: "/programs", labelKey: "nav.programs" },
-  { href: "/client-stories", labelKey: "nav.clientStories" },
-  { href: "/about", label: "About" },
-  { href: "/contacts", labelKey: "nav.contacts" },
+const mainLinks = [
+  { href: "/", label: "nav.home" },
+  { href: "/programs", label: "nav.programs" },
+  { href: "/client-stories", label: "nav.clientStories" },
+  { href: "/contacts", label: "nav.contacts" },
 ]
 
-const legalLinks: NavLink[] = [
-  { href: "/privacy-policy", labelKey: "nav.privacyPolicy" },
-  { href: "/terms-of-use", labelKey: "nav.termsOfUse" },
+const legalLinks = [
+  { href: "/privacy-policy", label: "nav.privacyPolicy" },
+  { href: "/terms-of-use", label: "nav.termsOfUse" },
 ]
 
 const socialLinks = [
@@ -36,15 +29,12 @@ export default function Footer() {
   const { t } = useLanguage()
   const currentYear = new Date().getFullYear()
 
-  const renderLabel = (link: NavLink) =>
-    link.labelKey ? t(link.labelKey) : link.label
-
   return (
     <footer className="mt-16 w-full border-t border-slate-200 bg-white">
       <div className="container mx-auto px-4 py-10 lg:py-12">
         <div className="grid gap-10 md:grid-cols-3 lg:grid-cols-4">
           {/* Логотип + слоган + дисклеймер */}
-          <div className="space-y-4 md:col-span-2">
+          <div className="md:col-span-2 space-y-4">
             <div className="flex items-center gap-2">
               <Logo />
               <span className="text-lg font-semibold text-slate-900">
@@ -58,7 +48,7 @@ export default function Footer() {
               )}
             </p>
 
-            <div className="mt-4 rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3 text-xs text-slate-700 sm:text-sm">
+            <div className="mt-4 rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3 text-xs sm:text-sm text-slate-700">
               <p className="font-semibold text-violet-900">
                 {t("This is not an emergency service")}
               </p>
@@ -87,7 +77,7 @@ export default function Footer() {
                   href={link.href}
                   className="transition-colors hover:text-slate-900"
                 >
-                  {renderLabel(link)}
+                  {t(link.label)}
                 </Link>
               ))}
             </nav>
@@ -98,7 +88,7 @@ export default function Footer() {
             <h3 className="text-sm font-semibold text-slate-900">
               {t("Contact Us")}
             </h3>
-            <p className="text-sm text-slate-600">{SUPPORT_EMAIL}</p>
+            <p className="text-sm text-slate-600">{APP_SUPPORT_EMAIL}</p>
 
             <div className="flex flex-wrap gap-2">
               {socialLinks.map((link) => (
@@ -134,7 +124,7 @@ export default function Footer() {
                 href={link.href}
                 className="transition-colors hover:text-slate-700"
               >
-                {renderLabel(link)}
+                {t(link.label)}
               </Link>
             ))}
           </nav>
