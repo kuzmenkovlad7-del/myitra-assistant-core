@@ -1,90 +1,57 @@
+// lib/supabase-client.ts
+
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey)
-export const hasSupabaseEnv = isSupabaseConfigured
+// Проверяем, что это действительно http/https URL
+const isValidSupabaseUrl =
+  typeof supabaseUrl === "string" && /^https?:\/\//.test(supabaseUrl)
 
-if (!isSupabaseConfigured && process.env.NODE_ENV !== "production") {
+export const isSupabaseConfigured = Boolean(isValidSupabaseUrl && supabaseAnonKey)
+
+if (!isSupabaseConfigured && process.env.NODE_ENV === "development") {
   console.warn(
-    "⚠️ Supabase is not configured. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to your .env.local file."
+    "[MyITRA] Supabase не настроен. Сайт работает без БД и авторизации.",
+    {
+      hasUrlEnv: !!supabaseUrl,
+      hasAnonKeyEnv: !!supabaseAnonKey,
+    },
   )
 }
 
-export const supabase = isSupabaseConfigured
-  ? createSupabaseClient(supabaseUrl as string, supabaseAnonKey as string)
-  : null
+// Клиент для client-side (если Supabase реально включён)
+export const supabase =
+  isSupabaseConfigured && supabaseUrl && supabaseAnonKey
+    ? createSupabaseClient(supabaseUrl, supabaseAnonKey)
+    : null
 
-export { createClient } from "@supabase/supabase-js"
-
-export default supabase
-
-let browserClient: ReturnType<typeof createSupabaseClient> | null = null
-
-export function getSupabaseBrowserClient() {
-  if (!isSupabaseConfigured) {
-    console.warn("Supabase is not configured")
+// Клиент для Server Components (с тем же поведением)
+export function createServerComponentClient() {
+  if (!isSupabaseConfigured || !supabaseUrl || !supabaseAnonKey) {
     return null
   }
 
-  if (browserClient) return browserClient
+  return createSupabaseClient(supabaseUrl, supabaseAnonKey, {
+    global: {
+      async fetch(input: RequestInfo, init?: RequestInit) {
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 10000)
 
-  try {
-    browserClient = createSupabaseClient(supabaseUrl as string, supabaseAnonKey as string, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: false,
-      },
-      global: {
-        fetch: (url, options = {}) => {
-          return fetch(url, {
-            ...options,
-            signal: AbortSignal.timeout(10000),
-          }).catch((error) => {
-            console.error("Supabase browser client fetch error:", error)
-            throw new Error("Network connection failed")
+        try {
+          const response = await fetch(input, {
+            ...init,
+            signal: controller.signal,
           })
-        },
+          return response
+        } finally {
+          clearTimeout(timeout)
+        }
       },
-    })
-
-    return browserClient
-  } catch (error) {
-    console.error("Failed to create Supabase browser client:", error)
-    return null
-  }
+    },
+  })
 }
 
-export function getSupabaseServerClient() {
-  const serverSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ""
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
-
-  if (!serverSupabaseUrl || !supabaseServiceKey) {
-    console.warn("Missing Supabase server environment variables")
-    return null
-  }
-
-  try {
-    return createSupabaseClient(serverSupabaseUrl, supabaseServiceKey, {
-      auth: {
-        persistSession: false,
-      },
-      global: {
-        fetch: (url, options = {}) => {
-          return fetch(url, {
-            ...options,
-            signal: AbortSignal.timeout(15000),
-          }).catch((error) => {
-            console.error("Supabase server client fetch error:", error)
-            throw new Error("Network connection failed")
-          })
-        },
-      },
-    })
-  } catch (error) {
-    console.error("Failed to create Supabase server client:", error)
-    return null
-  }
-}
+// На всякий случай реэкспорт, если где-то импортируется createClient
+export { createSupabaseClient as createClient }
