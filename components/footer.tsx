@@ -1,3 +1,4 @@
+// components/footer.tsx
 "use client"
 
 import Link from "next/link"
@@ -8,9 +9,9 @@ import Logo from "@/components/logo"
 
 const mainLinks = [
   { href: "/", label: "nav.home" },
-  { href: "/about", label: "nav.about" },
   { href: "/programs", label: "nav.programs" },
   { href: "/client-stories", label: "nav.clientStories" },
+  { href: "/about", label: "About Us" },
   { href: "/contacts", label: "nav.contacts" },
 ]
 
@@ -30,8 +31,8 @@ export default function Footer() {
   const currentYear = new Date().getFullYear()
 
   return (
-    <footer className="mt-16 w-full border-top border-slate-200 bg-white">
-      <div className="mx-auto max-w-6xl px-4 py-10 lg:py-12">
+    <footer className="mt-16 w-full border-t border-slate-200 bg-white">
+      <div className="container mx-auto px-4 py-10 lg:py-12">
         <div className="grid gap-10 md:grid-cols-3 lg:grid-cols-4">
           {/* Логотип + слоган + дисклеймер */}
           <div className="space-y-4 md:col-span-2">
