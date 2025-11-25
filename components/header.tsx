@@ -1,4 +1,3 @@
-// components/header.tsx
 "use client"
 
 import type React from "react"
@@ -10,6 +9,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { LanguageSelector } from "@/components/language-selector"
 import { useLanguage } from "@/lib/i18n/language-context"
 import Logo from "@/components/logo"
+import { APP_NAME } from "@/lib/app-config"
 
 type MainLink = {
   href: string
@@ -21,7 +21,8 @@ const mainLinks: MainLink[] = [
   { href: "/", labelKey: "nav.home" },
   { href: "/programs", labelKey: "nav.programs" },
   { href: "/client-stories", labelKey: "nav.clientStories" },
-  { href: "/about", label: "About" }, // пока без ключа перевода
+  // "О нас" пока без ключа перевода, чтобы не торчало nav.about
+  { href: "/about", label: "About" },
   { href: "/contacts", labelKey: "nav.contacts" },
 ]
 
@@ -64,7 +65,9 @@ export default function Header() {
           className="flex items-center gap-2 rounded-full px-1 py-1 transition-colors hover:bg-slate-50"
         >
           <Logo />
-          <span className="text-xl font-semibold text-slate-900">MyITRA</span>
+          <span className="text-xl font-semibold text-slate-900">
+            {APP_NAME}
+          </span>
         </Link>
 
         {/* Desktop nav */}
@@ -118,7 +121,7 @@ export default function Header() {
               <div className="flex items-center gap-2">
                 <Logo />
                 <span className="text-xl font-semibold text-slate-900">
-                  MyITRA
+                  {APP_NAME}
                 </span>
               </div>
 
