@@ -11,6 +11,7 @@ const mainLinks = [
   { href: "/", label: "nav.home" },
   { href: "/programs", label: "nav.programs" },
   { href: "/client-stories", label: "nav.clientStories" },
+  { href: "/about", label: "nav.about" },      // <-- добавили
   { href: "/contacts", label: "nav.contacts" },
 ]
 
