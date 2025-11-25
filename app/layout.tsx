@@ -9,18 +9,22 @@ import { AutoTranslate } from "@/components/auto-translate"
 import { RTLWrapper } from "@/components/rtl-wrapper"
 import Header from "@/components/header"
 import Footer from "@/components/footer"
+import { APP_NAME, APP_URL } from "@/lib/app-config"
 
 const inter = Inter({ subsets: ["latin"] })
 
+const fullTitle = `${APP_NAME} — AI-psychologist nearby 24/7`
+
 export const metadata: Metadata = {
+  metadataBase: new URL(APP_URL),
   title: {
-    default: "MyITRA — AI-psychologist nearby 24/7",
-    template: "%s | MyITRA",
+    default: fullTitle,
+    template: `%s | ${APP_NAME}`,
   },
   description:
-    "MyITRA — AI-psychologist nearby 24/7. Live psychological support in chat, voice or video when you feel exhausted, anxious or alone.",
+    "TurbotaAI — AI-psychologist nearby 24/7. Gentle psychological support in chat, voice or video when you feel exhausted, anxious or alone.",
   keywords: [
-    "MyITRA",
+    "TurbotaAI",
     "AI psychologist",
     "AI therapist",
     "online therapy",
@@ -31,8 +35,9 @@ export const metadata: Metadata = {
     "ШІ-психолог",
   ],
   icons: {
-    icon: "/icon.svg",
-    shortcut: "/icon.svg",
+    // один и тот же файл как логотип и фавикон
+    icon: "/logo-turbotaai.svg",
+    shortcut: "/logo-turbotaai.svg",
     apple: "/apple-touch-icon.png",
   },
   alternates: {
@@ -44,11 +49,11 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: "MyITRA — AI-psychologist nearby 24/7",
+    title: fullTitle,
     description:
       "Talk to an AI-powered psychologist in chat, voice or video. Gentle, always-on support when it feels bad, anxious or lonely.",
     url: "/",
-    siteName: "MyITRA",
+    siteName: APP_NAME,
     type: "website",
     locale: "en_US",
     images: [
@@ -56,13 +61,13 @@ export const metadata: Metadata = {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "MyITRA — AI-powered psychological support",
+        alt: `${APP_NAME} — AI-powered psychological support`,
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "MyITRA — AI-powered psychological support",
+    title: fullTitle,
     description:
       "AI-psychologist nearby 24/7. Talk in chat, voice or video when you need support.",
     images: ["/og-image.png"],
