@@ -21,7 +21,8 @@ const mainLinks: MainLink[] = [
   { href: "/", labelKey: "nav.home" },
   { href: "/programs", labelKey: "nav.programs" },
   { href: "/client-stories", labelKey: "nav.clientStories" },
-  { href: "/about", labelKey: "nav.about", label: "About" },
+  // здесь специально только текст, без ключа, чтобы не торчало nav.about
+  { href: "/about", label: "About" },
   { href: "/contacts", labelKey: "nav.contacts" },
 ]
 
@@ -53,7 +54,7 @@ export default function Header() {
   }
 
   const renderLabel = (link: MainLink) =>
-    link.labelKey ? t(link.labelKey) || link.label : link.label
+    link.labelKey ? t(link.labelKey) : link.label
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-slate-200/80 bg-white/90 backdrop-blur-sm">
