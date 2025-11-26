@@ -1,10 +1,29 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+  Phone,
+  X,
+  Wifi,
+  WifiOff,
+  Brain,
+  Mic,
+  MicOff,
+  Loader2,
+  Sparkles,
+} from "lucide-react"
 import { useLanguage } from "@/lib/i18n/language-context"
 import { useAuth } from "@/lib/auth/auth-context"
-import { Button } from "@/components/ui/button"
-import { Phone, X, Wifi, WifiOff, Brain, Mic, MicOff } from "lucide-react"
+import { APP_NAME } from "@/lib/app-config"
 
 declare global {
   interface Window {
@@ -34,7 +53,6 @@ export default function VoiceCallDialog({
   const [isListening, setIsListening] = useState(false)
   const [isMicMuted, setIsMicMuted] = useState(false)
   const [isAiSpeaking, setIsAiSpeaking] = useState(false)
-  const [voiceGender, setVoiceGender] = useState<"female" | "male">("female")
   const [transcript, setTranscript] = useState("")
   const [aiResponse, setAiResponse] = useState("")
   const [networkError, setNetworkError] = useState<string | null>(null)
@@ -46,14 +64,7 @@ export default function VoiceCallDialog({
 
   const effectiveEmail = userEmail || user?.email || "guest@example.com"
 
-  // Когда модалка закрывается — всё гасим
-  useEffect(() => {
-    if (!isOpen) {
-      stopEverything()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen])
-
+  // Полный сброс состояния и стека браузера
   const stopEverything = useCallback(() => {
     setIsCallActive(false)
     setIsListening(false)
@@ -62,6 +73,7 @@ export default function VoiceCallDialog({
     setAiResponse("")
     setConnectionStatus("disconnected")
     setNetworkError(null)
+    setIsMicMuted(false)
 
     if (recognitionRef.current) {
       try {
@@ -77,7 +89,13 @@ export default function VoiceCallDialog({
     }
   }, [])
 
-  // Запуск speech recognition
+  useEffect(() => {
+    if (!isOpen) {
+      stopEverything()
+    }
+  }, [isOpen, stopEverything])
+
+  // Запуск SpeechRecognition
   const startRecognition = useCallback(() => {
     if (typeof window === "undefined") return
 
@@ -108,13 +126,15 @@ export default function VoiceCallDialog({
 
     recognition.onerror = (event: any) => {
       console.error("Speech recognition error", event)
-      setNetworkError(t("Error while listening. Please try again."))
+      if (event?.error !== "no-speech") {
+        setNetworkError(t("Error while listening. Please try again."))
+      }
       setIsListening(false)
     }
 
     recognition.onend = () => {
       setIsListening(false)
-      // Если звонок ещё активен и микрофон не мутнут — аккуратно перезапускаем
+      // мягкий автоперезапуск, пока звонок активен и микрофон не выключен
       if (isCallActive && !isMicMuted) {
         setTimeout(() => {
           try {
@@ -134,7 +154,7 @@ export default function VoiceCallDialog({
       if (!text) return
 
       setTranscript((prev) => (prev ? `${prev} ${text}` : text))
-      handleUserText(text)
+      void handleUserText(text)
     }
 
     try {
@@ -148,11 +168,10 @@ export default function VoiceCallDialog({
     }
   }, [currentLanguage.code, isCallActive, isMicMuted, t])
 
-  // Озвучка ответа
+  // Озвучка ответа через browser TTS
   const speakText = useCallback(
     (text: string) => {
       if (typeof window === "undefined" || !window.speechSynthesis) return
-
       const utterance = new SpeechSynthesisUtterance(text)
 
       utterance.lang = currentLanguage.code.startsWith("uk")
@@ -161,39 +180,20 @@ export default function VoiceCallDialog({
           ? "ru-RU"
           : "en-US"
 
-      const voices = window.speechSynthesis.getVoices()
-      if (voices.length) {
-        const langPrefix = utterance.lang.slice(0, 2)
-        let candidates = voices.filter((v) => v.lang.startsWith(langPrefix))
-        if (!candidates.length) {
-          candidates = voices.filter((v) => v.lang.startsWith("en"))
-        }
-
-        const genderHints =
-          voiceGender === "female"
-            ? ["female", "woman", "girl", "zira", "samantha"]
-            : ["male", "man", "boy", "david", "alex"]
-
-        const selected =
-          candidates.find((v) =>
-            genderHints.some((h) => v.name.toLowerCase().includes(h)),
-          ) || candidates[0]
-
-        if (selected) utterance.voice = selected
-      }
-
       utterance.rate = 1
       utterance.pitch = 1
+
       utterance.onstart = () => setIsAiSpeaking(true)
       utterance.onend = () => setIsAiSpeaking(false)
       utterance.onerror = () => setIsAiSpeaking(false)
 
+      window.speechSynthesis.cancel()
       window.speechSynthesis.speak(utterance)
     },
-    [currentLanguage.code, voiceGender],
+    [currentLanguage.code],
   )
 
-  // Отправка текста в наш /api/chat
+  // Отправка текста в наш API
   const handleUserText = useCallback(
     async (text: string) => {
       try {
@@ -228,28 +228,21 @@ export default function VoiceCallDialog({
     [currentLanguage.code, effectiveEmail, onError, speakText, t],
   )
 
-  // Старт звонка
-  const startCall = useCallback(
-    (gender: "female" | "male") => {
-      setVoiceGender(gender)
-      setIsConnecting(true)
-      setNetworkError(null)
+  const startCall = useCallback(() => {
+    setIsConnecting(true)
+    setNetworkError(null)
 
-      setTimeout(() => {
-        setIsCallActive(true)
-        setIsConnecting(false)
-        startRecognition()
-      }, 200)
-    },
-    [startRecognition],
-  )
+    setTimeout(() => {
+      setIsCallActive(true)
+      setIsConnecting(false)
+      startRecognition()
+    }, 200)
+  }, [startRecognition])
 
-  // Завершение звонка
   const endCall = useCallback(() => {
     stopEverything()
   }, [stopEverything])
 
-  // Мут/анмут
   const toggleMic = () => {
     const next = !isMicMuted
     setIsMicMuted(next)
@@ -268,162 +261,59 @@ export default function VoiceCallDialog({
     }
   }
 
-  if (!isOpen) return null
-
   const userEmailDisplay = effectiveEmail
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md flex flex-col h-[80vh] max-h-[600px] overflow-hidden">
-        {/* Header */}
-        <div className="p-4 border-b flex justify-between items-center bg-primary-600 text-white rounded-t-xl">
-          <div className="flex flex-col">
-            <h3 className="font-bold text-lg">
-              {voiceGender === "female" ? t("Female Voice Call") : t("Male Voice Call")}
-            </h3>
-            <div className="text-xs text-slate-200">
-              {t("User")}: {userEmailDisplay}
-            </div>
-            <div className="text-xs text-slate-200 mt-1">
-              {t("Language")}: {currentLanguage.name} {currentLanguage.flag}
-            </div>
-          </div>
-          <div className="flex items-center space-x-1">
-            {connectionStatus === "connected" ? (
-              <Wifi className="h-4 w-4 text-green-300" />
-            ) : (
-              <WifiOff className="h-4 w-4 text-red-300" />
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                endCall()
-                onClose()
-              }}
-              className="text-white"
-            >
-              <X className="h-5 w-5" />
-            </Button>
-          </div>
-        </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto p-4 flex flex-col">
-          {!isCallActive ? (
-            <div className="flex-1 flex flex-col items-center justify-center">
-              <div className="h-24 w-24 rounded-full bg-primary-100 flex items-center justify-center mb-6">
-                <Phone className="h-12 w-12 text-primary-600" />
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          endCall()
+          onClose()
+        }
+      }}
+    >
+      <DialogContent className="max-w-xl border-none bg-transparent p-0">
+        <div className="overflow-hidden rounded-3xl bg-white shadow-xl shadow-slate-900/10">
+          <DialogHeader className="border-b border-indigo-100 bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 px-6 pt-5 pb-4 text-white">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10">
+                    <Phone className="h-4 w-4" />
+                  </span>
+                  {t("Voice session with AI-psychologist")}
+                </DialogTitle>
+                <DialogDescription className="mt-1 text-xs text-indigo-100">
+                  {t(
+                    "You can talk out loud, the assistant will listen, answer and voice the reply.",
+                  )}
+                </DialogDescription>
               </div>
-              <h3 className="text-xl font-semibold mb-3 text-center">
-                {t("Ready to start your voice session?")}
-              </h3>
-              <p className="text-gray-600 text-center mb-6">
-                {t("Speak directly with our AI psychologist for immediate support.")}
-              </p>
 
-              <div className="flex flex-col space-y-3 w-full max-w-xs">
-                <Button
-                  className="bg-pink-500 hover:bg-pink-600 text-white px-8 py-3 flex items-center justify-center"
-                  onClick={() => startCall("female")}
-                  disabled={isConnecting}
-                >
-                  <span className="mr-2">👩</span>
-                  {isConnecting && voiceGender === "female"
-                    ? t("Connecting...")
-                    : t("Start with Female Voice")}
-                </Button>
-
-                <Button
-                  className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-3 flex items-center justify-center"
-                  onClick={() => startCall("male")}
-                  disabled={isConnecting}
-                >
-                  <span className="mr-2">👨</span>
-                  {isConnecting && voiceGender === "male"
-                    ? t("Connecting...")
-                    : t("Start with Male Voice")}
-                </Button>
-
-                {networkError && (
-                  <p className="text-xs text-center text-red-500 mt-2">
-                    {networkError}
-                  </p>
-                )}
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="flex-1 flex flex-col">
-                <div className="flex items-center justify-center mb-4">
-                  <div
-                    className={`h-16 w-16 rounded-full flex items-center justify-center ${
-                      isAiSpeaking ? "bg-green-100 animate-pulse" : "bg-gray-100"
-                    }`}
-                  >
-                    <Brain
-                      className={`h-8 w-8 ${
-                        isAiSpeaking ? "text-green-600" : "text-gray-600"
-                      }`}
-                    />
-                  </div>
+              <div className="flex flex-col items-end gap-1">
+                <div className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-medium text-indigo-50">
+                  {APP_NAME} · {t("Assistant online")}
                 </div>
-
-                {transcript && (
-                  <div className="bg-blue-50 p-3 rounded-lg mb-4">
-                    <p className="text-sm font-medium text-blue-700 mb-1">
-                      {t("You said in {{language}}:", {
-                        language: currentLanguage.name,
-                      })}
-                    </p>
-                    <p className="text-sm text-blue-800">{transcript}</p>
-                  </div>
-                )}
-
-                {aiResponse && (
-                  <div className="bg-green-50 p-3 rounded-lg mb-4">
-                    <p className="text-sm font-medium text-green-700 mb-1">
-                      {t("AI Psychologist in {{language}}:", {
-                        language: currentLanguage.name,
-                      })}
-                    </p>
-                    <p className="text-sm text-green-800">{aiResponse}</p>
-                  </div>
-                )}
-
-                {networkError && (
-                  <p className="text-xs text-center text-red-500 mt-2">
-                    {networkError}
-                  </p>
-                )}
+                <div className="flex items-center gap-1 text-[11px] text-indigo-100">
+                  {connectionStatus === "connected" ? (
+                    <>
+                      <Wifi className="h-3 w-3 text-emerald-200" />{" "}
+                      {t("Connected")}
+                    </>
+                  ) : (
+                    <>
+                      <WifiOff className="h-3 w-3 text-rose-200" />{" "}
+                      {t("Disconnected")}
+                    </>
+                  )}
+                </div>
               </div>
+            </div>
+          </DialogHeader>
 
-              <div className="flex justify-center space-x-4 pt-4 border-t">
-                <Button
-                  variant={isMicMuted ? "default" : "outline"}
-                  size="icon"
-                  onClick={toggleMic}
-                  className={`h-12 w-12 rounded-full ${
-                    isMicMuted
-                      ? "bg-red-500 hover:bg-red-600 text-white"
-                      : "border-gray-300 hover:bg-gray-50"
-                  }`}
-                >
-                  {isMicMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="icon"
-                  onClick={endCall}
-                  className="h-12 w-12 rounded-full bg-red-500 hover:bg-red-600"
-                >
-                  <Phone className="h-5 w-5 transform rotate-[135deg]" />
-                </Button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
+          <div className="flex h-[500px] flex-col md:h-[540px]">
+            <ScrollArea className="flex-1 px-5 pt-4 pb-2">
+              <div className="space-y-3">
+                {!isCallActive && (
+                  <div className="rounded
