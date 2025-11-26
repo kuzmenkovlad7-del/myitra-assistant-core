@@ -1,132 +1,219 @@
-// app/api/chat/route.ts
-import { NextResponse } from "next/server"
+// components/ai-chat-dialog.tsx
+"use client"
 
-type ChatBody = {
-  query: string
-  language?: string
-  email?: string | null
-  mode?: "chat" | "voice" | "video" | string
+import { useEffect, useRef, useState } from "react"
+import { Send, Loader2 } from "lucide-react"
+
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { useLanguage } from "@/lib/i18n/language-context"
+import { useAuth } from "@/lib/auth/auth-context"
+
+type Props = {
+  isOpen: boolean
+  onClose: () => void
+  webhookUrl?: string
 }
 
-function buildSystemPrompt(language: string, mode?: string) {
-  const isVoice = mode === "voice" || mode === "voice_call"
-  const lang = language || "en"
+type ChatMessage = {
+  id: string
+  role: "user" | "assistant"
+  text: string
+}
 
-  if (lang.startsWith("ru")) {
-    return (
-      "Ты эмпатичный, спокойный ИИ-психолог сервиса MyITRA. " +
-      "Разговаривай с человеком как с живым клиентом: мягко, без осуждения, " +
-      "помогай прояснить чувства и следующие шаги. " +
-      "Никогда не ставь диагнозы и не давай медицинских рекомендаций. " +
-      "В опасных ситуациях говори, что нужно срочно обратиться к живому специалисту или в экстренные службы. " +
-      (isVoice
-        ? "Отвечай так, как будто говоришь голосом: 1–3 коротких предложения, простым языком."
-        : "Отвечай структурировано, но коротко: до 4–6 предложений, без лишней воды.")
-    )
+export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
+  const { t, currentLanguage } = useLanguage()
+  const { user } = useAuth()
+
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [input, setInput] = useState("")
+  const [isSending, setIsSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+
+  // Сбрасываем состояние при закрытии
+  useEffect(() => {
+    if (!isOpen) {
+      setMessages([])
+      setInput("")
+      setError(null)
+      setIsSending(false)
+    }
+  }, [isOpen])
+
+  // Автоскролл вниз
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [messages])
+
+  const sendMessage = async () => {
+    const text = input.trim()
+    if (!text || isSending) return
+
+    const url = (webhookUrl && webhookUrl.trim()) || "/api/chat"
+
+    setError(null)
+    setIsSending(true)
+    setInput("")
+
+    const userMessage: ChatMessage = {
+      id: `${Date.now()}-user`,
+      role: "user",
+      text,
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: text,
+          language: currentLanguage || "uk",
+          email: user?.email ?? null,
+          mode: "chat",
+        }),
+      })
+
+      if (!res.ok) {
+        throw new Error(`Request failed with status ${res.status}`)
+      }
+
+      const data = (await res.json()) as { text?: string }
+      const answer =
+        data?.text ||
+        t(
+          "I'm sorry, I couldn't process your message. Please try again.",
+        )
+
+      const assistantMessage: ChatMessage = {
+        id: `${Date.now()}-assistant`,
+        role: "assistant",
+        text: answer,
+      }
+
+      setMessages((prev) => [...prev, assistantMessage])
+    } catch (err) {
+      console.error("Chat error:", err)
+      setError(
+        t(
+          "AI assistant is temporarily unavailable. Please try again a bit later.",
+        ),
+      )
+    } finally {
+      setIsSending(false)
+    }
   }
 
-  if (lang.startsWith("uk")) {
-    return (
-      "Ти емпатичний, спокійний ШІ-психолог сервісу MyITRA. " +
-      "Спілкуйся з людиною як з живим клієнтом: мʼяко, без осуду, " +
-      "допомагай прояснити почуття та наступні кроки. " +
-      "Ніколи не став діагнози і не давай медичних рекомендацій. " +
-      "У небезпечних ситуаціях кажи, що потрібно негайно звернутися до живого спеціаліста або в екстрені служби. " +
-      (isVoice
-        ? "Відповідай так, ніби говориш голосом: 1–3 короткі речення, простою мовою."
-        : "Відповідай структуровано, але коротко: до 4–6 речень, без зайвої води.")
-    )
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    void sendMessage()
   }
 
-  // EN default
   return (
-    "You are an empathetic, calm AI-psychologist for the MyITRA service. " +
-    "Talk to the user like a real therapist: gently, without judgement, " +
-    "help them clarify feelings and next steps. " +
-    "Never give medical diagnoses or strict medical advice. " +
-    "If there is any risk of self-harm or danger, always tell them to immediately contact local emergency services or a real professional. " +
-    (isVoice
-      ? "Answer as if you are speaking out loud: 1–3 short sentences, simple language."
-      : "Answer in a compact, structured way: up to 4–6 sentences, no unnecessary fluff.")
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-lg p-0 overflow-hidden">
+        <DialogHeader className="px-5 pt-5 pb-3 border-b border-slate-100">
+          <DialogTitle className="text-lg font-semibold">
+            {t("Chat with AI-psychologist")}
+          </DialogTitle>
+          <DialogDescription className="text-xs text-slate-500">
+            {t(
+              "Describe what is happening in your own words. The assistant will answer in a few short, structured messages.",
+            )}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col h-[420px]">
+          {/* Сообщения */}
+          <ScrollArea className="flex-1 px-5 pt-4 pb-2">
+            <div ref={scrollRef} className="space-y-3 pr-1 max-h-full">
+              {messages.length === 0 && (
+                <p className="text-xs text-slate-500">
+                  {t(
+                    "You can start with one sentence: for example, 'I feel anxious and can't sleep', 'I can't concentrate', or 'I don't know what to do in a relationship'.",
+                  )}
+                </p>
+              )}
+
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex ${
+                    msg.role === "user" ? "justify-end" : "justify-start"
+                  }`}
+                >
+                  <div
+                    className={`max-w-[80%] rounded-2xl px-3 py-2 text-xs md:text-sm ${
+                      msg.role === "user"
+                        ? "bg-primary-600 text-white rounded-br-sm"
+                        : "bg-slate-100 text-slate-900 rounded-bl-sm"
+                    }`}
+                  >
+                    {msg.text}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+
+          {/* Ошибка */}
+          {error && (
+            <div className="px-5 pb-1 text-xs text-red-600">{error}</div>
+          )}
+
+          {/* Форма ввода */}
+          <form onSubmit={handleSubmit} className="border-t border-slate-100">
+            <div className="px-5 py-3 space-y-2">
+              <Textarea
+                rows={2}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={t("Write here what is happening to you...")}
+                className="resize-none text-sm"
+              />
+
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[10px] text-slate-400">
+                  {t(
+                    "In crisis situations, please contact local emergency services immediately.",
+                  )}
+                </p>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={isSending || !input.trim()}
+                  className="h-8 px-3 text-xs"
+                >
+                  {isSending ? (
+                    <>
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      {t("Sending")}
+                    </>
+                  ) : (
+                    <>
+                      {t("Send")}
+                      <Send className="h-3 w-3 ml-1" />
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
-}
-
-export async function POST(req: Request) {
-  try {
-    const body = (await req.json()) as ChatBody
-    const { query, language = "en", email, mode = "chat" } = body
-
-    if (!query || typeof query !== "string") {
-      return NextResponse.json({ text: "" }, { status: 400 })
-    }
-
-    const apiKey = process.env.OPENAI_API_KEY
-    if (!apiKey) {
-      console.error("OPENAI_API_KEY is missing")
-      return NextResponse.json(
-        {
-          text:
-            "AI assistant is temporarily unavailable. Please try again a bit later.",
-        },
-        { status: 500 },
-      )
-    }
-
-    const systemPrompt = buildSystemPrompt(language, mode)
-
-    const payload = {
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...(email
-          ? [
-              {
-                role: "system" as const,
-                content: `User email (if provided): ${email}`,
-              },
-            ]
-          : []),
-        { role: "user", content: query },
-      ],
-      temperature: 0.8,
-      max_tokens: 600,
-    }
-
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify(payload),
-    })
-
-    if (!response.ok) {
-      const errText = await response.text().catch(() => "")
-      console.error("OpenAI error:", response.status, errText)
-      return NextResponse.json(
-        {
-          text:
-            "AI assistant is temporarily unavailable. Please try again later.",
-        },
-        { status: 500 },
-      )
-    }
-
-    const data = (await response.json()) as any
-    const text =
-      data?.choices?.[0]?.message?.content?.trim() ||
-      "I'm sorry, I couldn't process your message. Please try again."
-
-    return NextResponse.json({ text })
-  } catch (error) {
-    console.error("API /api/chat error:", error)
-    return NextResponse.json(
-      {
-        text:
-          "AI assistant is temporarily unavailable. Please try again later.",
-      },
-      { status: 500 },
-    )
-  }
 }
