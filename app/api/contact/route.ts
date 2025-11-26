@@ -1,81 +1,75 @@
-import { NextRequest, NextResponse } from "next/server";
+// app/api/contact/route.ts
+import type { NextRequest } from "next"
+import { NextResponse } from "next/server"
+
+const MAILGUN_API_KEY = process.env.MAILGUN_API_KEY
+const MAILGUN_DOMAIN = process.env.MAILGUN_DOMAIN
+const CONTACT_TO_EMAIL = process.env.CONTACT_TO_EMAIL || "support@turbotaai.com"
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { name, email, message } = body as {
-      name?: string;
-      email?: string;
-      message?: string;
-    };
+    const body = await req.json()
+    const { name, email, subject, message } = body
 
-    if (!email || !message) {
+    if (!name || !email || !subject || !message) {
       return NextResponse.json(
         { error: "Missing required fields" },
-        { status: 400 }
-      );
+        { status: 400 },
+      )
     }
 
-    const apiKey = process.env.MAILGUN_API_KEY;
-    const domain = process.env.MAILGUN_DOMAIN;
-    const to = process.env.CONTACT_RECEIVER_EMAIL;
-
-    if (!apiKey || !domain || !to) {
-      console.error("Mailgun env vars are not set.");
+    if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN) {
+      console.error("MAILGUN env is not configured")
       return NextResponse.json(
-        { error: "Server configuration error" },
-        { status: 500 }
-      );
+        { error: "Email service is not configured" },
+        { status: 500 },
+      )
     }
 
-    const params = new URLSearchParams();
-    params.append("from", `TurbotaAI <no-reply@${domain}>`);
-    params.append("to", to);
-    params.append("subject", "Нове звернення з сайту TurbotaAI");
-    params.append(
+    const formData = new URLSearchParams()
+    formData.append("from", `MyITRA Website <no-reply@${MAILGUN_DOMAIN}>`)
+    formData.append("to", CONTACT_TO_EMAIL)
+    formData.append("subject", `[MyITRA] Новое сообщение с сайта: ${subject}`)
+    formData.append(
       "text",
       [
-        "Нове повідомлення з контактної форми TurbotaAI:",
-        "",
-        `Ім'я: ${name || "—"}`,
+        `Имя: ${name}`,
         `Email: ${email}`,
         "",
-        "Повідомлення:",
+        "Сообщение:",
         message,
-        "",
-        "— Автоматичне повідомлення TurbotaAI",
-      ].join("\n")
-    );
+      ].join("\n"),
+    )
 
-    const auth = Buffer.from(`api:${apiKey}`).toString("base64");
-
-    const mailgunRes = await fetch(
-      `https://api.mailgun.net/v3/${domain}/messages`,
+    const mgRes = await fetch(
+      `https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`,
       {
         method: "POST",
         headers: {
-          Authorization: `Basic ${auth}`,
+          Authorization:
+            "Basic " +
+            Buffer.from(`api:${MAILGUN_API_KEY}`).toString("base64"),
           "Content-Type": "application/x-www-form-urlencoded",
         },
-        body: params.toString(),
-      }
-    );
+        body: formData.toString(),
+      },
+    )
 
-    if (!mailgunRes.ok) {
-      const text = await mailgunRes.text();
-      console.error("Mailgun error:", mailgunRes.status, text);
+    if (!mgRes.ok) {
+      const text = await mgRes.text()
+      console.error("Mailgun error:", text)
       return NextResponse.json(
         { error: "Failed to send email" },
-        { status: 500 }
-      );
+        { status: 500 },
+      )
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("Contact form error:", error);
+    console.error("Contact form error:", error)
     return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+      { error: "Something went wrong" },
+      { status: 500 },
+    )
   }
 }
