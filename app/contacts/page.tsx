@@ -30,7 +30,7 @@ export default function ContactsPage() {
   const emailCard = {
     icon: Mail,
     title: t("Email us"),
-    details: "support@aipsychologist.com",
+    details: "support@turbotaai.com",
     description: t(
       "All questions about the service, payments, access to the assistant or cooperation — please write to this address.",
     ),
@@ -41,7 +41,6 @@ export default function ContactsPage() {
       <main className="min-h-[calc(100vh-96px)] bg-gradient-to-b from-white via-slate-50 to-white">
         <section className="px-4 py-16 md:px-6 lg:px-8 lg:py-20">
           <div className="mx-auto max-w-6xl">
-            {/* Hero */}
             <header className="mb-10 text-center md:mb-14">
               <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 ring-1 ring-slate-200">
                 <span className="h-2 w-2 rounded-full bg-emerald-400" />
@@ -49,7 +48,7 @@ export default function ContactsPage() {
               </div>
 
               <h1 className="mb-3 text-3xl font-bold text-slate-900 sm:text-4xl md:text-5xl">
-                {t("Contact MyITRA team")}
+                {t("Contact TurbotaAI team")}
               </h1>
               <p className="mx-auto max-w-3xl text-sm text-slate-600 sm:text-base">
                 {t(
@@ -76,9 +75,7 @@ export default function ContactsPage() {
               </div>
             </header>
 
-            {/* Контент */}
             <div className="grid items-start gap-10 md:grid-cols-[minmax(0,1.05fr)_minmax(0,1.2fr)]">
-              {/* Лево */}
               <div className="space-y-6">
                 <div className="flex h-full flex-col rounded-2xl bg-slate-50/80 p-5 text-left shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-1 hover:bg-white hover:shadow-md hover:shadow-indigo-100/60">
                   <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
@@ -97,12 +94,11 @@ export default function ContactsPage() {
 
                 <div className="rounded-2xl bg-slate-50/70 p-5 text-sm text-slate-600 ring-1 ring-slate-200">
                   {t(
-                    "For urgent situations, please contact local emergency services or a crisis line in your country. MyITRA is not a substitute for emergency medical help.",
+                    "For urgent situations, please contact local emergency services or a crisis line in your country. TurbotaAI is not a substitute for emergency medical help.",
                   )}
                 </div>
               </div>
 
-              {/* Право — форма */}
               <div className="rounded-2xl bg-slate-50/80 p-4 shadow-sm ring-1 ring-slate-200 sm:p-6 md:p-7 lg:p-8">
                 <h2 className="mb-6 text-center text-xl font-semibold text-slate-900 md:text-2xl">
                   {t("Send us a message")}
