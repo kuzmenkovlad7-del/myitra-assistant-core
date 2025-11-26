@@ -1,9 +1,22 @@
-// lib/app-config.ts
+// myitra-assistant-core/lib/app-config.ts
 
-export const APP_NAME = "MyITRA"
-export const APP_DOMAIN = "turbotaai.com"
+export const SITE_NAME = 'TurbotaAI'
 
-export const APP_SUPPORT_EMAIL =
-  process.env.NEXT_PUBLIC_SUPPORT_EMAIL || `support@${APP_DOMAIN}`
+// основной e-mail проекта
+export const SUPPORT_EMAIL = 'support@turbotaai.com'
 
-export const CONTACT_EMAIL = APP_SUPPORT_EMAIL
+// язык по умолчанию
+export const DEFAULT_LOCALE = 'uk' as const
+
+export const CONTACT_EMAIL_TO =
+  process.env.MAIL_TO || SUPPORT_EMAIL
+
+export const CONTACT_EMAIL_FROM =
+  process.env.MAIL_FROM || `TurbotaAI <${SUPPORT_EMAIL}>`
+
+// сюда можно будет добавлять настройки тарифов, ссылок и т.п.
+export const APP_LINKS = {
+  privacy: '/privacy-policy',
+  terms: '/terms-of-use',
+  contacts: '/contacts',
+}
