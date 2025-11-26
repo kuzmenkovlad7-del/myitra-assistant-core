@@ -84,9 +84,12 @@ export default function ContactsPage() {
                   <h3 className="mb-1 text-base font-semibold text-slate-900">
                     {emailCard.title}
                   </h3>
-                  <p className="mb-1 text-sm font-medium text-indigo-600">
+                  <a
+                    href="mailto:support@turbotaai.com"
+                    className="mb-1 text-sm font-medium text-indigo-600 hover:underline"
+                  >
                     {emailCard.details}
-                  </p>
+                  </a>
                   <p className="text-xs text-slate-600 sm:text-sm">
                     {emailCard.description}
                   </p>
