@@ -1,137 +1,131 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { useToast } from "@/components/ui/use-toast";
+import { useState } from "react"
+import { useLanguage } from "@/lib/i18n/language-context"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Button } from "@/components/ui/button"
+import { useToast } from "@/components/ui/use-toast"
 
 type ContactFormState = {
-  name: string;
-  email: string;
-  message: string;
-};
+  name: string
+  email: string
+  company: string
+  message: string
+}
 
-function ContactForm() {
-  const { toast } = useToast();
-  const [data, setData] = useState<ContactFormState>({
-    name: "",
-    email: "",
-    message: "",
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
+const initialState: ContactFormState = {
+  name: "",
+  email: "",
+  company: "",
+  message: "",
+}
 
-  const handleChange = (
-    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => {
-    const { name, value } = event.target;
-    setData((prev) => ({ ...prev, [name]: value }));
-  };
+export default function ContactForm() {
+  const { t } = useLanguage()
+  const { toast } = useToast()
+  const [form, setForm] = useState<ContactFormState>(initialState)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (!data.email || !data.message) {
-      toast({
-        title: "Заповніть обовʼязкові поля",
-        description: "Будь ласка, вкажіть email і коротко опишіть запит.",
-        variant: "destructive",
-      });
-      return;
+  const handleChange =
+    (field: keyof ContactFormState) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      const value = e.target.value
+      setForm((prev) => ({ ...prev, [field]: value }))
     }
 
-    setIsSubmitting(true);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSubmitting(true)
 
     try {
       const res = await fetch("/api/contact", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(data),
-      });
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      })
 
       if (!res.ok) {
-        throw new Error("Request failed");
+        throw new Error(await res.text())
       }
 
       toast({
-        title: "Дякуємо за звернення!",
-        description:
-          "Ми отримали ваше повідомлення і відповімо якнайшвидше.",
-      });
+        title: t("Message sent"),
+        description: t("We will get back to you as soon as possible."),
+      })
 
-      setData({
-        name: "",
-        email: "",
-        message: "",
-      });
+      setForm(initialState)
     } catch (error) {
-      console.error(error);
+      console.error(error)
       toast({
-        title: "Помилка надсилання",
-        description:
-          "Не вдалося надіслати форму. Спробуйте ще раз або напишіть нам напряму на email.",
         variant: "destructive",
-      });
+        title: t("Failed to send message"),
+        description: t("Please try again in a few minutes."),
+      })
     } finally {
-      setIsSubmitting(false);
+      setIsSubmitting(false)
     }
-  };
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="name">Як до вас звертатися?</Label>
-        <Input
-          id="name"
-          name="name"
-          autoComplete="name"
-          placeholder="Наприклад, Олександр"
-          value={data.name}
-          onChange={handleChange}
-        />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            {t("Your name")}
+          </label>
+          <Input
+            value={form.name}
+            onChange={handleChange("name")}
+            placeholder={t("How can we address you?")}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            {t("Company (optional)")}
+          </label>
+          <Input
+            value={form.company}
+            onChange={handleChange("company")}
+            placeholder={t("Clinic, practice or project name")}
+          />
+        </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="email">Email для відповіді *</Label>
+      <div>
+        <label className="block text-sm font-medium mb-1">
+          {t("Your email")}
+        </label>
         <Input
-          id="email"
-          name="email"
           type="email"
-          autoComplete="email"
           required
+          value={form.email}
+          onChange={handleChange("email")}
           placeholder="you@example.com"
-          value={data.email}
-          onChange={handleChange}
         />
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="message">Коротко опишіть запит *</Label>
+      <div>
+        <label className="block text-sm font-medium mb-1">
+          {t("Your message")}
+        </label>
         <Textarea
-          id="message"
-          name="message"
           required
           rows={4}
-          placeholder="Що саме ви хотіли б отримати від TurbotaAI?"
-          value={data.message}
-          onChange={handleChange}
+          value={form.message}
+          onChange={handleChange("message")}
+          placeholder={t("Briefly describe your request or idea.")}
         />
       </div>
 
-      <Button type="submit" className="w-full" disabled={isSubmitting}>
-        {isSubmitting ? "Надсилаємо..." : "Надіслати запит"}
+      <Button
+        type="submit"
+        disabled={isSubmitting}
+        className="w-full md:w-auto bg-primary-600 hover:bg-primary-700"
+      >
+        {isSubmitting ? t("Sending...") : t("Send message")}
       </Button>
-
-      <p className="text-xs text-muted-foreground text-center">
-        Надсилаючи форму, ви погоджуєтеся з політикою конфіденційності
-        та умовами використання сервісу.
-      </p>
     </form>
-  );
+  )
 }
-
-export { ContactForm };
-export default ContactForm;
