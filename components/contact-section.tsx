@@ -1,116 +1,47 @@
-// components/contact-section.tsx
-"use client"
+import { ContactForm } from "@/components/contact-form";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 
-import { Mail, Clock, Globe, Shield } from "lucide-react"
-import { useLanguage } from "@/lib/i18n/language-context"
-import { AutoTranslate } from "@/components/auto-translate"
-import ContactForm from "@/components/contact-form"
-
-export default function ContactSection() {
-  const { t } = useLanguage()
-
-  const stats = [
-    {
-      icon: Clock,
-      label: t("Average reply"),
-      value: t("within 24 hours"),
-    },
-    {
-      icon: Globe,
-      label: t("Languages"),
-      value: t("Ukrainian · Russian · English"),
-    },
-    {
-      icon: Shield,
-      label: t("Privacy"),
-      value: t("encrypted conversations"),
-    },
-  ]
-
-  const emailCard = {
-    icon: Mail,
-    title: t("Email us"),
-    details: "support@aipsychologist.com",
-    description: t(
-      "All questions about the service, payments, access to the assistant or cooperation — please write to this address.",
-    ),
-  }
-
+function ContactSection() {
   return (
-    <AutoTranslate>
-      <section
-        id="contacts"
-        className="border-t border-slate-100 bg-white px-4 py-16 md:px-6 lg:px-8 lg:py-20"
-      >
-        <div className="mx-auto max-w-6xl">
-          {/* Заголовок + мини-статы */}
-          <div className="mb-10 text-center md:mb-12">
-            <h2 className="mb-3 text-3xl font-bold text-slate-900 md:text-4xl">
-              {t("Contact MyITRA team")}
-            </h2>
-            <p className="mx-auto max-w-3xl text-sm text-slate-600 sm:text-base">
-              {t(
-                "Have questions about how the AI-psychologist works, want to discuss partnership or need help with your account? Leave a request — we will answer as soon as possible.",
-              )}
-            </p>
-
-            <div className="mt-6 flex flex-wrap justify-center gap-3">
-              {stats.map((item) => {
-                const Icon = item.icon
-                return (
-                  <div
-                    key={item.label}
-                    className="inline-flex items-center gap-2 rounded-full bg-slate-50 px-3 py-1 text-xs text-slate-600 ring-1 ring-slate-200"
-                  >
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-50 text-indigo-600">
-                      <Icon className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="font-medium">{item.label} ·</span>
-                    <span className="text-slate-500">{item.value}</span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {/* Сетка: слева email + дисклеймер, справа форма */}
-          <div className="grid items-start gap-10 md:grid-cols-[minmax(0,1.05fr)_minmax(0,1.2fr)]">
-            {/* Левый столбец */}
-            <div className="space-y-6">
-              {/* Email */}
-              <div className="flex h-full flex-col rounded-2xl bg-slate-50/80 p-5 text-left shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-1 hover:bg-white hover:shadow-md hover:shadow-indigo-100/60">
-                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
-                  <emailCard.icon className="h-5 w-5" />
-                </div>
-                <h3 className="mb-1 text-base font-semibold text-slate-900">
-                  {emailCard.title}
-                </h3>
-                <p className="mb-1 text-sm font-medium text-indigo-600">
-                  {emailCard.details}
-                </p>
-                <p className="text-xs text-slate-600 sm:text-sm">
-                  {emailCard.description}
-                </p>
-              </div>
-
-              {/* Дисклеймер */}
-              <div className="rounded-2xl bg-slate-50/70 p-5 text-sm text-slate-600 ring-1 ring-slate-200">
-                {t(
-                  "For urgent situations, please contact local emergency services or a crisis line in your country. MyITRA is not a substitute for emergency medical help.",
-                )}
-              </div>
-            </div>
-
-            {/* Правый столбец — форма */}
-            <div className="rounded-2xl bg-slate-50/80 p-4 shadow-sm ring-1 ring-slate-200 sm:p-6 md:p-7 lg:p-8">
-              <h3 className="mb-6 text-center text-xl font-semibold text-slate-900 md:text-2xl">
-                {t("Send us a message")}
-              </h3>
-              <ContactForm />
-            </div>
-          </div>
+    <section id="contact" className="py-24 bg-background">
+      <div className="container mx-auto px-4 max-w-6xl grid gap-12 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] items-start">
+        <div className="space-y-6">
+          <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">
+            Поговорімо про TurbotaAI для вас
+          </h2>
+          <p className="text-base md:text-lg text-muted-foreground">
+            Залиште контакти й кілька речень про свою ситуацію.
+            Ми повернемося з коротким коментарем та варіантами наступних кроків:
+            тестова сесія, демо продукту або консультація зі спеціалістом.
+          </p>
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            <li>• Відповідь зазвичай протягом 24 годин у робочі дні.</li>
+            <li>• Уся інформація конфіденційна, без передачі третім сторонам.</li>
+            <li>• Можемо відповідати українською та англійською.</li>
+          </ul>
         </div>
-      </section>
-    </AutoTranslate>
-  )
+
+        <Card className="border border-primary/20 shadow-lg shadow-primary/10">
+          <CardHeader>
+            <CardTitle className="text-xl">Коротка заявка</CardTitle>
+            <CardDescription>
+              Заповніть форму — ми підберемо формат співпраці саме під вас.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ContactForm />
+          </CardContent>
+        </Card>
+      </div>
+    </section>
+  );
 }
+
+export { ContactSection };
+export default ContactSection;
