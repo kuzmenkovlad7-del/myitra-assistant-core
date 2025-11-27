@@ -1,6 +1,6 @@
 // lib/app-config.ts
 
-export const APP_NAME = "MyITRA"
+export const APP_NAME = "TurbotaAI"
 export const APP_DOMAIN = "turbotaai.com"
 
 export const APP_SUPPORT_EMAIL =
