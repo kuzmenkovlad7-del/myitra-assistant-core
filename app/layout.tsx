@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     "MyITRA — AI-psychologist nearby 24/7. Live psychological support in chat, voice or video when you feel exhausted, anxious or alone.",
   icons: {
     icon: "/favicon.svg",
-    shortcut: "/favicon.ico",          // если сделаешь .ico
+    shortcut: "/favicon.ico",
     apple: "/apple-touch-icon.png",
   },
   openGraph: {
