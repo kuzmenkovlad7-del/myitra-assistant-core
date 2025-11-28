@@ -65,6 +65,12 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
     setIsSending(true)
     setInput("")
 
+    // ГАРАНТИРОВАННО получаем строку кода языка
+    const langCode =
+      typeof (currentLanguage as any) === "string"
+        ? (currentLanguage as any as string)
+        : (currentLanguage as any)?.code || "uk"
+
     const userMessage: ChatMessage = {
       id: `${Date.now()}-user`,
       role: "user",
@@ -79,7 +85,7 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query: text,
-          language: currentLanguage?.code || "uk",
+          language: langCode,
           email: user?.email ?? null,
           mode: "chat",
         }),
