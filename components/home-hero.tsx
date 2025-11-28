@@ -50,7 +50,7 @@ export function HomeHero() {
 
           <p className="mb-7 max-w-lg text-sm text-slate-600 sm:text-base">
             {t(
-              "MyITRA listens without judgement, asks clarifying questions and gently guides you through breathing, grounding and simple exercises based on psychological books. In chat, voice or video — when you feel anxious, exhausted or alone.",
+              "TurbotaAI listens without judgement, asks clarifying questions and gently guides you through breathing, grounding and simple exercises based on psychological books. In chat, voice or video — when you feel anxious, exhausted or alone.",
             )}
           </p>
 
@@ -103,7 +103,7 @@ export function HomeHero() {
           <div className="relative z-10 flex items-end">
             <Image
               src="/ai-psychology-hero.png"
-              alt="MyITRA AI psychologist"
+              alt="TurbotaAI AI psychologist"
               width={520}
               height={720}
               priority
