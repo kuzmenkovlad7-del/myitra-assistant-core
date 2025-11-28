@@ -64,11 +64,11 @@ export default function ServiceFeatures() {
       <div className="mx-auto max-w-6xl">
         <div className="mb-10 text-center sm:mb-14">
           <h2 className="mb-3 text-2xl font-bold text-slate-900 sm:text-3xl md:text-4xl">
-            {t("Why people choose MyITRA")}
+            {t("Why people choose TurbotaAI")}
           </h2>
           <p className="mx-auto max-w-3xl px-2 text-sm text-slate-600 sm:text-base">
             {t(
-              "MyITRA is built for moments when you have no strength to search for a therapist or wait for an appointment, but really need someone to talk to right now.",
+              "TurbotaAI is built for moments when you have no strength to search for a therapist or wait for an appointment, but really need someone to talk to right now.",
             )}
           </p>
         </div>
