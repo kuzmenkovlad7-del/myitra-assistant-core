@@ -36,7 +36,7 @@ export default function AboutPage() {
           <div className="grid gap-8 md:grid-cols-3">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">
-                Who MyITRA is for
+                Who TurbotaAI is for
               </h2>
               <p className="mt-2 text-sm text-slate-600">
                 On the first versions we focus on people who need emotional
@@ -89,13 +89,13 @@ export default function AboutPage() {
 
             <div>
               <h2 className="text-sm font-semibold text-slate-900">
-                What MyITRA is not
+                What TurbotaAI is not
               </h2>
               <p className="mt-2 text-sm text-slate-600">
                 It is important to be honest about the limits of technology.
               </p>
               <ul className="mt-3 space-y-1.5 text-sm text-slate-600">
-                <li>• MyITRA is not a doctor and not a psychiatrist.</li>
+                <li>• TurbotaAI is not a doctor and not a psychiatrist.</li>
                 <li>
                   • It does not make diagnoses and does not replace emergency
                   help.
@@ -125,7 +125,7 @@ export default function AboutPage() {
               <p className="mt-2 text-sm text-slate-600">
                 On the first launch we plan to test the service with a free
                 period, so that users can safely try the assistant and we can
-                see how people really use MyITRA.
+                see how people really use TurbotaAI.
               </p>
               <p className="mt-2 text-sm text-slate-600">
                 After testing you can keep a small free part (for example, a few
@@ -145,7 +145,7 @@ export default function AboutPage() {
                 On launch in Ukraine
               </p>
               <p className="mt-3 text-sm text-slate-100">
-                The first versions of MyITRA will be tested on the Ukrainian
+                The first versions of TurbotaAI will be tested on the Ukrainian
                 market with support for several languages. This will allow us to
                 refine the quality of answers, tone of communication and
                 scenarios before scaling to other countries.
