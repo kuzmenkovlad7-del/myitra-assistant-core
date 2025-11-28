@@ -17,29 +17,29 @@ const fullTitle = `${APP_NAME} — AI-psychologist nearby 24/7`
 
 export const metadata: Metadata = {
   title: {
-    default: "MyITRA — AI-psychologist nearby 24/7",
-    template: "%s | MyITRA",
+    default: "TurbotaAI — AI-psychologist nearby 24/7",
+    template: "%s | TurbotaAI",
   },
   description:
-    "MyITRA — AI-psychologist nearby 24/7. Live psychological support in chat, voice or video when you feel exhausted, anxious or alone.",
+    "TurbotaAI — AI-psychologist nearby 24/7. Live psychological support in chat, voice or video when you feel exhausted, anxious or alone.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.ico",
     apple: "/apple-touch-icon.png",
   },
   openGraph: {
-    title: "MyITRA — AI-psychologist nearby 24/7",
+    title: "TurbotaAI — AI-psychologist nearby 24/7",
     description:
       "Talk to an AI-powered psychologist in chat, voice or video. Gentle, always-on support when it feels bad, anxious or lonely.",
     url: "https://turbotaai.com",
-    siteName: "MyITRA",
+    siteName: "TurbotaAI",
     type: "website",
     images: [
       {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "MyITRA — AI-powered psychological support",
+        alt: "TurbotaAI — AI-powered psychological support",
       },
     ],
   },
