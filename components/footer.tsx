@@ -65,7 +65,7 @@ export default function Footer() {
               </p>
               <p className="mt-1">
                 {t(
-                  "Myitra is not a replacement for a licensed psychologist or psychiatrist.",
+                  "TurbotaAI is not a replacement for a licensed psychologist or psychiatrist.",
                 )}
               </p>
               <p className="mt-1">
