@@ -32,14 +32,14 @@ export default function ClientStoriesPage() {
       name: t("Anna, 27 — product designer"),
       badge: t("Night chat instead of endless scrolling"),
       shortQuote: t(
-        "“After a week with MyITRA I finally slept through the night without panic thoughts.”",
+        "“After a week with TurbotaAI I finally slept through the night without panic thoughts.”",
       ),
       avatar:
         "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=800&q=80",
       context: t("Burnout after relocation & anxiety before sleep"),
       sections: [
         {
-          heading: t("Before MyITRA"),
+          heading: t("Before TurbotaAI"),
           text: t(
             "For several months Anna had been falling asleep at 3–4 a.m. She moved to another city, changed jobs and constantly replayed conversations in her head. She was too tired to look for a therapist, fill in forms or wait for an appointment.",
           ),
@@ -70,7 +70,7 @@ export default function ClientStoriesPage() {
       context: t("Panic before meetings & fear of mistakes"),
       sections: [
         {
-          heading: t("Before MyITRA"),
+          heading: t("Before TurbotaAI"),
           text: t(
             "Max had started avoiding calls, postponing 1:1s and checking messages dozens of times. He felt that any question from colleagues meant he had already failed.",
           ),
@@ -107,7 +107,7 @@ export default function ClientStoriesPage() {
           ),
         },
         {
-          heading: t("How she used MyITRA"),
+          heading: t("How she used TurbotaAI"),
           text: t(
             "Several times a week Sofia wrote about what had happened during the day: conflicts with roommates, fear of exams, difficulties with new people. The assistant helped her separate thoughts from facts and suggested simple experiments — for example, one small step toward someone safe in the group.",
           ),
@@ -148,7 +148,7 @@ export default function ClientStoriesPage() {
               </h1>
               <p className="mx-auto max-w-3xl text-sm text-slate-600 sm:text-base">
                 {t(
-                  "These stories show how people use MyITRA in different life situations — from night anxiety and burnout to adaptation after moving. Names and details are changed for privacy.",
+                  "These stories show how people use TurbotaAI in different life situations — from night anxiety and burnout to adaptation after moving. Names and details are changed for privacy.",
                 )}
               </p>
             </header>
@@ -205,7 +205,7 @@ export default function ClientStoriesPage() {
                       ))}
                       <p className="mt-4 text-xs text-slate-400">
                         {t(
-                          "Stories are based on real patterns from MyITRA testing, but names and details are changed. MyITRA does not replace emergency mental health care.",
+                          "Stories are based on real patterns from TurbotaAI testing, but names and details are changed. TurbotaAI does not replace emergency mental health care.",
                         )}
                       </p>
                     </div>
