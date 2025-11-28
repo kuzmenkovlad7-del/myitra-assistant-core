@@ -3,15 +3,19 @@ import { NextResponse } from "next/server"
 
 type ChatBody = {
   query: string
-  language?: string
+  language?: string | null
   email?: string | null
   mode?: "chat" | "voice" | "video" | string
-  characterId?: string | null // добавили
+  characterId?: string | null
 }
 
-function buildSystemPrompt(language: string, mode?: string) {
+function buildSystemPrompt(language?: string | null, mode?: string) {
   const isVoice = mode === "voice" || mode === "voice_call"
-  const lang = language || "en"
+
+  const lang =
+    typeof language === "string" && language.trim().length > 0
+      ? language.toLowerCase()
+      : "en"
 
   if (lang.startsWith("ru")) {
     return (
