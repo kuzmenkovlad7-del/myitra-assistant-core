@@ -15,8 +15,8 @@ export default function TermsOfUsePage() {
           <section>
             <h2 className="text-2xl font-semibold mb-4 text-foreground">{t("Acceptance of Terms")}</h2>
             <div className="space-y-4">
-              <p>By accessing or using Myitra's AI psychology services, you agree to be bound by these Terms of Use and all applicable laws and regulations. If you do not agree with any of these terms, you are prohibited from using or accessing this service.</p>
-              <p>These terms constitute a legally binding agreement between you and Myitra Psychology Services. Your continued use of our platform constitutes ongoing acceptance of these terms, including any modifications we may make from time to time.</p>
+              <p>By accessing or using TurbotaAI's AI psychology services, you agree to be bound by these Terms of Use and all applicable laws and regulations. If you do not agree with any of these terms, you are prohibited from using or accessing this service.</p>
+              <p>These terms constitute a legally binding agreement between you and TurbotaAI Psychology Services. Your continued use of our platform constitutes ongoing acceptance of these terms, including any modifications we may make from time to time.</p>
             </div>
           </section>
 
@@ -60,7 +60,7 @@ export default function TermsOfUsePage() {
                 <li>Not attempt to interfere with, compromise, or disrupt our services</li>
                 <li>Not use automated systems to access or interact with our services without authorization</li>
                 <li>Not share, sell, or transfer your account to any third party</li>
-                <li>Respect the intellectual property rights of Myitra and third parties</li>
+                <li>Respect the intellectual property rights of TurbotaAI and third parties</li>
               </ul>
             </div>
           </section>
@@ -85,7 +85,7 @@ export default function TermsOfUsePage() {
           <section>
             <h2 className="text-2xl font-semibold mb-4 text-foreground">Intellectual Property</h2>
             <div className="space-y-4">
-              <p>All content, features, and functionality of our service, including but not limited to text, graphics, logos, icons, images, audio clips, and software, are the exclusive property of Myitra Psychology Services and are protected by international copyright, trademark, and other intellectual property laws.</p>
+              <p>All content, features, and functionality of our service, including but not limited to text, graphics, logos, icons, images, audio clips, and software, are the exclusive property of TurbotaAI Psychology Services and are protected by international copyright, trademark, and other intellectual property laws.</p>
               <p>You are granted a limited, non-exclusive, non-transferable license to access and use our services for personal, non-commercial purposes. This license does not include any rights to:</p>
               <ul className="list-disc list-inside space-y-2 ml-2">
                 <li>Reproduce or copy our content without written permission</li>
@@ -127,7 +127,7 @@ export default function TermsOfUsePage() {
           <section>
             <h2 className="text-2xl font-semibold mb-4 text-foreground">{t("Limitation of Liability")}</h2>
             <div className="space-y-4">
-              <p>To the fullest extent permitted by applicable law, Myitra Psychology Services shall not be liable for:</p>
+              <p>To the fullest extent permitted by applicable law, TurbotaAI Psychology Services shall not be liable for:</p>
               <ul className="list-disc list-inside space-y-2 ml-2">
                 <li>Indirect, incidental, special, consequential, or punitive damages</li>
                 <li>Loss of profits, revenue, data, or use</li>
@@ -157,7 +157,7 @@ export default function TermsOfUsePage() {
           <section>
             <h2 className="text-2xl font-semibold mb-4 text-foreground">Indemnification</h2>
             <div className="space-y-4">
-              <p>You agree to indemnify, defend, and hold harmless Myitra Psychology Services, its affiliates, officers, directors, employees, and agents from and against any claims, liabilities, damages, losses, costs, or expenses arising from:</p>
+              <p>You agree to indemnify, defend, and hold harmless TurbotaAI Psychology Services, its affiliates, officers, directors, employees, and agents from and against any claims, liabilities, damages, losses, costs, or expenses arising from:</p>
               <ul className="list-disc list-inside space-y-2 ml-2">
                 <li>Your use or misuse of our services</li>
                 <li>Your violation of these Terms of Use</li>
@@ -184,7 +184,7 @@ export default function TermsOfUsePage() {
           <section>
             <h2 className="text-2xl font-semibold mb-4 text-foreground">Governing Law and Dispute Resolution</h2>
             <div className="space-y-4">
-              <p>These Terms of Use shall be governed by and construed in accordance with the laws of the jurisdiction in which Myitra Psychology Services operates, without regard to conflict of law principles.</p>
+              <p>These Terms of Use shall be governed by and construed in accordance with the laws of the jurisdiction in which TurbotaAI Psychology Services operates, without regard to conflict of law principles.</p>
               <p>Any disputes arising from these terms or your use of our services shall be resolved through binding arbitration in accordance with applicable arbitration rules, except where prohibited by law.</p>
             </div>
           </section>
