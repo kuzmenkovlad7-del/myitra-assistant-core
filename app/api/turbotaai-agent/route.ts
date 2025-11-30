@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   const clientUrl = new URL(req.url)
   const n8nUrl = new URL(N8N_WEBHOOK_URL)
 
-  // пробрасываем все query-параметры
+  // прокидываем все query-параметры
   clientUrl.searchParams.forEach((value, key) => {
     n8nUrl.searchParams.set(key, value)
   })
