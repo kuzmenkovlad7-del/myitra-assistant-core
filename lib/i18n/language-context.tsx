@@ -8,7 +8,11 @@ import {
   useRef,
   type ReactNode,
 } from "react"
-import { type Language, languages, defaultLanguage } from "./languages"
+import {
+  type Language,
+  languages,
+  defaultLanguage as baseDefaultLanguage,
+} from "./languages"
 import { getTranslations } from "./translations"
 import {
   translateDocument,
@@ -31,7 +35,14 @@ interface LanguageContextType {
   forceRetranslate: () => void
 }
 
-const LanguageContext = createContext<LanguageContextType | undefined>(undefined)
+const resolvedDefaultLanguage: Language =
+  languages.find((lang) => lang.code === "uk") ||
+  baseDefaultLanguage ||
+  languages[0]
+
+const LanguageContext = createContext<LanguageContextType | undefined>(
+  undefined,
+)
 
 export const useLanguage = () => {
   const context = useContext(LanguageContext)
@@ -45,55 +56,58 @@ interface LanguageProviderProps {
   children: ReactNode
 }
 
+// всегда: либо сохранённый язык, либо uk
+const detectInitialLanguage = () => {
+  if (typeof window === "undefined") return resolvedDefaultLanguage.code
+
+  const savedLanguage = localStorage.getItem("preferredLanguage")
+  if (savedLanguage) {
+    const supportedLang = languages.find((lang) => lang.code === savedLanguage)
+    if (supportedLang) return supportedLang.code
+  }
+
+  return resolvedDefaultLanguage.code
+}
+
 export const LanguageProvider = ({ children }: LanguageProviderProps) => {
-  const [currentLanguage, setCurrentLanguage] = useState<Language>(defaultLanguage)
+  const [currentLanguage, setCurrentLanguage] =
+    useState<Language>(resolvedDefaultLanguage)
   const [translations, setTranslations] = useState<Record<string, string>>(
-    getTranslations(defaultLanguage.code)
+    getTranslations(resolvedDefaultLanguage.code),
   )
   const [isLoading, setIsLoading] = useState(true)
   const [isReady, setIsReady] = useState(false)
-  const [isRTL, setIsRTL] = useState(defaultLanguage.direction === "rtl")
+  const [isRTL, setIsRTL] = useState(
+    resolvedDefaultLanguage.direction === "rtl",
+  )
+
   const missingTranslationsRef = useRef<Set<string>>(new Set())
   const observerRef = useRef<MutationObserver | null>(null)
   const isInitialRender = useRef(true)
-  const translationCacheRef = useRef<Map<string, Record<string, string>>>(new Map())
-  const previousLanguageRef = useRef<string>(defaultLanguage.code)
+  const translationCacheRef = useRef<Map<string, Record<string, string>>>(
+    new Map(),
+  )
+  const previousLanguageRef = useRef<string>(resolvedDefaultLanguage.code)
 
-  // Всегда по умолчанию возвращаем uk, если нет сохранённого языка
-  const detectBrowserLanguage = () => {
-    if (typeof window !== "undefined") {
-      const savedLanguage = localStorage.getItem("preferredLanguage")
-      if (savedLanguage) {
-        const supportedLang = languages.find((lang) => lang.code === savedLanguage)
-        if (supportedLang) return supportedLang.code
-      }
-      return defaultLanguage.code
-    }
-    return defaultLanguage.code
-  }
-
-  // Основная функция перевода по ключу
+  // основной перевод по ключу
   const t = (key: string, params?: Record<string, any>): string => {
     try {
-      if (!translations || typeof translations !== "object") {
-        console.warn("Translations not loaded properly")
-        return key
-      }
+      if (!translations || typeof translations !== "object") return key
 
       let translatedText = translations[key]
 
-      // Если нет перевода — берём из английского
       if (!translatedText) {
-        translatedText = translateWithFallbackUtil(key, translations, getTranslations("en"))
+        translatedText = translateWithFallbackUtil(
+          key,
+          translations,
+          getTranslations("en"),
+        )
 
-        if (translatedText === key) {
-          if (process.env.NODE_ENV === "development") {
-            missingTranslationsRef.current.add(key)
-          }
+        if (translatedText === key && process.env.NODE_ENV === "development") {
+          missingTranslationsRef.current.add(key)
         }
       }
 
-      // Подстановка параметров {{param}}
       if (params && translatedText) {
         translatedText = translateWithParams(key, params, translations)
       }
@@ -105,12 +119,17 @@ export const LanguageProvider = ({ children }: LanguageProviderProps) => {
     }
   }
 
-  // Публичная функция с выбором fallback-языка (по умолчанию en)
-  const translateWithFallbackFunc = (key: string, fallbackLanguage = "en"): string => {
-    return translateWithFallbackUtil(key, translations, getTranslations(fallbackLanguage))
+  const translateWithFallbackFunc = (
+    key: string,
+    fallbackLanguage = "en",
+  ): string => {
+    return translateWithFallbackUtil(
+      key,
+      translations,
+      getTranslations(fallbackLanguage),
+    )
   }
 
-  // Покрытие переводами (для отладки)
   const getTranslationCoverage = (): number => {
     if (!translations) return 0
 
@@ -119,10 +138,11 @@ export const LanguageProvider = ({ children }: LanguageProviderProps) => {
       (value) => value && value.trim(),
     ).length
 
-    return totalKeys > 0 ? Math.round((translatedKeys / totalKeys) * 100) : 0
+    return totalKeys > 0
+      ? Math.round((translatedKeys / totalKeys) * 100)
+      : 0
   }
 
-  // Перевод элементов с data-i18n
   const translateDataAttributes = () => {
     try {
       if (typeof document === "undefined") return
@@ -142,7 +162,7 @@ export const LanguageProvider = ({ children }: LanguageProviderProps) => {
     }
   }
 
-  // Инициализация языка при первом рендере
+  // инициализация языка
   useEffect(() => {
     if (!isInitialRender.current) return
     isInitialRender.current = false
@@ -151,12 +171,16 @@ export const LanguageProvider = ({ children }: LanguageProviderProps) => {
       try {
         setIsLoading(true)
 
-        const initialLanguageCode = detectBrowserLanguage()
+        const initialLanguageCode = detectInitialLanguage()
         const initialLanguage =
-          languages.find((lang) => lang.code === initialLanguageCode) || defaultLanguage
+          languages.find((lang) => lang.code === initialLanguageCode) ||
+          resolvedDefaultLanguage
 
         const initialTranslations = getTranslations(initialLanguage.code)
-        translationCacheRef.current.set(initialLanguage.code, initialTranslations)
+        translationCacheRef.current.set(
+          initialLanguage.code,
+          initialTranslations,
+        )
 
         setCurrentLanguage(initialLanguage)
         setIsRTL(initialLanguage.direction === "rtl")
@@ -181,11 +205,13 @@ export const LanguageProvider = ({ children }: LanguageProviderProps) => {
       } catch (error) {
         console.error("Error initializing language:", error)
 
-        setCurrentLanguage(defaultLanguage)
-        setIsRTL(defaultLanguage.direction === "rtl")
-        const fallbackTranslations = getTranslations(defaultLanguage.code)
+        setCurrentLanguage(resolvedDefaultLanguage)
+        setIsRTL(resolvedDefaultLanguage.direction === "rtl")
+        const fallbackTranslations = getTranslations(
+          resolvedDefaultLanguage.code,
+        )
         setTranslations(fallbackTranslations)
-        previousLanguageRef.current = defaultLanguage.code
+        previousLanguageRef.current = resolvedDefaultLanguage.code
         setIsReady(true)
       } finally {
         setIsLoading(false)
@@ -195,20 +221,11 @@ export const LanguageProvider = ({ children }: LanguageProviderProps) => {
     void initializeLanguage()
   }, [])
 
-  // Смена языка
   const changeLanguage = (code: string) => {
-    const newLanguage = languages.find((lang) => lang.code === code)
+    const newLanguage =
+      languages.find((lang) => lang.code === code) || resolvedDefaultLanguage
 
-    if (!newLanguage) {
-      console.warn(
-        `Language ${code} is not supported, falling back to ${defaultLanguage.code}`,
-      )
-      return
-    }
-
-    if (previousLanguageRef.current === code) {
-      return
-    }
+    if (previousLanguageRef.current === newLanguage.code) return
 
     setIsLoading(true)
 
@@ -216,20 +233,19 @@ export const LanguageProvider = ({ children }: LanguageProviderProps) => {
       setCurrentLanguage(newLanguage)
       setIsRTL(newLanguage.direction === "rtl")
 
-      let newTranslations = translationCacheRef.current.get(code)
+      let newTranslations = translationCacheRef.current.get(newLanguage.code)
       if (!newTranslations) {
-        newTranslations = getTranslations(code)
-        translationCacheRef.current.set(code, newTranslations)
+        newTranslations = getTranslations(newLanguage.code)
+        translationCacheRef.current.set(newLanguage.code, newTranslations)
       }
 
       setTranslations(newTranslations)
 
       if (typeof window !== "undefined") {
-        localStorage.setItem("preferredLanguage", code)
+        localStorage.setItem("preferredLanguage", newLanguage.code)
       }
 
       if (typeof document !== "undefined") {
-        // Чистим старые классы языка / направления
         document.body.classList.forEach((className) => {
           if (
             className.startsWith("lang-") ||
@@ -240,17 +256,19 @@ export const LanguageProvider = ({ children }: LanguageProviderProps) => {
           }
         })
 
-        // Добавляем новые классы
-        document.body.classList.add(`lang-${code}`)
-        document.body.classList.add(newLanguage.direction === "rtl" ? "rtl" : "ltr")
+        document.body.classList.add(`lang-${newLanguage.code}`)
+        document.body.classList.add(
+          newLanguage.direction === "rtl" ? "rtl" : "ltr",
+        )
 
-        // Обновляем html-атрибуты
         document.documentElement.dir = newLanguage.direction
         document.documentElement.lang = newLanguage.code
 
-        // Форсим полную перетрансляцию
         setTimeout(() => {
-          forceCompleteRetranslation(code, newTranslations as Record<string, string>)
+          forceCompleteRetranslation(
+            newLanguage.code,
+            newTranslations as Record<string, string>,
+          )
 
           window.dispatchEvent(
             new CustomEvent("languageChanged", {
@@ -264,7 +282,7 @@ export const LanguageProvider = ({ children }: LanguageProviderProps) => {
         }, 100)
       }
 
-      previousLanguageRef.current = code
+      previousLanguageRef.current = newLanguage.code
       missingTranslationsRef.current.clear()
     } catch (error) {
       console.error("Error changing language:", error)
@@ -273,7 +291,6 @@ export const LanguageProvider = ({ children }: LanguageProviderProps) => {
     }
   }
 
-  // Явный форс-перевод текущей страницы
   const forceRetranslate = () => {
     if (typeof document !== "undefined" && translations && isReady) {
       try {
@@ -284,7 +301,6 @@ export const LanguageProvider = ({ children }: LanguageProviderProps) => {
     }
   }
 
-  // Перевод конкретного элемента
   const translateElementWithCurrentTranslations = (element: Element): void => {
     try {
       translateElement(element, translations)
@@ -293,7 +309,6 @@ export const LanguageProvider = ({ children }: LanguageProviderProps) => {
     }
   }
 
-  // Наблюдатель за динамическим контентом
   useEffect(() => {
     if (typeof window !== "undefined" && !observerRef.current && isReady) {
       observerRef.current = new MutationObserver((mutations) => {
@@ -323,7 +338,6 @@ export const LanguageProvider = ({ children }: LanguageProviderProps) => {
     }
   }, [isReady, translations])
 
-  // Перевод всего документа при смене словаря
   useEffect(() => {
     if (typeof document !== "undefined" && !isLoading && translations && isReady) {
       try {
