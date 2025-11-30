@@ -45,7 +45,9 @@ interface LanguageProviderProps {
 export const LanguageProvider = ({ children }: LanguageProviderProps) => {
   // Initialize with default language and translations immediately
   const [currentLanguage, setCurrentLanguage] = useState<Language>(defaultLanguage)
-  const [translations, setTranslations] = useState<Record<string, string>>(getTranslations("en"))
+  const [translations, setTranslations] = useState<Record<string, string>>(
+    getTranslations(defaultLanguage.code)
+  )
   const [isLoading, setIsLoading] = useState(true)
   const [isReady, setIsReady] = useState(false)
   const [isRTL, setIsRTL] = useState(false)
