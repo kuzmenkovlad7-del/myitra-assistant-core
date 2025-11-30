@@ -12,7 +12,7 @@ import {
   Volume2,
   VolumeX,
   User,
-  Sparkles,
+  Brain,
 } from "lucide-react"
 import Image from "next/image"
 import { useLanguage } from "@/lib/i18n/language-context"
@@ -22,31 +22,7 @@ import {
   getNativeSpeechParameters,
   getNativeVoicePreferences,
 } from "@/lib/i18n/translation-utils"
-import { shouldUseGoogleTTS, generateGoogleTTS } from "@/lib/google-tts"
-import { Brain } from "lucide-react"
 import { APP_NAME } from "@/lib/app-config"
-import type { HTMLVideoElement } from "react"
-
-// ⚠️ ВАЖНО: сюда верни свой объект с Google TTS кредами,
-// как он был в предыдущей версии файла.
-// Сейчас placeholder, чтобы не светить приватный ключ в коде.
-const VIDEO_CALL_GOOGLE_TTS_CREDENTIALS: any = {}
-
-// Конфиги голосов (их можно оставлять в коде, тут нет секретов)
-const VIDEO_CALL_VOICE_CONFIGS = {
-  uk: {
-    female: {
-      languageCode: "uk-UA",
-      name: "uk-UA-Standard-A",
-      ssmlGender: "FEMALE",
-    },
-    male: {
-      languageCode: "uk-UA",
-      name: "uk-UA-Chirp3-HD-Schedar",
-      ssmlGender: "MALE",
-    },
-  },
-}
 
 // ==============================
 // TYPES AND INTERFACES
@@ -89,8 +65,8 @@ type ChatMessage = {
   text: string
 }
 
-// AI character options
-const aiCharacters: AICharacter[] = [
+// Все персонажи (на будущее), но сейчас в UI используем только Софию
+const AI_CHARACTERS: AICharacter[] = [
   {
     id: "dr-alexander",
     name: "Dr. Alexander",
@@ -143,6 +119,11 @@ const aiCharacters: AICharacter[] = [
   },
 ]
 
+// показываем пока только Софию
+const DEFAULT_CHARACTER =
+  AI_CHARACTERS.find((c) => c.id === "dr-sophia") ?? AI_CHARACTERS[0]
+const VISIBLE_CHARACTERS = [DEFAULT_CHARACTER]
+
 export default function VideoCallDialog({
   isOpen,
   onClose,
@@ -155,7 +136,7 @@ export default function VideoCallDialog({
 
   // Character and call state
   const [selectedCharacter, setSelectedCharacter] =
-    useState<AICharacter | null>(null)
+    useState<AICharacter>(DEFAULT_CHARACTER)
   const [isCallActive, setIsCallActive] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
 
@@ -168,7 +149,7 @@ export default function VideoCallDialog({
   const [permissionsError, setPermissionsError] = useState<string | null>(null)
   const [showPermissionsPrompt, setShowPermissionsPrompt] = useState(false)
 
-  // Avatar settings
+  // Avatar settings (на будущее)
   const [showSettings, setShowSettings] = useState(false)
   const [avatarSensitivity, setAvatarSensitivity] = useState(0.8)
 
@@ -182,6 +163,7 @@ export default function VideoCallDialog({
   >("listening")
   const [speechError, setSpeechError] = useState<string | null>(null)
   const [isAiSpeaking, setIsAiSpeaking] = useState(false)
+  const isAiSpeakingRef = useRef(false)
 
   // Диалог как в голосовом ассистенте
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -225,6 +207,10 @@ export default function VideoCallDialog({
 
   const hasEnhancedVideo =
     !!selectedCharacter?.idleVideo && !!selectedCharacter?.speakingVideoNew
+
+  useEffect(() => {
+    isAiSpeakingRef.current = isAiSpeaking
+  }, [isAiSpeaking])
 
   // Check microphone and camera permissions
   const checkMediaPermissions = useCallback(async (): Promise<{
@@ -371,7 +357,7 @@ export default function VideoCallDialog({
       .trim()
   }, [])
 
-  // Enhanced voice selection
+  // Enhanced voice selection (браузерный TTS)
   const getRefinedVoiceForLanguage = useCallback(
     (langCode: string, preferredGender: "female" | "male" = "female") => {
       if (!window.speechSynthesis) {
@@ -575,6 +561,12 @@ export default function VideoCallDialog({
     }
 
     recognitionInstance.onresult = async (event: any) => {
+      // ВАЖНО: когда говорит ассистент, игнорируем результаты,
+      // чтобы он не "слушал сам себя"
+      if (isAiSpeakingRef.current || isVoicingRef.current) {
+        return
+      }
+
       let currentInterimTranscript = ""
       let hasNewFinalResult = false
 
@@ -593,12 +585,6 @@ export default function VideoCallDialog({
           console.log(
             `📝 Final transcript: "${transcriptChunk}" (confidence: ${confidence})`,
           )
-
-          if (isAiSpeaking || isVoicingRef.current) {
-            console.log(
-              "🔴 [USER INTERRUPTION] Detected while AI was speaking",
-            )
-          }
         } else if (transcriptChunk.length > 0) {
           currentInterimTranscript += transcriptChunk
         }
@@ -772,9 +758,9 @@ export default function VideoCallDialog({
     } catch (error) {
       console.log("Error starting recognition:", error)
     }
-  }, [currentLocale, isCallActive, isMicMuted, lastProcessedText, isAiSpeaking])
+  }, [currentLocale, isCallActive, isMicMuted, lastProcessedText])
 
-  // Browser TTS fallback
+  // Browser TTS (только браузер, без Google)
   const fallbackToBrowserTTS = useCallback(
     (cleanText: string, gender: "male" | "female", cleanup: () => void) => {
       console.log(
@@ -869,7 +855,7 @@ export default function VideoCallDialog({
     ],
   )
 
-  // Text-to-speech function
+  // Text-to-speech function (без Google TTS — только браузер)
   const speakText = useCallback(
     async (text: string) => {
       if (!isCallActive) return
@@ -906,7 +892,6 @@ export default function VideoCallDialog({
       setSpeechStartTime(Date.now())
 
       const characterGender = selectedCharacter?.gender || "female"
-      const isDrAlexander = selectedCharacter?.id === "dr-alexander"
 
       const cleanup = () => {
         try {
@@ -967,117 +952,8 @@ export default function VideoCallDialog({
       }
 
       try {
-        if (shouldUseGoogleTTS(currentLanguage.code)) {
-          try {
-            const audioDataUrl = await generateGoogleTTS(
-              cleanedText,
-              currentLanguage.code,
-              characterGender,
-              VIDEO_CALL_GOOGLE_TTS_CREDENTIALS,
-              VIDEO_CALL_VOICE_CONFIGS,
-            )
-
-            if (!audioDataUrl) {
-              throw new Error("No audio data received from Google TTS")
-            }
-
-            setCurrentVideoState("speaking")
-
-            if (hasEnhancedVideo) {
-              if (idleVideoRef.current) {
-                idleVideoRef.current.pause()
-              }
-              if (
-                speakingVideoRef.current &&
-                selectedCharacter?.speakingVideoNew
-              ) {
-                speakingVideoRef.current.currentTime = 0
-                await speakingVideoRef.current
-                  .play()
-                  .catch((e) =>
-                    console.log("Speaking video play error:", e),
-                  )
-              }
-            }
-
-            const audio = new Audio()
-            currentAudioRef.current = audio
-
-            audio.preload = "auto"
-            audio.volume = 1.0
-            audio.playsInline = true
-            audio.crossOrigin = "anonymous"
-            audio.setAttribute("playsinline", "true")
-            audio.setAttribute("webkit-playsinline", "true")
-
-            let audioEnded = false
-            let audioError = false
-
-            audio.onended = () => {
-              if (!audioEnded && !audioError) {
-                audioEnded = true
-                cleanup()
-              }
-            }
-
-            audio.onerror = (error) => {
-              if (!audioError && !audioEnded) {
-                audioError = true
-                const target = error.target as HTMLAudioElement
-                if (
-                  target &&
-                  target.error &&
-                  target.error.code === target.error.MEDIA_ERR_ABORTED
-                ) {
-                  console.log(
-                    `🔴 [AUDIO] Playback interrupted for ${selectedCharacter?.name}`,
-                  )
-                } else {
-                  console.error(
-                    `❌ [AUDIO] Playback error for ${selectedCharacter?.name}:`,
-                    error,
-                  )
-                }
-                cleanup()
-              }
-            }
-
-            audio.src = audioDataUrl
-            audio.load()
-
-            await new Promise((resolve, reject) => {
-              const timeout = setTimeout(
-                () => reject(new Error("Audio load timeout")),
-                10000,
-              )
-              audio.oncanplaythrough = () => {
-                clearTimeout(timeout)
-                resolve(true)
-              }
-              audio.onerror = () => {
-                clearTimeout(timeout)
-                reject(new Error("Audio load error"))
-              }
-            })
-
-            const playDelay = isDrAlexander ? 0 : 100
-            if (playDelay > 0) {
-              await new Promise((resolve) =>
-                setTimeout(resolve, playDelay),
-              )
-            }
-
-            await audio.play()
-          } catch (googleTTSError) {
-            console.error(
-              `❌ [GOOGLE TTS] Failed for ${selectedCharacter?.name}:`,
-              googleTTSError,
-            )
-            fallbackToBrowserTTS(cleanedText, characterGender, cleanup)
-          }
-        } else {
-          fallbackToBrowserTTS(cleanedText, characterGender, cleanup)
-        }
+        // всегда через браузерный TTS
+        fallbackToBrowserTTS(cleanedText, characterGender, cleanup)
       } catch (error) {
         console.error(`❌ [SPEECH ERROR] for ${selectedCharacter?.name}:`, error)
         cleanup()
@@ -1087,7 +963,6 @@ export default function VideoCallDialog({
       isCallActive,
       isSoundEnabled,
       cleanResponseText,
-      currentLanguage,
       selectedCharacter,
       isAiSpeaking,
       hasEnhancedVideo,
@@ -1704,17 +1579,6 @@ export default function VideoCallDialog({
 
   const micOn = isCallActive && !isMicMuted && isListening
 
-  const statusText = (() => {
-    if (!isCallActive)
-      return t(
-        "Choose an AI psychologist and press “Start video call” to begin.",
-      )
-    if (isAiSpeaking)
-      return t("Assistant is speaking. Please wait a moment.")
-    if (micOn) return t("Listening… you can speak.")
-    return t("Paused. Turn on microphone to continue.")
-  })()
-
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl flex flex-col h-[100dvh] sm:h-[90vh] max-h-none sm:max-h-[800px] overflow-hidden">
@@ -1739,17 +1603,6 @@ export default function VideoCallDialog({
             <div className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-medium text-indigo-50">
               {APP_NAME} · {t("Video assistant online")}
             </div>
-            {isCallActive && (
-              <div
-                className={`px-2 py-1 rounded-full text-[11px] ${
-                  micOn
-                    ? "bg-emerald-100 text-emerald-800"
-                    : "bg-rose-100 text-rose-700"
-                }`}
-              >
-                🎤 {micOn ? t("Listening") : t("Microphone off")}
-              </div>
-            )}
           </div>
 
           <Button
@@ -1765,22 +1618,21 @@ export default function VideoCallDialog({
         {/* CONTENT */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 flex flex-col touch-pan-y">
           {!isCallActive ? (
-            // Экран выбора персонажа
+            // Экран выбора персонажа (пока одна София)
             <div className="flex-1 flex flex-col items-center justify-center">
               <div className="text-center mb-6 sm:mb-8 px-2">
                 <h3 className="text-xl sm:text-2xl font-semibold mb-2 sm:mb-3">
-                  {t("Choose Your AI Psychologist")}
+                  {t("AI Psychologist")}
                 </h3>
                 <p className="text-sm sm:text-base text-gray-1000 max-w-md mx-auto">
                   {t(
-                    "Select the AI psychologist you'd like to speak with during your video call.",
+                    "Start a confidential video session with our AI psychologist whenever you need support.",
                   )}
                 </p>
               </div>
 
               {showPermissionsPrompt && permissionsError && (
                 <div className="mb-4 sm:mb-6 bg-red-50 border-2 border-red-300 rounded-lg p-4 sm:p-6 w-full max-w-md mx-2">
-                  {/* ... блок подсказки по пермишенам оставляем как есть */}
                   <div className="flex items-start mb-4">
                     <div className="flex-shrink-0">
                       <svg
@@ -1848,18 +1700,14 @@ export default function VideoCallDialog({
                   {currentLanguage.name}
                 </div>
                 <p className="text-xs text-blue-600 mt-2">
-                  {shouldUseGoogleTTS(currentLanguage.code)
-                    ? t(
-                        "All characters use Google TTS for authentic native Ukrainian accent",
-                      )
-                    : t(
-                        "AI will understand and respond in this language with native accent",
-                      )}
+                  {t(
+                    "The assistant will understand you and respond with natural speech in this language.",
+                  )}
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 w-full max-w-5xl px-2">
-                {aiCharacters.map((character) => (
+              <div className="grid grid-cols-1 sm:grid-cols-1 gap-4 sm:gap-6 w-full max-w-md px-2">
+                {VISIBLE_CHARACTERS.map((character) => (
                   <div
                     key={character.id}
                     className={`relative bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer p-4 sm:p-6 border-2 ${
@@ -1896,9 +1744,7 @@ export default function VideoCallDialog({
                         setSelectedCharacter(character)
                       }}
                     >
-                      {selectedCharacter?.id === character.id
-                        ? t("Selected")
-                        : t("Select")}
+                      {t("Selected")}
                     </Button>
                   </div>
                 ))}
@@ -2001,7 +1847,7 @@ export default function VideoCallDialog({
                   )}
                 </div>
 
-                {/* статус — только здесь, без языка */}
+                {/* ЕДИНСТВЕННОЕ МЕСТО СО СТАТУСОМ */}
                 <div
                   className={`absolute top-2 sm:top-4 right-2 sm:right-4 px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium ${
                     activityStatus === "listening"
@@ -2015,8 +1861,6 @@ export default function VideoCallDialog({
                     ? t("Listening...")
                     : activityStatus === "thinking"
                     ? t("Thinking...")
-                    : shouldUseGoogleTTS(currentLanguage.code)
-                    ? t("Speaking with Google TTS...")
                     : t("Speaking...")}
                 </div>
 
@@ -2093,16 +1937,9 @@ export default function VideoCallDialog({
           )}
         </div>
 
-        {/* БOTTOM BAR — всегда видно, чат над ним */}
+        {/* BOTTOM BAR — только кнопки, без доп. статусов */}
         {isCallActive && (
           <div className="p-3 sm:p-4 border-t bg-gray-50 flex flex-col safe-area-bottom">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
-              <div className="flex items-center gap-2 text-[11px] sm:text-xs text-slate-500">
-                <Sparkles className="h-3 w-3" />
-                {statusText}
-              </div>
-            </div>
-
             <div className="flex justify-center space-x-3 sm:space-x-4">
               <Button
                 variant="outline"
