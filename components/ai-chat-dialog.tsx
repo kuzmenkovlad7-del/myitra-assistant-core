@@ -20,7 +20,7 @@ import { APP_NAME } from "@/lib/app-config"
 type Props = {
   isOpen: boolean
   onClose: () => void
-  /** URL вебхука Workflow-агента; если не передан – используем NEXT_PUBLIC_TURBOTA_AGENT_WEBHOOK_URL, а затем /api/chat */
+  /** URL вебхука Workflow-агента; если не передан – используем /api/chat как резерв */
   webhookUrl?: string
 }
 
@@ -28,43 +28,6 @@ type ChatMessage = {
   id: string
   role: "user" | "assistant"
   text: string
-}
-
-/** Основной фронтовый вебхук (агент) */
-const FRONT_AGENT_WEBHOOK = process.env.NEXT_PUBLIC_TURBOTA_AGENT_WEBHOOK_URL
-
-/** Унифицированный разбор ответа от агента/n8n/backend */
-function extractAssistantText(raw: any): string | null {
-  if (!raw) return null
-
-  if (typeof raw === "string") return raw
-
-  if (typeof raw.text === "string") return raw.text
-  if (typeof raw.response === "string") return raw.response
-  if (typeof raw.answer === "string") return raw.answer
-  if (typeof raw.message === "string") return raw.message
-  if (typeof raw.output === "string") return raw.output
-
-  if (Array.isArray(raw) && raw.length > 0) {
-    const first = raw[0]
-    if (typeof first === "string") return first
-    if (first && typeof first === "object") {
-      if (typeof first.text === "string") return first.text
-      if (typeof first.output === "string") return first.output
-      if (typeof first.response === "string") return first.response
-    }
-  }
-
-  return null
-}
-
-/** Лёгкая очистка текста (убираем markdown-артефакты и лишние переносы) */
-function cleanAssistantText(text: string): string {
-  return text
-    .replace(/\r\n/g, "\n")
-    .replace(/\n{2,}/g, "\n")
-    .replace(/\*\*/g, "")
-    .trim()
 }
 
 export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
@@ -78,6 +41,7 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
+  // Сброс при закрытии
   useEffect(() => {
     if (!isOpen) {
       setMessages([])
@@ -87,21 +51,64 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
     }
   }, [isOpen])
 
+  // Автоскролл вниз
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [messages])
 
+  const extractAnswerText = (raw: any): string => {
+    if (!raw) return ""
+
+    // 1) Строка напрямую
+    if (typeof raw === "string") return raw
+
+    // 2) Массив (часто так возвращает n8n)
+    if (Array.isArray(raw) && raw.length > 0) {
+      const first = raw[0]
+      if (typeof first === "string") return first
+
+      if (first && typeof first === "object") {
+        return (
+          first.text ||
+          first.response ||
+          first.message ||
+          first.output ||
+          first.content ||
+          first.result ||
+          JSON.stringify(first)
+        )
+      }
+    }
+
+    // 3) Объект
+    if (raw && typeof raw === "object") {
+      return (
+        raw.text ||
+        raw.response ||
+        raw.message ||
+        raw.output ||
+        raw.content ||
+        raw.result ||
+        JSON.stringify(raw)
+      )
+    }
+
+    return ""
+  }
+
   const sendMessage = async () => {
     const text = input.trim()
     if (!text || isSending) return
+
+    // основной источник – вебхук агента, запасной – /api/chat
+    const url = (webhookUrl && webhookUrl.trim()) || "/api/chat"
 
     setError(null)
     setIsSending(true)
     setInput("")
 
-    // Аккуратно достаём код языка (на всякий случай учитываем разные типы)
     const langCode =
       typeof (currentLanguage as any) === "string"
         ? (currentLanguage as any as string)
@@ -115,24 +122,20 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
 
     setMessages((prev) => [...prev, userMessage])
 
-    // 1) основной URL — проп → 2) NEXT_PUBLIC_TURBOTA_AGENT_WEBHOOK_URL → 3) /api/chat
-    const primaryUrl =
-      (webhookUrl && webhookUrl.trim()) ||
-      (FRONT_AGENT_WEBHOOK && FRONT_AGENT_WEBHOOK.trim()) ||
-      null
-    const fallbackUrl = "/api/chat"
+    try {
+      const payload = {
+        query: text,
+        language: langCode,
+        email: user?.email ?? null,
+        mode: "chat", // просто метка, backend может игнорировать
+      }
 
-    const payload = {
-      query: text,
-      language: langCode,
-      email: user?.email ?? null,
-      mode: "chat" as const,
-    }
-
-    const callEndpoint = async (url: string) => {
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
         body: JSON.stringify(payload),
       })
 
@@ -140,41 +143,27 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
         throw new Error(`Request failed with status ${res.status}`)
       }
 
-      try {
-        return await res.json()
-      } catch {
-        throw new Error("Failed to parse response JSON")
-      }
-    }
+      const contentType = res.headers.get("content-type") || ""
+      let rawData: any
 
-    try {
-      let data: any
-
-      if (primaryUrl) {
-        // сначала бьём в основного агента
-        try {
-          data = await callEndpoint(primaryUrl)
-        } catch (primaryError) {
-          console.error(
-            "Primary chat webhook error, falling back to /api/chat:",
-            primaryError,
-          )
-          // если основной и так /api/chat – не дёргаем его второй раз
-          if (primaryUrl !== fallbackUrl) {
-            data = await callEndpoint(fallbackUrl)
-          } else {
-            throw primaryError
-          }
-        }
+      if (contentType.includes("application/json")) {
+        rawData = await res.json()
       } else {
-        // если нет переменной – сразу идём в резервный /api/chat
-        data = await callEndpoint(fallbackUrl)
+        const rawText = await res.text()
+        try {
+          rawData = JSON.parse(rawText)
+        } catch {
+          rawData = { response: rawText }
+        }
       }
 
-      const extracted = extractAssistantText(data)
-      const answer =
-        (extracted && cleanAssistantText(extracted)) ||
-        t("I'm sorry, I couldn't process your message. Please try again.")
+      let answer = extractAnswerText(rawData)
+
+      if (!answer || !answer.trim()) {
+        answer = t(
+          "I'm sorry, I couldn't process your message. Please try again.",
+        )
+      }
 
       const assistantMessage: ChatMessage = {
         id: `${Date.now()}-assistant`,
