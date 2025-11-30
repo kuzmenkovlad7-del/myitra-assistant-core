@@ -2,6 +2,7 @@ import type React from "react"
 import type { Metadata, Viewport } from "next"
 import Script from "next/script"
 import { Inter } from "next/font/google"
+
 import "./globals.css"
 import { AuthProvider } from "@/lib/auth/auth-context"
 import { LanguageProvider } from "@/lib/i18n/language-context"
@@ -9,7 +10,8 @@ import { AutoTranslate } from "@/components/auto-translate"
 import { RTLWrapper } from "@/components/rtl-wrapper"
 import Header from "@/components/header"
 import Footer from "@/components/footer"
-import { APP_NAME, APP_URL } from "@/lib/app-config"
+import { APP_NAME } from "@/lib/app-config"
+import { defaultLanguage } from "@/lib/i18n/languages"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -72,7 +74,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={defaultLanguage.code} suppressHydrationWarning>
       <body
         className={`${inter.className} min-h-screen bg-background text-foreground antialiased`}
         suppressHydrationWarning
