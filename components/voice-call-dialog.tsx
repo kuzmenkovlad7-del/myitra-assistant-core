@@ -72,9 +72,7 @@ function extractAnswer(data: any): string {
       first.content ||
       first.result ||
       JSON.stringify(first)
-    )
-      ?.toString()
-      .trim()
+    )?.toString().trim()
   }
 
   if (typeof data === "object") {
@@ -86,9 +84,7 @@ function extractAnswer(data: any): string {
       data.content ||
       data.result ||
       JSON.stringify(data)
-    )
-      ?.toString()
-      .trim()
+    )?.toString().trim()
   }
 
   return ""
@@ -117,9 +113,15 @@ export default function VoiceCallDialog({
 
   const recognitionRef = useRef<any | null>(null)
   const ignoreOnEndRef = useRef(false) // чтобы не автоперезапускать, когда сами стопаем
+  const micWasMutedBeforeSpeakRef = useRef(false) // запоминаем состояние микрофона до речи ассистента
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
   const effectiveEmail = userEmail || user?.email || "guest@example.com"
+
+  const langCode =
+    typeof (currentLanguage as any) === "string"
+      ? ((currentLanguage as any) as string)
+      : ((currentLanguage as any)?.code || "uk")
 
   // Скролл вниз при новых сообщениях
   useEffect(() => {
@@ -162,7 +164,9 @@ export default function VoiceCallDialog({
   const startRecognition = useCallback(() => {
     if (typeof window === "undefined") return
 
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    const SR =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition
     if (!SR) {
       setNetworkError(
         t(
@@ -175,12 +179,6 @@ export default function VoiceCallDialog({
     const recognition = new SR()
     recognition.continuous = true
     recognition.interimResults = false
-
-    const langCode =
-      typeof (currentLanguage as any) === "string"
-        ? ((currentLanguage as any) as string)
-        : (currentLanguage as any)?.code || "uk"
-
     recognition.lang = langCode.startsWith("uk")
       ? "uk-UA"
       : langCode.startsWith("ru")
@@ -226,7 +224,7 @@ export default function VoiceCallDialog({
       const last = event.results[event.results.length - 1]
       if (!last || !last.isFinal) return
 
-      const text = last[0]?.transcript?.trim()
+      const text: string = last[0]?.transcript?.trim()
       if (!text) return
 
       const userMsg: VoiceMessage = {
@@ -248,13 +246,16 @@ export default function VoiceCallDialog({
         t("Could not start microphone. Check permissions and try again."),
       )
     }
-  }, [currentLanguage, isCallActive, isMicMuted, t])
+  }, [langCode, isCallActive, isMicMuted, t])
 
   // --- Озвучка через browser TTS, без самопрослушивания ---
 
   const speakText = useCallback(
     (text: string) => {
       if (typeof window === "undefined" || !window.speechSynthesis) return
+
+      // запоминаем, был ли микрофон выключен ДО речи ассистента
+      micWasMutedBeforeSpeakRef.current = isMicMuted
 
       // на время озвучки выключаем распознавание, чтобы не слушал сам себя
       if (recognitionRef.current) {
@@ -266,10 +267,10 @@ export default function VoiceCallDialog({
         }
       }
 
-      const langCode =
-        typeof (currentLanguage as any) === "string"
-          ? ((currentLanguage as any) as string)
-          : (currentLanguage as any)?.code || "uk"
+      // показываем, что микрофон временно выключен (иконка красная)
+      if (!isMicMuted) {
+        setIsMicMuted(true)
+      }
 
       const utterance = new SpeechSynthesisUtterance(text)
 
@@ -282,7 +283,9 @@ export default function VoiceCallDialog({
       utterance.rate = 1
       utterance.pitch = 1
 
-      const shouldResumeListening = isCallActive && !isMicMuted
+      // возобновляем прослушивание только если ДО речи микрофон был включен
+      const shouldResumeListening =
+        isCallActive && !micWasMutedBeforeSpeakRef.current
 
       utterance.onstart = () => {
         setIsAiSpeaking(true)
@@ -291,7 +294,12 @@ export default function VoiceCallDialog({
       utterance.onend = () => {
         setIsAiSpeaking(false)
 
-        // после окончания озвучки снова начинаем слушать пользователя
+        // если пользователь сам микрофон не выключал — включаем обратно
+        if (!micWasMutedBeforeSpeakRef.current) {
+          setIsMicMuted(false)
+        }
+
+        // и сразу снова начинаем слушать
         if (shouldResumeListening) {
           startRecognition()
         }
@@ -304,18 +312,13 @@ export default function VoiceCallDialog({
       window.speechSynthesis.cancel()
       window.speechSynthesis.speak(utterance)
     },
-    [currentLanguage, isCallActive, isMicMuted, startRecognition],
+    [langCode, isCallActive, isMicMuted, startRecognition],
   )
 
-  // --- Отправка текста в TurbotaAI-агента (как в чате) ---
+  // --- Отправка текста в n8n / TurbotaAI агент ---
 
   const handleUserText = useCallback(
     async (text: string) => {
-      const langCode =
-        typeof (currentLanguage as any) === "string"
-          ? ((currentLanguage as any) as string)
-          : (currentLanguage as any)?.code || "uk"
-
       // 1) prop → 2) env → 3) /api/chat
       const resolvedWebhook =
         (webhookUrl && webhookUrl.trim()) ||
@@ -338,7 +341,6 @@ export default function VoiceCallDialog({
           throw new Error(`Chat API error: ${res.status}`)
         }
 
-        // читаем как текст, потом пытаемся JSON-распарсить
         const raw = await res.text()
         let data: any = raw
 
@@ -372,7 +374,7 @@ export default function VoiceCallDialog({
         if (onError && error instanceof Error) onError(error)
       }
     },
-    [currentLanguage, effectiveEmail, onError, speakText, t, webhookUrl],
+    [webhookUrl, langCode, effectiveEmail, speakText, t, onError],
   )
 
   const startCall = useCallback(() => {
@@ -459,7 +461,7 @@ export default function VoiceCallDialog({
             </div>
           </DialogHeader>
 
-          <div className="flex h:[500px] flex-col md:h-[540px]">
+          <div className="flex h-[500px] flex-col md:h-[540px]">
             <ScrollArea className="flex-1 px-5 pt-4 pb-2">
               <div
                 ref={scrollRef}
