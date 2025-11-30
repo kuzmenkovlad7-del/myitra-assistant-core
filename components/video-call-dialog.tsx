@@ -76,7 +76,6 @@ declare global {
 interface VideoCallDialogProps {
   isOpen: boolean
   onClose: () => void
-  webhookUrl: string
   openAiApiKey: string
   onError?: (error: Error) => void
 }
