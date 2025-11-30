@@ -28,10 +28,11 @@ import { APP_NAME } from "@/lib/app-config"
 
 const VIDEO_CALL_GOOGLE_TTS_CREDENTIALS: any = {}
 
-// Webhook для видео-ассистента (через наш Next-прокси)
+// Глобальный URL вебхука для видео-ассистента (идёт через наш Next-прокси)
 const VIDEO_ASSISTANT_WEBHOOK_URL =
   process.env.NEXT_PUBLIC_TURBOTA_AI_VIDEO_ASSISTANT_WEBHOOK_URL ||
   process.env.NEXT_PUBLIC_TURBOTA_AGENT_WEBHOOK_URL ||
+  process.env.NEXT_PUBLIC_TURBOTA_AI_WORKFLOW_ASSISTANT_WEBHOOK_URL ||
   "/api/turbotaai-agent"
 
 // можно расширять под другие языки позже
@@ -125,11 +126,8 @@ export default function VideoCallDialog({
       ? "Russian"
       : "English")
 
-  const resolvedWebhookUrl =
-    webhookUrl ||
-    process.env.NEXT_PUBLIC_TURBOTA_AI_VIDEO_ASSISTANT_WEBHOOK_URL ||
-    process.env.NEXT_PUBLIC_TURBOTA_AI_WORKFLOW_ASSISTANT_WEBHOOK_URL ||
-    ""
+  // итоговый URL вебхука, куда шлём фразу пользователя
+  const resolvedWebhookUrl = VIDEO_ASSISTANT_WEBHOOK_URL
 
   const [selectedCharacter] = useState<AICharacter>(defaultCharacter)
   const [isCallActive, setIsCallActive] = useState(false)
@@ -1537,7 +1535,7 @@ export default function VideoCallDialog({
                 className="rounded-full h-14 w-14 sm:h-12 sm:w-12 bg-red-600 hover:bg-red-700 text-white touch-manipulation"
                 onClick={endCall}
               >
-                {/* убрал rotate-180, чтобы иконка не была перевёрнута */}
+                {/* без rotate-180, чтобы трубка не была перевёрнута */}
                 <Phone className="h-6 w-6 sm:h-5 sm:w-5" />
               </Button>
             </div>
