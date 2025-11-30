@@ -37,6 +37,8 @@ interface VoiceCallDialogProps {
   onClose: () => void
   onError?: (error: Error) => void
   userEmail?: string
+  /** Можно передать свой вебхук, но по умолчанию берём из env */
+  webhookUrl?: string
 }
 
 type VoiceMessage = {
@@ -45,11 +47,55 @@ type VoiceMessage = {
   text: string
 }
 
+// PRIMARY: фронт → TurbotaAI агент вебхук из env
+const TURBOTA_AGENT_WEBHOOK_URL =
+  process.env.NEXT_PUBLIC_TURBOTA_AGENT_WEBHOOK_URL || ""
+
+// запасной бэкенд-проксирующий роут
+const FALLBACK_CHAT_API = "/api/chat"
+
+// аккуратно вытаскиваем текст из любого формата ответа n8n
+function extractAnswer(data: any): string {
+  if (!data) return ""
+
+  if (typeof data === "string") {
+    return data.trim()
+  }
+
+  if (Array.isArray(data) && data.length > 0) {
+    const first = data[0] ?? {}
+    return (
+      first.text ||
+      first.response ||
+      first.output ||
+      first.message ||
+      first.content ||
+      first.result ||
+      JSON.stringify(first)
+    )?.toString().trim()
+  }
+
+  if (typeof data === "object") {
+    return (
+      data.text ||
+      data.response ||
+      data.output ||
+      data.message ||
+      data.content ||
+      data.result ||
+      JSON.stringify(data)
+    )?.toString().trim()
+  }
+
+  return ""
+}
+
 export default function VoiceCallDialog({
   isOpen,
   onClose,
   onError,
   userEmail,
+  webhookUrl,
 }: VoiceCallDialogProps) {
   const { t, currentLanguage } = useLanguage()
   const { user } = useAuth()
@@ -70,6 +116,11 @@ export default function VoiceCallDialog({
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
   const effectiveEmail = userEmail || user?.email || "guest@example.com"
+
+  const langCode =
+    typeof (currentLanguage as any) === "string"
+      ? ((currentLanguage as any) as string)
+      : ((currentLanguage as any)?.code || "uk")
 
   // Скролл вниз при новых сообщениях
   useEffect(() => {
@@ -112,7 +163,9 @@ export default function VoiceCallDialog({
   const startRecognition = useCallback(() => {
     if (typeof window === "undefined") return
 
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    const SR =
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition
     if (!SR) {
       setNetworkError(
         t(
@@ -125,9 +178,9 @@ export default function VoiceCallDialog({
     const recognition = new SR()
     recognition.continuous = true
     recognition.interimResults = false
-    recognition.lang = currentLanguage.code.startsWith("uk")
+    recognition.lang = langCode.startsWith("uk")
       ? "uk-UA"
-      : currentLanguage.code.startsWith("ru")
+      : langCode.startsWith("ru")
         ? "ru-RU"
         : "en-US"
 
@@ -170,7 +223,7 @@ export default function VoiceCallDialog({
       const last = event.results[event.results.length - 1]
       if (!last || !last.isFinal) return
 
-      const text = last[0]?.transcript?.trim()
+      const text: string = last[0]?.transcript?.trim()
       if (!text) return
 
       const userMsg: VoiceMessage = {
@@ -192,7 +245,7 @@ export default function VoiceCallDialog({
         t("Could not start microphone. Check permissions and try again."),
       )
     }
-  }, [currentLanguage.code, isCallActive, isMicMuted, t])
+  }, [langCode, isCallActive, isMicMuted, t])
 
   // --- Озвучка через browser TTS, без самопрослушивания ---
 
@@ -212,9 +265,9 @@ export default function VoiceCallDialog({
 
       const utterance = new SpeechSynthesisUtterance(text)
 
-      utterance.lang = currentLanguage.code.startsWith("uk")
+      utterance.lang = langCode.startsWith("uk")
         ? "uk-UA"
-        : currentLanguage.code.startsWith("ru")
+        : langCode.startsWith("ru")
           ? "ru-RU"
           : "en-US"
 
@@ -243,20 +296,26 @@ export default function VoiceCallDialog({
       window.speechSynthesis.cancel()
       window.speechSynthesis.speak(utterance)
     },
-    [currentLanguage.code, isCallActive, isMicMuted, startRecognition],
+    [langCode, isCallActive, isMicMuted, startRecognition],
   )
 
-  // --- Отправка текста в /api/chat ---
+  // --- Отправка текста в n8n / TurbotaAI агент ---
 
   const handleUserText = useCallback(
     async (text: string) => {
+      // 1) prop → 2) env → 3) /api/chat
+      const resolvedWebhook =
+        (webhookUrl && webhookUrl.trim()) ||
+        TURBOTA_AGENT_WEBHOOK_URL.trim() ||
+        FALLBACK_CHAT_API
+
       try {
-        const res = await fetch("/api/chat", {
+        const res = await fetch(resolvedWebhook, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             query: text,
-            language: currentLanguage.code,
+            language: langCode,
             email: effectiveEmail,
             mode: "voice",
           }),
@@ -266,10 +325,24 @@ export default function VoiceCallDialog({
           throw new Error(`Chat API error: ${res.status}`)
         }
 
-        const data = await res.json()
-        const answer: string =
-          (data && (data.text as string)) ||
-          t("I'm sorry, I couldn't process your message. Please try again.")
+        const raw = await res.text()
+        let data: any = raw
+
+        try {
+          data = JSON.parse(raw)
+        } catch {
+          // не JSON — оставляем как есть
+        }
+
+        console.log("Voice raw response:", data)
+
+        let answer = extractAnswer(data)
+
+        if (!answer) {
+          answer = t(
+            "I'm sorry, I couldn't process your message. Please try again.",
+          )
+        }
 
         const assistantMsg: VoiceMessage = {
           id: `${Date.now()}-assistant`,
@@ -285,7 +358,7 @@ export default function VoiceCallDialog({
         if (onError && error instanceof Error) onError(error)
       }
     },
-    [currentLanguage.code, effectiveEmail, onError, speakText, t],
+    [webhookUrl, langCode, effectiveEmail, speakText, t, onError],
   )
 
   const startCall = useCallback(() => {
