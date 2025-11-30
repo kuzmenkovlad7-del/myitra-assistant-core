@@ -20,6 +20,7 @@ import { APP_NAME } from "@/lib/app-config"
 type Props = {
   isOpen: boolean
   onClose: () => void
+  /** URL вебхука Workflow-агента; если не передан – используем /api/chat */
   webhookUrl?: string
 }
 
@@ -59,13 +60,13 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
     const text = input.trim()
     if (!text || isSending) return
 
+    // основной источник – вебхук агента, запасной – /api/chat
     const url = (webhookUrl && webhookUrl.trim()) || "/api/chat"
 
     setError(null)
     setIsSending(true)
     setInput("")
 
-    // ГАРАНТИРОВАННО получаем строку кода языка
     const langCode =
       typeof (currentLanguage as any) === "string"
         ? (currentLanguage as any as string)
