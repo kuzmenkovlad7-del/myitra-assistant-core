@@ -11,7 +11,6 @@ import { RTLWrapper } from "@/components/rtl-wrapper"
 import Header from "@/components/header"
 import Footer from "@/components/footer"
 import { APP_NAME } from "@/lib/app-config"
-import { defaultLanguage } from "@/lib/i18n/languages"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -74,7 +73,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang={defaultLanguage.code} suppressHydrationWarning>
+    <html lang="uk" suppressHydrationWarning>
       <body
         className={`${inter.className} min-h-screen bg-background text-foreground antialiased`}
         suppressHydrationWarning
