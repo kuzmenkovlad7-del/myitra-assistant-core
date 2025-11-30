@@ -72,7 +72,9 @@ function extractAnswer(data: any): string {
       first.content ||
       first.result ||
       JSON.stringify(first)
-    )?.toString().trim()
+    )
+      ?.toString()
+      .trim()
   }
 
   if (typeof data === "object") {
@@ -84,7 +86,9 @@ function extractAnswer(data: any): string {
       data.content ||
       data.result ||
       JSON.stringify(data)
-    )?.toString().trim()
+    )
+      ?.toString()
+      .trim()
   }
 
   return ""
@@ -113,15 +117,9 @@ export default function VoiceCallDialog({
 
   const recognitionRef = useRef<any | null>(null)
   const ignoreOnEndRef = useRef(false) // чтобы не автоперезапускать, когда сами стопаем
-  const micWasMutedBeforeSpeakRef = useRef(false) // запоминаем состояние микрофона до речи ассистента
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
   const effectiveEmail = userEmail || user?.email || "guest@example.com"
-
-  const langCode =
-    typeof (currentLanguage as any) === "string"
-      ? ((currentLanguage as any) as string)
-      : ((currentLanguage as any)?.code || "uk")
 
   // Скролл вниз при новых сообщениях
   useEffect(() => {
@@ -163,10 +161,9 @@ export default function VoiceCallDialog({
 
   const startRecognition = useCallback(() => {
     if (typeof window === "undefined") return
+    if (isMicMuted) return // если микрофон выключен руками — не слушаем
 
-    const SR =
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) {
       setNetworkError(
         t(
@@ -179,6 +176,12 @@ export default function VoiceCallDialog({
     const recognition = new SR()
     recognition.continuous = true
     recognition.interimResults = false
+
+    const langCode =
+      typeof (currentLanguage as any) === "string"
+        ? ((currentLanguage as any) as string)
+        : (currentLanguage as any)?.code || "uk"
+
     recognition.lang = langCode.startsWith("uk")
       ? "uk-UA"
       : langCode.startsWith("ru")
@@ -208,7 +211,7 @@ export default function VoiceCallDialog({
         return
       }
 
-      // мягкий автоперезапуск, пока звонок активен и микрофон не выключен
+      // мягкий автоперезапуск, пока звонок активен и микрофон не выключен руками
       if (isCallActive && !isMicMuted) {
         setTimeout(() => {
           try {
@@ -224,7 +227,7 @@ export default function VoiceCallDialog({
       const last = event.results[event.results.length - 1]
       if (!last || !last.isFinal) return
 
-      const text: string = last[0]?.transcript?.trim()
+      const text = last[0]?.transcript?.trim()
       if (!text) return
 
       const userMsg: VoiceMessage = {
@@ -246,16 +249,13 @@ export default function VoiceCallDialog({
         t("Could not start microphone. Check permissions and try again."),
       )
     }
-  }, [langCode, isCallActive, isMicMuted, t])
+  }, [currentLanguage, isCallActive, isMicMuted, t])
 
   // --- Озвучка через browser TTS, без самопрослушивания ---
 
   const speakText = useCallback(
     (text: string) => {
       if (typeof window === "undefined" || !window.speechSynthesis) return
-
-      // запоминаем, был ли микрофон выключен ДО речи ассистента
-      micWasMutedBeforeSpeakRef.current = isMicMuted
 
       // на время озвучки выключаем распознавание, чтобы не слушал сам себя
       if (recognitionRef.current) {
@@ -267,10 +267,10 @@ export default function VoiceCallDialog({
         }
       }
 
-      // показываем, что микрофон временно выключен (иконка красная)
-      if (!isMicMuted) {
-        setIsMicMuted(true)
-      }
+      const langCode =
+        typeof (currentLanguage as any) === "string"
+          ? ((currentLanguage as any) as string)
+          : (currentLanguage as any)?.code || "uk"
 
       const utterance = new SpeechSynthesisUtterance(text)
 
@@ -283,25 +283,23 @@ export default function VoiceCallDialog({
       utterance.rate = 1
       utterance.pitch = 1
 
-      // возобновляем прослушивание только если ДО речи микрофон был включен
-      const shouldResumeListening =
-        isCallActive && !micWasMutedBeforeSpeakRef.current
+      const shouldResumeListening = isCallActive && !isMicMuted
 
       utterance.onstart = () => {
         setIsAiSpeaking(true)
+        // во время речи ассистента явно помечаем, что сейчас не слушаем
+        setIsListening(false)
       }
 
       utterance.onend = () => {
         setIsAiSpeaking(false)
 
-        // если пользователь сам микрофон не выключал — включаем обратно
-        if (!micWasMutedBeforeSpeakRef.current) {
-          setIsMicMuted(false)
-        }
-
-        // и сразу снова начинаем слушать
+        // после окончания озвучки через небольшую паузу снова слушаем пользователя,
+        // если звонок активен и микрофон не выключен кнопкой
         if (shouldResumeListening) {
-          startRecognition()
+          setTimeout(() => {
+            startRecognition()
+          }, 700)
         }
       }
 
@@ -312,13 +310,18 @@ export default function VoiceCallDialog({
       window.speechSynthesis.cancel()
       window.speechSynthesis.speak(utterance)
     },
-    [langCode, isCallActive, isMicMuted, startRecognition],
+    [currentLanguage, isCallActive, isMicMuted, startRecognition],
   )
 
-  // --- Отправка текста в n8n / TurbotaAI агент ---
+  // --- Отправка текста в TurbotaAI-агента (как в чате) ---
 
   const handleUserText = useCallback(
     async (text: string) => {
+      const langCode =
+        typeof (currentLanguage as any) === "string"
+          ? ((currentLanguage as any) as string)
+          : (currentLanguage as any)?.code || "uk"
+
       // 1) prop → 2) env → 3) /api/chat
       const resolvedWebhook =
         (webhookUrl && webhookUrl.trim()) ||
@@ -341,6 +344,7 @@ export default function VoiceCallDialog({
           throw new Error(`Chat API error: ${res.status}`)
         }
 
+        // читаем как текст, потом пытаемся JSON-распарсить
         const raw = await res.text()
         let data: any = raw
 
@@ -374,12 +378,13 @@ export default function VoiceCallDialog({
         if (onError && error instanceof Error) onError(error)
       }
     },
-    [webhookUrl, langCode, effectiveEmail, speakText, t, onError],
+    [currentLanguage, effectiveEmail, onError, speakText, t, webhookUrl],
   )
 
   const startCall = useCallback(() => {
     setIsConnecting(true)
     setNetworkError(null)
+    setIsMicMuted(false)
 
     setTimeout(() => {
       setIsCallActive(true)
@@ -397,6 +402,7 @@ export default function VoiceCallDialog({
     setIsMicMuted(next)
 
     if (next) {
+      // выключили микрофон — стопаем распознавание
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop()
@@ -406,11 +412,25 @@ export default function VoiceCallDialog({
       }
       setIsListening(false)
     } else if (isCallActive) {
+      // снова включили — начинаем слушать
       startRecognition()
     }
   }
 
   const userEmailDisplay = effectiveEmail
+
+  // статусная строка внизу — теперь "Paused" только если микрофон реально выключен кнопкой
+  const statusText = !isCallActive
+    ? t(
+        "In crisis situations, please contact local emergency services immediately.",
+      )
+    : isAiSpeaking
+      ? t("Assistant is speaking…")
+      : isMicMuted
+        ? t("Paused. Turn on microphone to continue.")
+        : isListening
+          ? t("Listening… you can speak.")
+          : t("Waiting… you can start speaking at any moment.")
 
   return (
     <Dialog
@@ -523,15 +543,7 @@ export default function VoiceCallDialog({
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-[11px] text-slate-500">
                   <Sparkles className="h-3 w-3" />
-                  {isAiSpeaking
-                    ? t("Assistant is speaking…")
-                    : isListening
-                      ? t("Listening… you can speak.")
-                      : isCallActive
-                        ? t("Paused. Turn on microphone to continue.")
-                        : t(
-                            "In crisis situations, please contact local emergency services immediately.",
-                          )}
+                  {statusText}
                 </div>
 
                 {isCallActive && (
