@@ -72,7 +72,9 @@ function extractAnswer(data: any): string {
       first.content ||
       first.result ||
       JSON.stringify(first)
-    )?.toString().trim()
+    )
+      ?.toString()
+      .trim()
   }
 
   if (typeof data === "object") {
@@ -84,7 +86,9 @@ function extractAnswer(data: any): string {
       data.content ||
       data.result ||
       JSON.stringify(data)
-    )?.toString().trim()
+    )
+      ?.toString()
+      .trim()
   }
 
   return ""
@@ -116,11 +120,6 @@ export default function VoiceCallDialog({
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
   const effectiveEmail = userEmail || user?.email || "guest@example.com"
-
-  const langCode =
-    typeof (currentLanguage as any) === "string"
-      ? ((currentLanguage as any) as string)
-      : ((currentLanguage as any)?.code || "uk")
 
   // Скролл вниз при новых сообщениях
   useEffect(() => {
@@ -163,9 +162,7 @@ export default function VoiceCallDialog({
   const startRecognition = useCallback(() => {
     if (typeof window === "undefined") return
 
-    const SR =
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) {
       setNetworkError(
         t(
@@ -178,6 +175,12 @@ export default function VoiceCallDialog({
     const recognition = new SR()
     recognition.continuous = true
     recognition.interimResults = false
+
+    const langCode =
+      typeof (currentLanguage as any) === "string"
+        ? ((currentLanguage as any) as string)
+        : (currentLanguage as any)?.code || "uk"
+
     recognition.lang = langCode.startsWith("uk")
       ? "uk-UA"
       : langCode.startsWith("ru")
@@ -223,7 +226,7 @@ export default function VoiceCallDialog({
       const last = event.results[event.results.length - 1]
       if (!last || !last.isFinal) return
 
-      const text: string = last[0]?.transcript?.trim()
+      const text = last[0]?.transcript?.trim()
       if (!text) return
 
       const userMsg: VoiceMessage = {
@@ -245,7 +248,7 @@ export default function VoiceCallDialog({
         t("Could not start microphone. Check permissions and try again."),
       )
     }
-  }, [langCode, isCallActive, isMicMuted, t])
+  }, [currentLanguage, isCallActive, isMicMuted, t])
 
   // --- Озвучка через browser TTS, без самопрослушивания ---
 
@@ -262,6 +265,11 @@ export default function VoiceCallDialog({
           console.error(e)
         }
       }
+
+      const langCode =
+        typeof (currentLanguage as any) === "string"
+          ? ((currentLanguage as any) as string)
+          : (currentLanguage as any)?.code || "uk"
 
       const utterance = new SpeechSynthesisUtterance(text)
 
@@ -296,13 +304,18 @@ export default function VoiceCallDialog({
       window.speechSynthesis.cancel()
       window.speechSynthesis.speak(utterance)
     },
-    [langCode, isCallActive, isMicMuted, startRecognition],
+    [currentLanguage, isCallActive, isMicMuted, startRecognition],
   )
 
-  // --- Отправка текста в n8n / TurbotaAI агент ---
+  // --- Отправка текста в TurbotaAI-агента (как в чате) ---
 
   const handleUserText = useCallback(
     async (text: string) => {
+      const langCode =
+        typeof (currentLanguage as any) === "string"
+          ? ((currentLanguage as any) as string)
+          : (currentLanguage as any)?.code || "uk"
+
       // 1) prop → 2) env → 3) /api/chat
       const resolvedWebhook =
         (webhookUrl && webhookUrl.trim()) ||
@@ -325,6 +338,7 @@ export default function VoiceCallDialog({
           throw new Error(`Chat API error: ${res.status}`)
         }
 
+        // читаем как текст, потом пытаемся JSON-распарсить
         const raw = await res.text()
         let data: any = raw
 
@@ -358,7 +372,7 @@ export default function VoiceCallDialog({
         if (onError && error instanceof Error) onError(error)
       }
     },
-    [webhookUrl, langCode, effectiveEmail, speakText, t, onError],
+    [currentLanguage, effectiveEmail, onError, speakText, t, webhookUrl],
   )
 
   const startCall = useCallback(() => {
@@ -445,7 +459,7 @@ export default function VoiceCallDialog({
             </div>
           </DialogHeader>
 
-          <div className="flex h-[500px] flex-col md:h-[540px]">
+          <div className="flex h:[500px] flex-col md:h-[540px]">
             <ScrollArea className="flex-1 px-5 pt-4 pb-2">
               <div
                 ref={scrollRef}
