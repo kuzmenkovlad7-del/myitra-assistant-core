@@ -24,6 +24,7 @@ import {
   getNativeVoicePreferences,
 } from "@/lib/i18n/translation-utils"
 import { APP_NAME } from "@/lib/app-config"
+import type { HTMLVideoElement } from "react"
 
 interface AICharacter {
   id: string
@@ -62,7 +63,25 @@ type ChatMessage = {
   text: string
 }
 
+// AI character options
 const aiCharacters: AICharacter[] = [
+  {
+    id: "dr-alexander",
+    name: "Dr. Alexander",
+    gender: "male",
+    description:
+      "Senior psychologist specializing in cognitive behavioral therapy with 15+ years of experience",
+    avatar:
+      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/photo_2025-10-31_22-27-18-BmxDH7DCv7e3p0y8HobTyoPkQw1COM.jpg",
+    voice: "en-US-GuyNeural",
+    animated: true,
+    idleVideo:
+      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_7660-2BvRYFiYOwNRwDjKtBtSCtEGUbLMEh.MP4",
+    speakingVideoNew:
+      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_9968-64neCIRuZ7CYXDT86QGYu4XSE7j0Ug.MP4",
+    speakingVideo:
+      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/doc_2025-06-19_20-29-04-QF7QyAGKBJ4Abilc0beRV9jP7VDO7i.mp4",
+  },
   {
     id: "dr-sophia",
     name: "Dr. Sophia",
@@ -80,6 +99,22 @@ const aiCharacters: AICharacter[] = [
     speakingVideo:
       "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG111211_6034-6fD2w1l0V94iXV7x4VeGW74NHbtZrk.MP4",
   },
+  {
+    id: "dr-maria",
+    name: "Dr. Maria",
+    gender: "female",
+    description:
+      "Psychotherapist specializing in emotional regulation, trauma recovery, and relationship counseling",
+    avatar:
+      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/photo_2025-10-31_22-27-19%D1%83-iWDrUd3gH9sLBeOjmIvu8wX3yxwBuq.jpg",
+    voice: "en-US-JennyNeural",
+    animated: true,
+    idleVideo:
+      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_9963-sneJ4XhoEuemkYgVb425Mscu7X9OC6.MP4",
+    speakingVideoNew:
+      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_9949-mYErfm0ubE19kr4trLKJrggtvoh4zy.MP4",
+    speakingVideo: "/videos/dr-maria-speaking.mp4",
+  },
 ]
 
 export default function VideoCallDialog({
@@ -92,65 +127,83 @@ export default function VideoCallDialog({
   const { t, currentLanguage } = useLanguage()
   const { user } = useAuth()
 
-  const [selectedCharacter] = useState<AICharacter | null>(aiCharacters[0] ?? null)
+  // Character and call state
+  const [selectedCharacter, setSelectedCharacter] =
+    useState<AICharacter | null>(null)
   const [isCallActive, setIsCallActive] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
 
+  // Media controls - START WITH MIC MUTED
   const [isMicMuted, setIsMicMuted] = useState(true)
   const [isCameraOff, setIsCameraOff] = useState(false)
   const [isSoundEnabled, setIsSoundEnabled] = useState(true)
 
+  // Permissions state
+  const [permissionsError, setPermissionsError] = useState<string | null>(null)
+  const [showPermissionsPrompt, setShowPermissionsPrompt] = useState(false)
+
+  // Avatar settings
   const [showSettings, setShowSettings] = useState(false)
   const [avatarSensitivity, setAvatarSensitivity] = useState(0.8)
 
+  // Speech and transcription
   const [transcript, setTranscript] = useState<string>("")
   const [interimTranscript, setInterimTranscript] = useState<string>("")
   const [aiResponse, setAiResponse] = useState<string>("")
   const [isListening, setIsListening] = useState(false)
-  const [activityStatus, setActivityStatus] = useState<"listening" | "thinking" | "speaking">(
-    "listening",
-  )
+  const [activityStatus, setActivityStatus] = useState<
+    "listening" | "thinking" | "speaking"
+  >("listening")
   const [speechError, setSpeechError] = useState<string | null>(null)
   const [isAiSpeaking, setIsAiSpeaking] = useState(false)
 
+  // Диалог как в голосовом ассистенте
   const [messages, setMessages] = useState<ChatMessage[]>([])
 
+  // Processing state
   const [isWaitingForUser, setIsWaitingForUser] = useState(false)
   const [speechStartTime, setSpeechStartTime] = useState<number>(0)
 
-  const [currentVideoState, setCurrentVideoState] = useState<"idle" | "speaking">("idle")
+  // Video state
+  const [currentVideoState, setCurrentVideoState] = useState<
+    "idle" | "speaking"
+  >("idle")
 
+  // Refs
   const recognitionRef = useRef<any>(null)
-  const startSpeechRecognitionRef = useRef<() => void | null>(null)
   const isProcessingRef = useRef<boolean>(false)
-  const isMicMutedRef = useRef<boolean>(isMicMuted)
-  const isCallActiveRef = useRef<boolean>(isCallActive)
-  const isAiSpeakingRef = useRef<boolean>(false)
-
   const userVideoRef = useRef<HTMLVideoElement | null>(null)
   const idleVideoRef = useRef<HTMLVideoElement | null>(null)
   const speakingVideoRef = useRef<HTMLVideoElement | null>(null)
-
   const cleanupTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const microphoneStreamRef = useRef<MediaStream | null>(null)
   const reconnectAttemptRef = useRef<number>(0)
-
   const currentAudioRef = useRef<HTMLAudioElement | null>(null)
   const isVoicingRef = useRef<boolean>(false)
   const voiceCacheRef = useRef<Map<string, SpeechSynthesisVoice>>(new Map())
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
-  const processTranscriptionRef = useRef<((text: string) => Promise<void>) | null>(null)
+  const processTranscriptionRef = useRef<((text: string) => Promise<void>) | null>(
+    null,
+  )
 
-  const reconnectMicrophoneRef = useRef<() => Promise<void> | null>(null)
+  const isMicMutedRef = useRef<boolean>(isMicMuted)
+  const isCallActiveRef = useRef<boolean>(isCallActive)
+  const isAssistantSpeakingRef = useRef<boolean>(false)
 
   const [audioInitialized, setAudioInitialized] = useState(false)
   const audioContextRef = useRef<AudioContext | null>(null)
 
+  const startSpeechRecognitionRef = useRef<() => void | null>(null)
+  const reconnectMicrophoneRef = useRef<() => Promise<void> | null>(null)
+
+  // Get current language settings
   const currentLocale = getLocaleForLanguage(currentLanguage.code)
   const nativeVoicePreferences = getNativeVoicePreferences()
 
   const hasEnhancedVideo =
     !!selectedCharacter?.idleVideo && !!selectedCharacter?.speakingVideoNew
+
+  // ======== EFFECTS TO SYNC REFS ========
 
   useEffect(() => {
     isMicMutedRef.current = isMicMuted
@@ -161,9 +214,125 @@ export default function VideoCallDialog({
   }, [isCallActive])
 
   useEffect(() => {
-    isAiSpeakingRef.current = isAiSpeaking
+    isAssistantSpeakingRef.current = isAiSpeaking
   }, [isAiSpeaking])
 
+  // ==============================
+  // PERMISSIONS CHECK
+  // ==============================
+
+  const checkMediaPermissions = useCallback(async (): Promise<{
+    hasPermissions: boolean
+    microphoneGranted: boolean
+    cameraGranted: boolean
+    error?: string
+  }> => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        return {
+          hasPermissions: false,
+          microphoneGranted: false,
+          cameraGranted: false,
+          error: t(
+            "Your browser does not support audio/video features required for video calls.",
+          ),
+        }
+      }
+
+      let microphoneGranted = false
+      let cameraGranted = false
+      let microphoneError = ""
+      let cameraError = ""
+
+      // mic
+      try {
+        const micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        })
+        microphoneGranted = true
+        micStream.getTracks().forEach((track) => track.stop())
+      } catch (micError: any) {
+        if (
+          micError.name === "NotAllowedError" ||
+          micError.name === "PermissionDeniedError"
+        ) {
+          microphoneError = t(
+            "Microphone access was denied. Please allow microphone access in your browser settings.",
+          )
+        } else if (micError.name === "NotFoundError") {
+          microphoneError = t(
+            "No microphone found. Please connect a microphone and try again.",
+          )
+        } else {
+          microphoneError = t(
+            "Unable to access microphone. Error: {{error}}",
+            { error: micError.message },
+          )
+        }
+      }
+
+      // camera
+      try {
+        const camStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+        })
+        cameraGranted = true
+        camStream.getTracks().forEach((track) => track.stop())
+      } catch (camError: any) {
+        if (
+          camError.name === "NotAllowedError" ||
+          camError.name === "PermissionDeniedError"
+        ) {
+          cameraError = t(
+            "Camera access was denied. Please allow camera access in your browser settings.",
+          )
+        } else if (camError.name === "NotFoundError") {
+          cameraError = t(
+            "No camera found. Please connect a camera and try again.",
+          )
+        } else {
+          cameraError = t(
+            "Unable to access camera. Error: {{error}}",
+            { error: camError.message },
+          )
+        }
+      }
+
+      if (microphoneGranted && cameraGranted) {
+        return {
+          hasPermissions: true,
+          microphoneGranted: true,
+          cameraGranted: true,
+        }
+      }
+
+      const errors = []
+      if (microphoneError) errors.push(microphoneError)
+      if (cameraError) errors.push(cameraError)
+
+      return {
+        hasPermissions: false,
+        microphoneGranted,
+        cameraGranted,
+        error: errors.join(" "),
+      }
+    } catch (error: any) {
+      return {
+        hasPermissions: false,
+        microphoneGranted: false,
+        cameraGranted: false,
+        error: t(
+          "Unable to check media permissions. Please ensure your browser supports audio/video features.",
+        ),
+      }
+    }
+  }, [t])
+
+  // Clean up response text
   const cleanResponseText = useCallback((text: string) => {
     if (!text) return ""
 
@@ -173,8 +342,8 @@ export default function VideoCallDialog({
         if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].output) {
           return parsed[0].output.trim()
         }
-      } catch {
-        // ignore
+      } catch (e) {
+        console.log("Failed to parse response format:", e)
       }
     }
 
@@ -186,19 +355,28 @@ export default function VideoCallDialog({
       .trim()
   }, [])
 
+  // Enhanced voice selection
   const getRefinedVoiceForLanguage = useCallback(
     (langCode: string, preferredGender: "female" | "male" = "female") => {
-      if (!window.speechSynthesis) return null
+      if (!window.speechSynthesis) {
+        console.error("Speech synthesis not supported")
+        return null
+      }
 
       const cacheKey = `${langCode}-${preferredGender}`
+
       if (voiceCacheRef.current.has(cacheKey)) {
         return voiceCacheRef.current.get(cacheKey)!
       }
 
       const voices = window.speechSynthesis.getVoices()
-      if (voices.length === 0) return null
+      if (voices.length === 0) {
+        console.warn("No voices available yet")
+        return null
+      }
 
-      const nativeVoices = nativeVoicePreferences[langCode]?.[preferredGender] || []
+      const nativeVoices =
+        nativeVoicePreferences[langCode]?.[preferredGender] || []
 
       for (const voiceName of nativeVoices) {
         const exactMatch = voices.find((v) => v.name === voiceName)
@@ -247,6 +425,7 @@ export default function VideoCallDialog({
       }
 
       const langVoices = getLanguageVoices(langCode)
+
       if (langVoices.length > 0) {
         const bestVoice = langVoices[0]
         voiceCacheRef.current.set(cacheKey, bestVoice)
@@ -272,33 +451,42 @@ export default function VideoCallDialog({
     [nativeVoicePreferences],
   )
 
+  // Setup microphone
   const setupMicrophone = useCallback(async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-        sampleRate: 44100,
-        channelCount: 1,
-      },
-    })
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 44100,
+          channelCount: 1,
+        },
+      })
 
-    microphoneStreamRef.current = stream
+      microphoneStreamRef.current = stream
 
-    const audioTrack = stream.getAudioTracks()[0]
-    if (audioTrack) {
-      audioTrack.onended = () => {
-        if (isCallActive && !isMicMuted) {
-          reconnectMicrophoneRef.current?.()
+      const audioTrack = stream.getAudioTracks()[0]
+      if (audioTrack) {
+        audioTrack.onended = () => {
+          if (isCallActive && !isMicMuted) {
+            reconnectMicrophoneRef.current?.()
+          }
         }
       }
-    }
 
-    return stream
+      return stream
+    } catch (error) {
+      console.error("Error setting up microphone:", error)
+      throw error
+    }
   }, [isCallActive, isMicMuted])
 
+  // Reconnect microphone
   const reconnectMicrophone = useCallback(async () => {
-    if (reconnectAttemptRef.current >= 3) return
+    if (reconnectAttemptRef.current >= 3) {
+      return
+    }
 
     reconnectAttemptRef.current++
 
@@ -310,24 +498,36 @@ export default function VideoCallDialog({
       await new Promise((resolve) => setTimeout(resolve, 1000))
       await setupMicrophone()
 
+      if (isCallActive && !isMicMuted) {
+        startSpeechRecognitionRef.current?.()
+      }
+
       reconnectAttemptRef.current = 0
-    } catch {
-      setTimeout(() => reconnectMicrophoneRef.current?.(), 2000 * reconnectAttemptRef.current)
+    } catch (error) {
+      console.error("Failed to reconnect microphone:", error)
+      setTimeout(
+        () => reconnectMicrophoneRef.current?.(),
+        2000 * reconnectAttemptRef.current,
+      )
     }
-  }, [setupMicrophone])
+  }, [isCallActive, isMicMuted, setupMicrophone])
 
   useEffect(() => {
     reconnectMicrophoneRef.current = reconnectMicrophone
   }, [reconnectMicrophone])
 
+  // Speech recognition – continuous listening
   const startSpeechRecognition = useCallback(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition
 
     if (!SpeechRecognition) {
+      console.log("Speech recognition not supported")
       return
     }
 
     const recognitionInstance = new SpeechRecognition()
+
     recognitionInstance.continuous = true
     recognitionInstance.interimResults = true
     recognitionInstance.maxAlternatives = 3
@@ -342,7 +542,8 @@ export default function VideoCallDialog({
     }
 
     recognitionInstance.onresult = async (event: any) => {
-      if (isAiSpeakingRef.current || isVoicingRef.current) {
+      // ВАЖНО: игнорируем всё, что произносит ассистент
+      if (isAssistantSpeakingRef.current || isVoicingRef.current) {
         return
       }
 
@@ -379,7 +580,9 @@ export default function VideoCallDialog({
             setInterimTranscript("")
             setIsWaitingForUser(false)
 
-            setTranscript((prev) => (prev ? `${prev} ${textToProcess}` : textToProcess))
+            setTranscript((prev) =>
+              prev ? `${prev} ${textToProcess}` : textToProcess,
+            )
 
             processTranscriptionRef.current?.(textToProcess)
           } else {
@@ -396,7 +599,9 @@ export default function VideoCallDialog({
           setInterimTranscript("")
           setIsWaitingForUser(false)
 
-          setTranscript((prev) => (prev ? `${prev} ${textToProcess}` : textToProcess))
+          setTranscript((prev) =>
+            prev ? `${prev} ${textToProcess}` : textToProcess,
+          )
 
           processTranscriptionRef.current?.(textToProcess)
         } else {
@@ -406,7 +611,9 @@ export default function VideoCallDialog({
     }
 
     recognitionInstance.onerror = (event: any) => {
-      if (event.error === "no-speech" || event.error === "aborted") return
+      if (event.error === "no-speech" || event.error === "aborted") {
+        return
+      }
 
       if (event.error === "audio-capture" || event.error === "not-allowed") {
         return
@@ -417,19 +624,19 @@ export default function VideoCallDialog({
         setTimeout(() => {
           try {
             recognitionInstance.start()
-          } catch {
-            /* ignore */
+          } catch (e) {
+            console.log("Failed to restart with English:", e)
           }
         }, 1000)
         return
       }
 
-      if (event.error === "network" && isCallActiveRef.current) {
+      if (event.error === "network" && isCallActive && !isMicMuted) {
         setTimeout(() => {
           try {
             recognitionInstance.start()
-          } catch {
-            /* ignore */
+          } catch (e) {
+            console.log("Failed to restart:", e)
           }
         }, 2000)
       }
@@ -440,40 +647,64 @@ export default function VideoCallDialog({
         clearTimeout(silenceTimeout)
       }
 
-      setIsListening(false)
-
       if (isCallActiveRef.current && !isMicMutedRef.current) {
         try {
           recognitionInstance.start()
           setIsListening(true)
-        } catch {
-          /* ignore */
+        } catch (error) {
+          setTimeout(() => {
+            if (
+              isCallActiveRef.current &&
+              !isMicMutedRef.current &&
+              recognitionRef.current
+            ) {
+              try {
+                recognitionInstance.start()
+                setIsListening(true)
+              } catch (retryError) {
+                console.log("Retry failed:", retryError)
+              }
+            }
+          }, 100)
         }
+      } else {
+        setIsListening(false)
       }
     }
 
     try {
       recognitionInstance.start()
-      recognitionRef.current = recognitionInstance
-      startSpeechRecognitionRef.current = () => {
-        try {
-          recognitionInstance.start()
-        } catch {
-          /* ignore */
-        }
+
+      recognitionRef.current = {
+        stop: () => {
+          try {
+            if (silenceTimeout) {
+              clearTimeout(silenceTimeout)
+            }
+            recognitionInstance.stop()
+          } catch (e) {
+            console.log("Error stopping:", e)
+          }
+        },
+        start: () => {
+          try {
+            recognitionInstance.start()
+          } catch (e) {
+            console.log("Error starting:", e)
+          }
+        },
       }
-    } catch {
-      /* ignore */
+      startSpeechRecognitionRef.current = recognitionRef.current.start
+    } catch (error) {
+      console.log("Error starting recognition:", error)
     }
-  }, [currentLocale])
+  }, [currentLocale, isCallActive, isMicMuted])
 
-  useEffect(() => {
-    startSpeechRecognitionRef.current = startSpeechRecognition
-  }, [startSpeechRecognition])
-
-  const speakWithBrowserTTS = useCallback(
+  // Browser TTS
+  const fallbackToBrowserTTS = useCallback(
     (cleanText: string, gender: "male" | "female", cleanup: () => void) => {
       if (!window.speechSynthesis) {
+        console.error("Browser TTS not supported")
         cleanup()
         return
       }
@@ -490,9 +721,11 @@ export default function VideoCallDialog({
             }
             if (speakingVideoRef.current && selectedCharacter?.speakingVideoNew) {
               speakingVideoRef.current.currentTime = 0
-              speakingVideoRef.current.play().catch(() => {
-                /* ignore */
-              })
+              speakingVideoRef.current
+                .play()
+                .catch((error) =>
+                  console.log("Speaking video error:", error),
+                )
             }
           }
 
@@ -500,12 +733,18 @@ export default function VideoCallDialog({
           utterance.text = cleanText
           utterance.lang = currentLocale
 
-          const selectedVoice = getRefinedVoiceForLanguage(currentLanguage.code, gender)
+          const selectedVoice = getRefinedVoiceForLanguage(
+            currentLanguage.code,
+            gender,
+          )
           if (selectedVoice) {
             utterance.voice = selectedVoice
           }
 
-          const speechParameters = getNativeSpeechParameters(currentLanguage.code, gender)
+          const speechParameters = getNativeSpeechParameters(
+            currentLanguage.code,
+            gender,
+          )
           utterance.rate = speechParameters.rate
           utterance.pitch = speechParameters.pitch
           utterance.volume = speechParameters.volume
@@ -516,31 +755,44 @@ export default function VideoCallDialog({
             cleanup()
           }
 
-          utterance.onerror = () => {
+          utterance.onerror = (err) => {
+            if (err.error !== "interrupted") {
+              console.error("Browser TTS error:", err.error)
+            }
             cleanup()
           }
 
           setTimeout(() => {
             try {
               window.speechSynthesis!.speak(utterance)
-            } catch {
+            } catch (speakError) {
+              console.error("Browser TTS speak error:", speakError)
               cleanup()
             }
-          }, 100)
-        } catch {
+          }, 80)
+        } catch (innerError) {
+          console.error("Browser TTS inner error:", innerError)
           cleanup()
         }
-      }, 200)
+      }, 150)
     },
-    [currentLocale, currentLanguage, hasEnhancedVideo, selectedCharacter, getRefinedVoiceForLanguage],
+    [
+      currentLocale,
+      currentLanguage.code,
+      hasEnhancedVideo,
+      selectedCharacter,
+      getRefinedVoiceForLanguage,
+    ],
   )
 
+  // Text-to-speech function (Только браузер, без Google)
   const speakText = useCallback(
     async (text: string) => {
       if (!isCallActive) return
       if (!isSoundEnabled) return
       if (!text || !text.trim()) return
 
+      // Останавливаем предыдущую речь
       if (isVoicingRef.current || isAiSpeaking) {
         if (currentAudioRef.current) {
           currentAudioRef.current.pause()
@@ -552,7 +804,6 @@ export default function VideoCallDialog({
         if (currentUtteranceRef.current) {
           currentUtteranceRef.current = null
         }
-
         if (window.speechSynthesis && window.speechSynthesis.speaking) {
           window.speechSynthesis.cancel()
         }
@@ -584,13 +835,21 @@ export default function VideoCallDialog({
           if (currentUtteranceRef.current) {
             currentUtteranceRef.current = null
           }
-
           if (window.speechSynthesis) {
             window.speechSynthesis.cancel()
           }
 
           setIsAiSpeaking(false)
           isVoicingRef.current = false
+
+          if (!isMicMuted) {
+            setActivityStatus("listening")
+            if (!isListening && recognitionRef.current) {
+              startSpeechRecognitionRef.current?.()
+            }
+          }
+          setIsWaitingForUser(false)
+
           setCurrentVideoState("idle")
 
           if (hasEnhancedVideo) {
@@ -600,9 +859,9 @@ export default function VideoCallDialog({
             }
             if (idleVideoRef.current && selectedCharacter?.idleVideo && isCallActive) {
               idleVideoRef.current.currentTime = 0
-              idleVideoRef.current.play().catch(() => {
-                /* ignore */
-              })
+              idleVideoRef.current
+                .play()
+                .catch((e) => console.log("Idle video play error:", e))
             }
           } else {
             if (speakingVideoRef.current) {
@@ -614,16 +873,16 @@ export default function VideoCallDialog({
           if (cleanupTimeoutRef.current) {
             clearTimeout(cleanupTimeoutRef.current)
           }
-
-          setActivityStatus("listening")
-        } catch {
-          /* ignore */
+        } catch (cleanupError) {
+          console.error("Cleanup error:", cleanupError)
         }
       }
 
       try {
-        speakWithBrowserTTS(cleanedText, characterGender, cleanup)
-      } catch {
+        // только браузерная озвучка
+        fallbackToBrowserTTS(cleanedText, characterGender, cleanup)
+      } catch (error) {
+        console.error("Speech error:", error)
         cleanup()
       }
     },
@@ -634,10 +893,13 @@ export default function VideoCallDialog({
       selectedCharacter,
       isAiSpeaking,
       hasEnhancedVideo,
-      speakWithBrowserTTS,
+      isMicMuted,
+      isListening,
+      fallbackToBrowserTTS,
     ],
   )
 
+  // Load voices on mount
   useEffect(() => {
     if (window.speechSynthesis) {
       const loadVoices = () => {
@@ -650,18 +912,32 @@ export default function VideoCallDialog({
       loadVoices()
       window.speechSynthesis.addEventListener("voiceschanged", loadVoices)
       return () => {
-        window.speechSynthesis?.removeEventListener("voiceschanged", loadVoices)
+        window.speechSynthesis?.removeEventListener(
+          "voiceschanged",
+          loadVoices,
+        )
       }
     }
   }, [currentLanguage.code, getRefinedVoiceForLanguage])
 
+  // Process transcription
   const processTranscription = useCallback(
     async (text: string) => {
-      if (!isCallActive) return
-      if (isProcessingRef.current || !text.trim()) return
+      if (!isCallActive) {
+        return
+      }
 
-      setMessages((prev) => [...prev, { id: prev.length + 1, role: "user", text }])
+      if (isProcessingRef.current || !text.trim()) {
+        return
+      }
 
+      // Добавляем реплику пользователя в чат
+      setMessages((prev) => [
+        ...prev,
+        { id: prev.length + 1, role: "user", text },
+      ])
+
+      // Прерываем озвучку, если говорила AI
       if (isAiSpeaking || isVoicingRef.current) {
         if (currentAudioRef.current) {
           currentAudioRef.current.pause()
@@ -686,9 +962,9 @@ export default function VideoCallDialog({
           }
           if (idleVideoRef.current && selectedCharacter?.idleVideo) {
             idleVideoRef.current.currentTime = 0
-            idleVideoRef.current.play().catch(() => {
-              /* ignore */
-            })
+            idleVideoRef.current
+              .play()
+              .catch((e) => console.log("Idle video error:", e))
           }
         }
       }
@@ -712,7 +988,7 @@ export default function VideoCallDialog({
         })
 
         const webhookResponse = await fetch(
-          `https://myitra.app.n8n.cloud/webhook/99d30fb7-c3c8-44e8-8231-224d1c394c59?${params.toString()}`,
+          `${webhookUrl}?${params.toString()}`,
           {
             method: "GET",
             headers: {
@@ -776,6 +1052,7 @@ export default function VideoCallDialog({
         }
 
         if (isCallActive) {
+          // Добавляем ответ ассистента в чат
           setMessages((prev) => [
             ...prev,
             {
@@ -795,6 +1072,8 @@ export default function VideoCallDialog({
           }, 100)
         }
       } catch (error: any) {
+        console.error("Processing error:", error)
+
         if (!isCallActive) return
 
         let errorMessage = ""
@@ -805,7 +1084,9 @@ export default function VideoCallDialog({
             "I received your message but couldn't generate a response. Could you try rephrasing?",
           )
         } else {
-          errorMessage = t("I couldn't process your message. Could you try again.")
+          errorMessage = t(
+            "I couldn't process your message. Could you try again.",
+          )
         }
 
         if (isCallActive) {
@@ -838,6 +1119,7 @@ export default function VideoCallDialog({
       isCallActive,
       isAiSpeaking,
       hasEnhancedVideo,
+      webhookUrl,
     ],
   )
 
@@ -845,6 +1127,7 @@ export default function VideoCallDialog({
     processTranscriptionRef.current = processTranscription
   }, [processTranscription])
 
+  // Toggle microphone
   const toggleMicrophone = useCallback(() => {
     if (isMicMuted) {
       setIsMicMuted(false)
@@ -853,11 +1136,7 @@ export default function VideoCallDialog({
       startSpeechRecognitionRef.current?.()
     } else {
       if (recognitionRef.current && recognitionRef.current.stop) {
-        try {
-          recognitionRef.current.stop()
-        } catch {
-          /* ignore */
-        }
+        recognitionRef.current.stop()
       }
       setIsListening(false)
       setInterimTranscript("")
@@ -865,6 +1144,7 @@ export default function VideoCallDialog({
     }
   }, [isMicMuted])
 
+  // Handle camera access
   useEffect(() => {
     if (isCallActive && !isCameraOff && userVideoRef.current) {
       navigator.mediaDevices
@@ -874,7 +1154,8 @@ export default function VideoCallDialog({
             userVideoRef.current.srcObject = stream
           }
         })
-        .catch(() => {
+        .catch((error) => {
+          console.log("Camera error:", error)
           setIsCameraOff(true)
         })
     }
@@ -888,6 +1169,7 @@ export default function VideoCallDialog({
     }
   }, [isCallActive, isCameraOff])
 
+  // Toggle camera
   const toggleCamera = useCallback(() => {
     if (isCameraOff) {
       navigator.mediaDevices
@@ -898,8 +1180,13 @@ export default function VideoCallDialog({
           }
           setIsCameraOff(false)
         })
-        .catch(() => {
-          alert(t("Could not access your camera. Please check your permissions."))
+        .catch((error) => {
+          console.log("Camera error:", error)
+          alert(
+            t(
+              "Could not access your camera. Please check your permissions.",
+            ),
+          )
         })
     } else {
       if (userVideoRef.current && userVideoRef.current.srcObject) {
@@ -911,6 +1198,7 @@ export default function VideoCallDialog({
     }
   }, [isCameraOff, t])
 
+  // Toggle sound
   const toggleSound = useCallback(() => {
     setIsSoundEnabled(!isSoundEnabled)
 
@@ -954,58 +1242,88 @@ export default function VideoCallDialog({
         await silentAudio.play()
         silentAudio.pause()
         silentAudio.currentTime = 0
-      } catch {
-        /* ignore */
+      } catch (e) {
+        console.log("Silent audio play failed:", e)
       }
 
       setAudioInitialized(true)
-    } catch {
-      /* ignore */
+    } catch (error) {
+      console.error("Audio initialization error:", error)
     }
   }, [audioInitialized])
 
+  // Start call with permissions check
   const startCall = useCallback(async () => {
-    if (!selectedCharacter) return
+    if (!selectedCharacter) {
+      return
+    }
 
     setIsConnecting(true)
+    setPermissionsError(null)
+    setShowPermissionsPrompt(false)
 
     try {
       await initializeMobileAudio()
 
+      const permissionsCheck = await checkMediaPermissions()
+
+      if (!permissionsCheck.hasPermissions) {
+        setPermissionsError(
+          permissionsCheck.error || t("Microphone and camera access required"),
+        )
+        setShowPermissionsPrompt(true)
+        setIsConnecting(false)
+        return
+      }
+
       setIsCallActive(true)
       setCurrentVideoState("idle")
+      setIsMicMuted(true)
       reconnectAttemptRef.current = 0
       setMessages([])
 
       await setupMicrophone()
 
-      setIsMicMuted(false)
-      setIsListening(true)
-      setActivityStatus("listening")
-      startSpeechRecognitionRef.current?.()
-
       if (hasEnhancedVideo && selectedCharacter.idleVideo) {
         setTimeout(() => {
-          if (idleVideoRef.current && isCallActiveRef.current) {
+          if (idleVideoRef.current && isCallActive) {
             idleVideoRef.current.currentTime = 0
-            idleVideoRef.current.play().catch(() => {
-              /* ignore */
-            })
+            idleVideoRef.current
+              .play()
+              .catch((error) => console.log("Idle video error:", error))
           }
         }, 500)
       }
     } catch (error: any) {
-      alert(
-        t(
-          "Failed to access your microphone. Please check your browser or system settings and try again.",
-        ),
+      console.error("Failed to start call:", error)
+      setPermissionsError(
+        error.message ||
+          t(
+            "Failed to start the call. Please check your microphone and camera permissions.",
+          ),
       )
-      setIsCallActive(false)
+      setShowPermissionsPrompt(true)
     } finally {
       setIsConnecting(false)
     }
-  }, [selectedCharacter, t, hasEnhancedVideo, setupMicrophone, initializeMobileAudio])
+  }, [
+    selectedCharacter,
+    t,
+    currentLanguage,
+    hasEnhancedVideo,
+    isCallActive,
+    setupMicrophone,
+    checkMediaPermissions,
+    initializeMobileAudio,
+  ])
 
+  const retryPermissions = useCallback(() => {
+    setPermissionsError(null)
+    setShowPermissionsPrompt(false)
+    startCall()
+  }, [startCall])
+
+  // End call
   const endCall = useCallback(() => {
     setIsCallActive(false)
     setIsListening(false)
@@ -1037,8 +1355,8 @@ export default function VideoCallDialog({
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop()
-      } catch {
-        /* ignore */
+      } catch (error) {
+        console.log("Error stopping recognition:", error)
       }
       recognitionRef.current = null
     }
@@ -1048,14 +1366,14 @@ export default function VideoCallDialog({
         microphoneStreamRef.current.getTracks().forEach((track) => {
           try {
             track.stop()
-          } catch {
-            /* ignore */
+          } catch (error) {
+            console.log("Error stopping mic:", error)
           }
         })
         microphoneStreamRef.current = null
       }
-    } catch {
-      /* ignore */
+    } catch (error) {
+      console.log("Error stopping microphone:", error)
     }
 
     try {
@@ -1063,8 +1381,8 @@ export default function VideoCallDialog({
         idleVideoRef.current.pause()
         idleVideoRef.current.currentTime = 0
       }
-    } catch {
-      /* ignore */
+    } catch (error) {
+      console.log("Error stopping idle video:", error)
     }
 
     try {
@@ -1072,8 +1390,8 @@ export default function VideoCallDialog({
         speakingVideoRef.current.pause()
         speakingVideoRef.current.currentTime = 0
       }
-    } catch {
-      /* ignore */
+    } catch (error) {
+      console.log("Error stopping speaking video:", error)
     }
 
     try {
@@ -1082,14 +1400,14 @@ export default function VideoCallDialog({
         stream.getTracks().forEach((track) => {
           try {
             track.stop()
-          } catch {
-            /* ignore */
+          } catch (error) {
+            console.log("Error stopping camera:", error)
           }
         })
         userVideoRef.current.srcObject = null
       }
-    } catch {
-      /* ignore */
+    } catch (error) {
+      console.log("Error stopping camera:", error)
     }
 
     setTranscript("")
@@ -1100,6 +1418,7 @@ export default function VideoCallDialog({
     setMessages([])
   }, [])
 
+  // Clean up on close
   useEffect(() => {
     if (!isOpen && isCallActive) {
       endCall()
@@ -1111,11 +1430,7 @@ export default function VideoCallDialog({
       }
 
       if (recognitionRef.current) {
-        try {
-          recognitionRef.current.stop()
-        } catch {
-          /* ignore */
-        }
+        recognitionRef.current.stop()
       }
 
       if (currentAudioRef.current) {
@@ -1132,7 +1447,9 @@ export default function VideoCallDialog({
       }
 
       if (microphoneStreamRef.current) {
-        microphoneStreamRef.current.getTracks().forEach((track) => track.stop())
+        microphoneStreamRef.current
+          .getTracks()
+          .forEach((track) => track.stop())
       }
 
       if (idleVideoRef.current) {
@@ -1158,13 +1475,14 @@ export default function VideoCallDialog({
 
   const statusText = (() => {
     if (!isCallActive)
-      return t("Choose an AI psychologist and press “Start video call” to begin.")
-    if (isAiSpeaking) return t("Assistant is speaking. Please wait a moment.")
+      return t(
+        "Choose an AI psychologist and press “Start video call” to begin.",
+      )
+    if (isAiSpeaking)
+      return t("Assistant is speaking. Please wait a moment.")
     if (micOn) return t("Listening… you can speak.")
     return t("Paused. Turn on microphone to continue.")
   })()
-
-  const languageName = currentLanguage?.name || t("your language")
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
@@ -1180,7 +1498,7 @@ export default function VideoCallDialog({
             </h3>
             <div className="text-xs text-indigo-100 mt-1 truncate">
               {t("Video session in {{language}}", {
-                language: languageName,
+                language: currentLanguage.name,
               })}{" "}
               · {currentLanguage.flag}
             </div>
@@ -1205,17 +1523,78 @@ export default function VideoCallDialog({
         {/* CONTENT */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 flex flex-col touch-pan-y">
           {!isCallActive ? (
+            // Экран выбора персонажа
             <div className="flex-1 flex flex-col items-center justify-center">
               <div className="text-center mb-6 sm:mb-8 px-2">
                 <h3 className="text-xl sm:text-2xl font-semibold mb-2 sm:mb-3">
-                  {t("AI Psychologist")}
+                  {t("Choose Your AI Psychologist")}
                 </h3>
-                <p className="text-sm sm:text-base text-gray-700 max-w-md mx-auto">
+                <p className="text-sm sm:text-base text-gray-1000 max-w-md mx-auto">
                   {t(
-                    "You will connect with Dr. Sophia — your AI psychologist for a confidential video conversation.",
+                    "Select the AI psychologist you'd like to speak with during your video call.",
                   )}
                 </p>
               </div>
+
+              {showPermissionsPrompt && permissionsError && (
+                <div className="mb-4 sm:mb-6 bg-red-50 border-2 border-red-300 rounded-lg p-4 sm:p-6 w-full max-w-md mx-2">
+                  <div className="flex items-start mb-4">
+                    <div className="flex-shrink-0">
+                      <svg
+                        className="h-6 w-6 text-red-600"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                        />
+                      </svg>
+                    </div>
+                    <div className="ml-3 flex-1">
+                      <h3 className="text-sm font-medium text-red-800">
+                        {t("Permissions Required")}
+                      </h3>
+                      <div className="mt-2 text-sm text-red-700">
+                        <p>{permissionsError}</p>
+                      </div>
+                      <div className="mt-4">
+                        <Button
+                          onClick={retryPermissions}
+                          className="bg-red-600 hover:bg-red-700 text-white text-sm px-4 py-2 min-h-[44px]"
+                        >
+                          {t("Grant Permissions & Retry")}
+                        </Button>
+                      </div>
+                      <div className="mt-3 text-xs text-red-600">
+                        <p className="font-medium mb-1">
+                          {t("How to enable permissions")}:
+                        </p>
+                        <ul className="list-disc list-inside space-y-1">
+                          <li>
+                            {t(
+                              "Click the camera/microphone icon in your browser's address bar",
+                            )}
+                          </li>
+                          <li>
+                            {t(
+                              "Select 'Allow' for both camera and microphone",
+                            )}
+                          </li>
+                          <li>
+                            {t(
+                              "Click 'Grant Permissions & Retry' button above",
+                            )}
+                          </li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="mb-6 bg-blue-50 p-4 rounded-lg w-full max-w-xs text-center mx-2">
                 <p className="text-sm font-medium text-blue-700 mb-1">
@@ -1223,114 +1602,159 @@ export default function VideoCallDialog({
                 </p>
                 <div className="text-lg font-semibold text-blue-800 flex items-center justify-center">
                   <span className="mr-2">{currentLanguage.flag}</span>
-                  {languageName}
+                  {currentLanguage.name}
                 </div>
                 <p className="text-xs text-blue-600 mt-2">
                   {t(
-                    "AI will understand and respond in this language with a natural accent.",
+                    "AI will understand and respond in this language with native accent.",
                   )}
                 </p>
               </div>
 
-              <div className="w-full max-w-sm px-2 mb-6">
-                <div className="relative bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-4 sm:p-6 border-2 border-primary-600">
-                  <div className="relative w-full aspect-[4/5] mb-3 sm:mb-4 overflow-hidden rounded-lg">
-                    <Image
-                      src={aiCharacters[0].avatar || "/placeholder.svg"}
-                      alt={aiCharacters[0].name}
-                      fill
-                      className="object-cover"
-                      sizes="(max-width: 640px) 100vw, 400px"
-                      priority
-                    />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 w-full max-w-5xl px-2">
+                {aiCharacters.map((character) => (
+                  <div
+                    key={character.id}
+                    className={`relative bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow cursor-pointer p-4 sm:p-6 border-2 ${
+                      selectedCharacter?.id === character.id
+                        ? "border-primary-600"
+                        : "border-transparent"
+                    }`}
+                    onClick={() => setSelectedCharacter(character)}
+                  >
+                    <div className="relative w-full aspect-square mb-3 sm:mb-4 overflow-hidden rounded-lg">
+                      <Image
+                        src={character.avatar || "/placeholder.svg"}
+                        alt={character.name}
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                        priority
+                      />
+                    </div>
+                    <h4 className="font-semibold text-base sm:text-lg text-center mb-1 sm:mb-2">
+                      {character.name}
+                    </h4>
+                    <p className="text-xs sm:text-sm text-gray-600 text-center mb-3 sm:mb-4">
+                      {character.description}
+                    </p>
+                    <Button
+                      className={`w-full min-h-[44px] ${
+                        selectedCharacter?.id === character.id
+                          ? "bg-primary-600 hover:bg-primary-700 text-white"
+                          : "bg-gray-200 hover:bg-gray-300 text-gray-800"
+                      }`}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setSelectedCharacter(character)
+                      }}
+                    >
+                      {selectedCharacter?.id === character.id
+                        ? t("Selected")
+                        : t("Select")}
+                    </Button>
                   </div>
-                  <h4 className="font-semibold text-base sm:text-lg text-center mb-1 sm:mb-2">
-                    {aiCharacters[0].name}
-                  </h4>
-                  <p className="text-xs sm:text-sm text-gray-600 text-center mb-3 sm:mb-4">
-                    {aiCharacters[0].description}
-                  </p>
-                </div>
+                ))}
               </div>
 
-              <div className="mt-2 sm:mt-4 w-full max-w-md px-2">
+              <div className="mt-6 sm:mt-8 w-full max-w-md px-2">
                 <Button
                   className="w-full bg-primary-600 hover:bg-primary-700 text-white text-base sm:text-lg py-4 sm:py-6 min-h-[56px]"
                   onClick={startCall}
-                  disabled={isConnecting}
+                  disabled={!selectedCharacter || isConnecting}
                 >
-                  {isConnecting ? t("Connecting...") : t("Start Video Call")}
+                  {isConnecting
+                    ? t("Connecting...")
+                    : t("Start Video Call")}
                 </Button>
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col">
-              {/* VIDEO – taller, full-width, avatar without side black bars */}
-              <div className="relative w-full h-[60vh] sm:h-[60vh] bg-black rounded-lg overflow-hidden mb-4">
-                {hasEnhancedVideo ? (
-                  <>
-                    {selectedCharacter?.idleVideo && (
-                      <video
-                        ref={idleVideoRef}
-                        className={`absolute inset-0 w-full h-full object-cover ${
-                          currentVideoState === "idle" ? "opacity-100" : "opacity-0"
-                        } transition-opacity duration-300`}
-                        muted
-                        loop
-                        playsInline
-                        preload="auto"
-                      >
-                        <source src={selectedCharacter.idleVideo} type="video/mp4" />
-                      </video>
-                    )}
+            // Экран активного звонка
+            <div className="flex flex-col">
+              {/* ВИДЕО БЛОК — высокий, чтобы чат изначально не был виден */}
+              <div className="relative w-full h-[55vh] sm:h-[60vh] bg-black rounded-lg overflow-hidden mb-4">
+                <div className="absolute inset-0">
+                  {hasEnhancedVideo ? (
+                    <>
+                      {selectedCharacter?.idleVideo && (
+                        <video
+                          ref={idleVideoRef}
+                          className={`absolute inset-0 w-full h-full object-cover ${
+                            currentVideoState === "idle"
+                              ? "opacity-100"
+                              : "opacity-0"
+                          } transition-opacity duration-300`}
+                          muted
+                          loop
+                          playsInline
+                          preload="auto"
+                        >
+                          <source
+                            src={selectedCharacter.idleVideo}
+                            type="video/mp4"
+                          />
+                        </video>
+                      )}
 
-                    {selectedCharacter?.speakingVideoNew && (
-                      <video
-                        ref={speakingVideoRef}
-                        className={`absolute inset-0 w-full h-full object-cover ${
-                          currentVideoState === "speaking" ? "opacity-100" : "opacity-0"
-                        } transition-opacity duration-300`}
-                        muted
-                        loop
-                        playsInline
-                        preload="auto"
-                      >
-                        <source src={selectedCharacter.speakingVideoNew} type="video/mp4" />
-                      </video>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {selectedCharacter && !isAiSpeaking && (
-                      <div className="absolute inset-0">
-                        <Image
-                          src={selectedCharacter.avatar || "/placeholder.svg"}
-                          alt={selectedCharacter.name}
-                          fill
-                          className="object-cover"
-                          sizes="(max-width: 768px) 100vw, 1024px"
-                        />
-                      </div>
-                    )}
+                      {selectedCharacter?.speakingVideoNew && (
+                        <video
+                          ref={speakingVideoRef}
+                          className={`absolute inset-0 w-full h-full object-cover ${
+                            currentVideoState === "speaking"
+                              ? "opacity-100"
+                              : "opacity-0"
+                          } transition-opacity duration-300`}
+                          muted
+                          loop
+                          playsInline
+                          preload="auto"
+                        >
+                          <source
+                            src={selectedCharacter.speakingVideoNew}
+                            type="video/mp4"
+                          />
+                        </video>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {selectedCharacter && !isAiSpeaking && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="w-64 h-64 relative">
+                            <Image
+                              src={selectedCharacter.avatar || "/placeholder.svg"}
+                              alt={selectedCharacter.name}
+                              fill
+                              className="object-cover rounded-full"
+                              sizes="256px"
+                            />
+                          </div>
+                        </div>
+                      )}
 
-                    {selectedCharacter?.speakingVideo && (
-                      <video
-                        ref={speakingVideoRef}
-                        className={`absolute inset-0 w-full h-full object-cover ${
-                          isAiSpeaking ? "opacity-100" : "opacity-0"
-                        } transition-opacity duration-300`}
-                        muted
-                        loop
-                        playsInline
-                        preload="auto"
-                      >
-                        <source src={selectedCharacter.speakingVideo} type="video/mp4" />
-                      </video>
-                    )}
-                  </>
-                )}
+                      {selectedCharacter?.speakingVideo && (
+                        <video
+                          ref={speakingVideoRef}
+                          className={`absolute inset-0 w-full h-full object-cover ${
+                            isAiSpeaking ? "opacity-100" : "opacity-0"
+                          } transition-opacity duration-300`}
+                          muted
+                          loop
+                          playsInline
+                          preload="auto"
+                        >
+                          <source
+                            src={selectedCharacter.speakingVideo}
+                            type="video/mp4"
+                          />
+                        </video>
+                      )}
+                    </>
+                  )}
+                </div>
 
-                {/* SINGLE STATUS BADGE */}
+                {/* единственный статус */}
                 <div
                   className={`absolute top-2 sm:top-4 right-2 sm:right-4 px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium ${
                     activityStatus === "listening"
@@ -1347,6 +1771,17 @@ export default function VideoCallDialog({
                     : t("Speaking...")}
                 </div>
 
+                {hasEnhancedVideo && (
+                  <div className="absolute bottom-2 sm:bottom-4 left-2 sm:left-4 px-2 sm:px-3 py-1 rounded-full bg-purple-100 text-purple-800 text-xs sm:text-sm font-medium flex items-center">
+                    <span className="mr-1">🎬</span>
+                    <span className="hidden sm:inline">
+                      {currentVideoState === "speaking"
+                        ? t("Speaking Mode")
+                        : t("Listening Mode")}
+                    </span>
+                  </div>
+                )}
+
                 {!isCameraOff && (
                   <div className="absolute bottom-2 sm:bottom-4 right-2 sm:right-4 w-20 sm:w-1/4 aspect-video bg-gray-800 rounded overflow-hidden shadow-lg">
                     <video
@@ -1360,8 +1795,8 @@ export default function VideoCallDialog({
                 )}
               </div>
 
-              {/* CHAT – below, appears only after scrolling */}
-              <div className="flex-1 flex flex-col space-y-3 sm:space-y-4 overflow-y-auto touch-pan-y mt-4">
+              {/* ЧАТ — идёт ниже, видно только при скролле */}
+              <div className="mt-2 space-y-3 sm:space-y-4">
                 <div className="space-y-3 sm:space-y-4">
                   {messages.length === 0 && (
                     <div className="bg-primary-50 rounded-2xl p-3 sm:p-4 text-xs sm:text-sm text-slate-800">
@@ -1408,7 +1843,7 @@ export default function VideoCallDialog({
           )}
         </div>
 
-        {/* BOTTOM BAR */}
+        {/* БOTTOM BAR */}
         {isCallActive && (
           <div className="p-3 sm:p-4 border-t bg-gray-50 flex flex-col safe-area-bottom">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
