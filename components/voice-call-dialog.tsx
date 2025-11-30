@@ -1,7 +1,7 @@
 // components/voice-call-dialog.tsx
 "use client"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect } from "react"
 import {
   Dialog,
   DialogContent,
@@ -116,8 +116,12 @@ export default function VoiceCallDialog({
   >("disconnected")
 
   const recognitionRef = useRef<any | null>(null)
-  const ignoreOnEndRef = useRef(false) // чтобы не автоперезапускать, когда сами стопаем
   const scrollRef = useRef<HTMLDivElement | null>(null)
+
+  // свежие значения флагов для коллбеков SpeechRecognition / TTS
+  const isCallActiveRef = useRef(false)
+  const isMicMutedRef = useRef(false)
+  const isAiSpeakingRef = useRef(false)
 
   const effectiveEmail = userEmail || user?.email || "guest@example.com"
 
@@ -128,7 +132,24 @@ export default function VoiceCallDialog({
     }
   }, [messages])
 
-  const stopEverything = useCallback(() => {
+  // ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ----------
+
+  function computeLangCode(): string {
+    const lang =
+      typeof (currentLanguage as any) === "string"
+        ? ((currentLanguage as any) as string)
+        : (currentLanguage as any)?.code || "uk"
+
+    if (lang.startsWith("uk")) return "uk-UA"
+    if (lang.startsWith("ru")) return "ru-RU"
+    return "en-US"
+  }
+
+  function stopEverything() {
+    isCallActiveRef.current = false
+    isMicMutedRef.current = false
+    isAiSpeakingRef.current = false
+
     setIsCallActive(false)
     setIsListening(false)
     setIsAiSpeaking(false)
@@ -139,6 +160,8 @@ export default function VoiceCallDialog({
 
     if (recognitionRef.current) {
       try {
+        // отключаем автоперезапуск
+        recognitionRef.current.onend = null
         recognitionRef.current.stop()
       } catch (e) {
         console.error(e)
@@ -149,19 +172,29 @@ export default function VoiceCallDialog({
     if (typeof window !== "undefined" && window.speechSynthesis) {
       window.speechSynthesis.cancel()
     }
-  }, [])
+  }
 
   useEffect(() => {
     if (!isOpen) {
       stopEverything()
     }
-  }, [isOpen, stopEverything])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen])
 
-  // --- SpeechRecognition ---
+  useEffect(() => {
+    return () => {
+      // очистка при размонтировании компонента
+      stopEverything()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const startRecognition = useCallback(() => {
+  // ---------- РАСПОЗНАВАНИЕ РЕЧИ ----------
+
+  function startRecognition() {
     if (typeof window === "undefined") return
-    if (isMicMuted) return // если микрофон выключен руками — не слушаем
+    if (!isCallActiveRef.current) return
+    if (isMicMutedRef.current) return
 
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) {
@@ -173,233 +206,212 @@ export default function VoiceCallDialog({
       return
     }
 
-    const recognition = new SR()
-    recognition.continuous = true
-    recognition.interimResults = false
+    let recognition = recognitionRef.current
 
-    const langCode =
-      typeof (currentLanguage as any) === "string"
-        ? ((currentLanguage as any) as string)
-        : (currentLanguage as any)?.code || "uk"
+    if (!recognition) {
+      recognition = new SR()
+      recognitionRef.current = recognition
 
-    recognition.lang = langCode.startsWith("uk")
-      ? "uk-UA"
-      : langCode.startsWith("ru")
-        ? "ru-RU"
-        : "en-US"
+      recognition.continuous = true
+      recognition.interimResults = false
 
-    recognition.onstart = () => {
-      setIsListening(true)
-      setConnectionStatus("connected")
-      setNetworkError(null)
+      recognition.onstart = () => {
+        setIsListening(true)
+        setConnectionStatus("connected")
+        setNetworkError(null)
+      }
+
+      recognition.onerror = (event: any) => {
+        console.error("Speech recognition error", event)
+        if (event?.error !== "no-speech") {
+          setNetworkError(t("Error while listening. Please try again."))
+        }
+        setIsListening(false)
+      }
+
+      recognition.onend = () => {
+        setIsListening(false)
+
+        // если звонок ещё активен и микрофон не выключен руками — мягко перезапускаем
+        if (isCallActiveRef.current && !isMicMutedRef.current) {
+          setTimeout(() => {
+            try {
+              recognition.start()
+            } catch (e: any) {
+              if (e?.name !== "InvalidStateError") {
+                console.error("Speech restart error", e)
+              }
+            }
+          }, 500)
+        }
+      }
+
+      recognition.onresult = (event: any) => {
+        // пока ассистент говорит — игнорируем всё, чтобы он не слушал сам себя
+        if (isAiSpeakingRef.current) {
+          return
+        }
+
+        const last = event.results[event.results.length - 1]
+        if (!last || !last.isFinal) return
+
+        const text = last[0]?.transcript?.trim()
+        if (!text) return
+
+        const userMsg: VoiceMessage = {
+          id: `${Date.now()}-user`,
+          role: "user",
+          text,
+        }
+
+        setMessages((prev) => [...prev, userMsg])
+        void handleUserText(text)
+      }
     }
 
-    recognition.onerror = (event: any) => {
-      console.error("Speech recognition error", event)
-      if (event?.error !== "no-speech") {
-        setNetworkError(t("Error while listening. Please try again."))
+    // всегда обновляем язык перед стартом
+    recognition.lang = computeLangCode()
+
+    try {
+      recognition.start()
+    } catch (e: any) {
+      // если уже запущен — просто игнорируем
+      if (e?.name !== "InvalidStateError") {
+        console.error("Cannot start recognition", e)
+        setNetworkError(
+          t("Could not start microphone. Check permissions and try again."),
+        )
       }
+    }
+  }
+
+  // ---------- TTS / ОЗВУЧКА ОТВЕТА ----------
+
+  function speakText(text: string) {
+    if (typeof window === "undefined" || !window.speechSynthesis) return
+
+    const lang = computeLangCode()
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = lang
+    utterance.rate = 1
+    utterance.pitch = 1
+
+    utterance.onstart = () => {
+      setIsAiSpeaking(true)
+      isAiSpeakingRef.current = true
       setIsListening(false)
     }
 
-    recognition.onend = () => {
-      setIsListening(false)
+    utterance.onend = () => {
+      setIsAiSpeaking(false)
+      isAiSpeakingRef.current = false
 
-      // если мы сами стопнули, автоперезапуск не нужен
-      if (ignoreOnEndRef.current) {
-        ignoreOnEndRef.current = false
-        return
-      }
-
-      // мягкий автоперезапуск, пока звонок активен и микрофон не выключен руками
-      if (isCallActive && !isMicMuted) {
+      // после ответа ассистента снова слушаем пользователя
+      if (isCallActiveRef.current && !isMicMutedRef.current) {
         setTimeout(() => {
-          try {
-            recognition.start()
-          } catch (e) {
-            console.error(e)
-          }
+          startRecognition()
         }, 400)
       }
     }
 
-    recognition.onresult = (event: any) => {
-      const last = event.results[event.results.length - 1]
-      if (!last || !last.isFinal) return
-
-      const text = last[0]?.transcript?.trim()
-      if (!text) return
-
-      const userMsg: VoiceMessage = {
-        id: `${Date.now()}-user`,
-        role: "user",
-        text,
-      }
-
-      setMessages((prev) => [...prev, userMsg])
-      void handleUserText(text)
+    utterance.onerror = () => {
+      setIsAiSpeaking(false)
+      isAiSpeakingRef.current = false
     }
+
+    window.speechSynthesis.cancel()
+    window.speechSynthesis.speak(utterance)
+  }
+
+  // ---------- ОТПРАВКА ТЕКСТА В N8N / OPENAI ----------
+
+  async function handleUserText(text: string) {
+    const lang =
+      typeof (currentLanguage as any) === "string"
+        ? ((currentLanguage as any) as string)
+        : (currentLanguage as any)?.code || "uk"
+
+    // 1) prop → 2) env → 3) /api/chat
+    const resolvedWebhook =
+      (webhookUrl && webhookUrl.trim()) ||
+      TURBOTA_AGENT_WEBHOOK_URL.trim() ||
+      FALLBACK_CHAT_API
 
     try {
-      recognition.start()
-      recognitionRef.current = recognition
-    } catch (e) {
-      console.error("Cannot start recognition", e)
-      setNetworkError(
-        t("Could not start microphone. Check permissions and try again."),
-      )
-    }
-  }, [currentLanguage, isCallActive, isMicMuted, t])
+      const res = await fetch(resolvedWebhook, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: text,
+          language: lang,
+          email: effectiveEmail,
+          mode: "voice",
+        }),
+      })
 
-  // --- Озвучка через browser TTS, без самопрослушивания ---
-
-  const speakText = useCallback(
-    (text: string) => {
-      if (typeof window === "undefined" || !window.speechSynthesis) return
-
-      // на время озвучки выключаем распознавание, чтобы не слушал сам себя
-      if (recognitionRef.current) {
-        ignoreOnEndRef.current = true
-        try {
-          recognitionRef.current.stop()
-        } catch (e) {
-          console.error(e)
-        }
+      if (!res.ok) {
+        throw new Error(`Chat API error: ${res.status}`)
       }
 
-      const langCode =
-        typeof (currentLanguage as any) === "string"
-          ? ((currentLanguage as any) as string)
-          : (currentLanguage as any)?.code || "uk"
-
-      const utterance = new SpeechSynthesisUtterance(text)
-
-      utterance.lang = langCode.startsWith("uk")
-        ? "uk-UA"
-        : langCode.startsWith("ru")
-          ? "ru-RU"
-          : "en-US"
-
-      utterance.rate = 1
-      utterance.pitch = 1
-
-      const shouldResumeListening = isCallActive && !isMicMuted
-
-      utterance.onstart = () => {
-        setIsAiSpeaking(true)
-        // во время речи ассистента явно помечаем, что сейчас не слушаем
-        setIsListening(false)
-      }
-
-      utterance.onend = () => {
-        setIsAiSpeaking(false)
-
-        // после окончания озвучки через небольшую паузу снова слушаем пользователя,
-        // если звонок активен и микрофон не выключен кнопкой
-        if (shouldResumeListening) {
-          setTimeout(() => {
-            startRecognition()
-          }, 700)
-        }
-      }
-
-      utterance.onerror = () => {
-        setIsAiSpeaking(false)
-      }
-
-      window.speechSynthesis.cancel()
-      window.speechSynthesis.speak(utterance)
-    },
-    [currentLanguage, isCallActive, isMicMuted, startRecognition],
-  )
-
-  // --- Отправка текста в TurbotaAI-агента (как в чате) ---
-
-  const handleUserText = useCallback(
-    async (text: string) => {
-      const langCode =
-        typeof (currentLanguage as any) === "string"
-          ? ((currentLanguage as any) as string)
-          : (currentLanguage as any)?.code || "uk"
-
-      // 1) prop → 2) env → 3) /api/chat
-      const resolvedWebhook =
-        (webhookUrl && webhookUrl.trim()) ||
-        TURBOTA_AGENT_WEBHOOK_URL.trim() ||
-        FALLBACK_CHAT_API
+      const raw = await res.text()
+      let data: any = raw
 
       try {
-        const res = await fetch(resolvedWebhook, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            query: text,
-            language: langCode,
-            email: effectiveEmail,
-            mode: "voice",
-          }),
-        })
-
-        if (!res.ok) {
-          throw new Error(`Chat API error: ${res.status}`)
-        }
-
-        // читаем как текст, потом пытаемся JSON-распарсить
-        const raw = await res.text()
-        let data: any = raw
-
-        try {
-          data = JSON.parse(raw)
-        } catch {
-          // не JSON — оставляем как есть
-        }
-
-        console.log("Voice raw response:", data)
-
-        let answer = extractAnswer(data)
-
-        if (!answer) {
-          answer = t(
-            "I'm sorry, I couldn't process your message. Please try again.",
-          )
-        }
-
-        const assistantMsg: VoiceMessage = {
-          id: `${Date.now()}-assistant`,
-          role: "assistant",
-          text: answer,
-        }
-
-        setMessages((prev) => [...prev, assistantMsg])
-        speakText(answer)
-      } catch (error: any) {
-        console.error("Voice call error:", error)
-        setNetworkError(t("Connection error. Please try again."))
-        if (onError && error instanceof Error) onError(error)
+        data = JSON.parse(raw)
+      } catch {
+        // не JSON — оставляем строку как есть
       }
-    },
-    [currentLanguage, effectiveEmail, onError, speakText, t, webhookUrl],
-  )
 
-  const startCall = useCallback(() => {
+      console.log("Voice raw response:", data)
+
+      let answer = extractAnswer(data)
+
+      if (!answer) {
+        answer = t(
+          "I'm sorry, I couldn't process your message. Please try again.",
+        )
+      }
+
+      const assistantMsg: VoiceMessage = {
+        id: `${Date.now()}-assistant`,
+        role: "assistant",
+        text: answer,
+      }
+
+      setMessages((prev) => [...prev, assistantMsg])
+      speakText(answer)
+    } catch (error: any) {
+      console.error("Voice call error:", error)
+      setNetworkError(t("Connection error. Please try again."))
+      if (onError && error instanceof Error) onError(error)
+    }
+  }
+
+  // ---------- УПРАВЛЕНИЕ ЗВОНКОМ / МИКРОФОНОМ ----------
+
+  const startCall = () => {
     setIsConnecting(true)
     setNetworkError(null)
+
+    isMicMutedRef.current = false
     setIsMicMuted(false)
 
     setTimeout(() => {
+      isCallActiveRef.current = true
       setIsCallActive(true)
       setIsConnecting(false)
       startRecognition()
     }, 200)
-  }, [startRecognition])
+  }
 
-  const endCall = useCallback(() => {
+  const endCall = () => {
     stopEverything()
-  }, [stopEverything])
+  }
 
   const toggleMic = () => {
     const next = !isMicMuted
     setIsMicMuted(next)
+    isMicMutedRef.current = next
 
     if (next) {
       // выключили микрофон — стопаем распознавание
@@ -411,15 +423,14 @@ export default function VoiceCallDialog({
         }
       }
       setIsListening(false)
-    } else if (isCallActive) {
-      // снова включили — начинаем слушать
+    } else if (isCallActiveRef.current) {
+      // снова включили — продолжаем слушать
       startRecognition()
     }
   }
 
   const userEmailDisplay = effectiveEmail
 
-  // статусная строка внизу — теперь "Paused" только если микрофон реально выключен кнопкой
   const statusText = !isCallActive
     ? t(
         "In crisis situations, please contact local emergency services immediately.",
