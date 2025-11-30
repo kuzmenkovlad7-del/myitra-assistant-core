@@ -26,19 +26,21 @@ import {
 import { shouldUseGoogleTTS, generateGoogleTTS } from "@/lib/google-tts"
 import { APP_NAME } from "@/lib/app-config"
 
-// Используем пустые креды, т.к. в твоём проекте они подтягиваются из сервера/конфига
-const VIDEO_CALL_GOOGLE_TTS_CREDENTIALS: any = {}
-
-// Глобальный URL вебхука для видео-ассистента
-// ВАЖНО: по умолчанию идём через наш Next.js API-роут /api/turbotaai-agent
-// Если хочешь переопределить — задай один из NEXT_PUBLIC_* env-переменных.
+// URL вебхука для видео-ассистента.
+// Приоритет:
+// 1) NEXT_PUBLIC_TURBOTA_AI_VIDEO_ASSISTANT_WEBHOOK_URL
+// 2) NEXT_PUBLIC_TURBOTA_AGENT_WEBHOOK_URL
+// 3) /api/turbotaai-agent (дефолт, как в .env у тебя сейчас)
 const VIDEO_ASSISTANT_WEBHOOK_URL =
   process.env.NEXT_PUBLIC_TURBOTA_AI_VIDEO_ASSISTANT_WEBHOOK_URL ||
   process.env.NEXT_PUBLIC_TURBOTA_AGENT_WEBHOOK_URL ||
-  process.env.NEXT_PUBLIC_TURBOTA_AI_WORKFLOW_ASSISTANT_WEBHOOK_URL ||
   "/api/turbotaai-agent"
 
-// конфиги для Google TTS, если нужен кастом под языки
+// Креды для Google TTS — в твоём проекте реальные подставляются на сервере.
+// Здесь оставляем заглушку, чтобы фронт не ломался.
+const VIDEO_CALL_GOOGLE_TTS_CREDENTIALS: any = {}
+
+// Конфиги под разные языки (сейчас кастом под uk-UA, можно расширять)
 const VIDEO_CALL_VOICE_CONFIGS = {
   uk: {
     female: {
@@ -90,7 +92,7 @@ type ChatMessage = {
   text: string
 }
 
-// ОДНА София по умолчанию
+// Одна базовая София
 const defaultCharacter: AICharacter = {
   id: "dr-sophia",
   name: "Dr. Sophia",
@@ -109,15 +111,56 @@ const defaultCharacter: AICharacter = {
     "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG111211_6034-6fD2w1l0V94iXV7x4VeGW74NHbtZrk.MP4",
 }
 
+// Универсальный парсер ответа от n8n (как в voice-call-dialog)
+function extractAnswer(data: any): string {
+  if (!data) return ""
+
+  if (typeof data === "string") {
+    return data.trim()
+  }
+
+  if (Array.isArray(data) && data.length > 0) {
+    const first = data[0] ?? {}
+    return (
+      first.output ||
+      first.response ||
+      first.text ||
+      first.message ||
+      first.content ||
+      first.result ||
+      JSON.stringify(first)
+    )
+      ?.toString()
+      .trim()
+  }
+
+  if (typeof data === "object") {
+    return (
+      data.output ||
+      data.response ||
+      data.text ||
+      data.message ||
+      data.content ||
+      data.result ||
+      JSON.stringify(data)
+    )
+      ?.toString()
+      .trim()
+  }
+
+  return ""
+}
+
 export default function VideoCallDialog({
   isOpen,
   onClose,
-  openAiApiKey,
+  openAiApiKey, // пока не используем, но оставляем для совместимости
+  onError,
 }: VideoCallDialogProps) {
   const { t, currentLanguage } = useLanguage()
   const { user } = useAuth()
 
-  // безопасный язык, чтобы не было "undefined"
+  // безопасный язык, чтобы не было undefined
   const activeLanguage =
     currentLanguage || ({ code: "en", name: "English", flag: "🇺🇸" } as any)
 
@@ -129,7 +172,7 @@ export default function VideoCallDialog({
       ? "Russian"
       : "English")
 
-  // итоговый URL вебхука, куда шлём фразу пользователя
+  // финальный URL вебхука
   const resolvedWebhookUrl = VIDEO_ASSISTANT_WEBHOOK_URL
 
   const [selectedCharacter] = useState<AICharacter>(defaultCharacter)
@@ -187,15 +230,19 @@ export default function VideoCallDialog({
   const hasEnhancedVideo =
     !!selectedCharacter?.idleVideo && !!selectedCharacter?.speakingVideoNew
 
+  // чистим ответ (убираем маркдаун, переносы и т.п.)
   const cleanResponseText = useCallback((text: string) => {
     if (!text) return ""
+    // кейс, когда n8n отдаёт [{"output": "..."}]
     if (text.startsWith('[{"output":')) {
       try {
         const parsed = JSON.parse(text)
         if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].output) {
           return parsed[0].output.trim()
         }
-      } catch {}
+      } catch {
+        // игнор
+      }
     }
     return text
       .replace(/\n\n/g, " ")
@@ -204,6 +251,7 @@ export default function VideoCallDialog({
       .trim()
   }, [])
 
+  // выбор лучшего браузерного голоса
   const getRefinedVoiceForLanguage = useCallback(
     (langCode: string, preferredGender: "female" | "male" = "female") => {
       if (!window.speechSynthesis) return null
@@ -269,6 +317,7 @@ export default function VideoCallDialog({
     [nativeVoicePreferences],
   )
 
+  // запуск SpeechRecognition c буфером и отсечкой по тишине
   const startSpeechRecognition = useCallback(() => {
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition
@@ -311,6 +360,7 @@ export default function VideoCallDialog({
 
       if (silenceTimeout) clearTimeout(silenceTimeout)
 
+      // отсечка по тишине — если 1.5 секунды молчим, отправляем
       silenceTimeout = setTimeout(() => {
         if (finalTranscriptBuffer.trim().length > 2) {
           const textToProcess = finalTranscriptBuffer.trim()
@@ -457,6 +507,7 @@ export default function VideoCallDialog({
     isCallActiveRef.current = isCallActive
   }, [isCallActive])
 
+  // fallback — браузерный TTS
   const fallbackToBrowserTTS = useCallback(
     (cleanText: string, gender: "male" | "female", cleanup: () => void) => {
       if (!window.speechSynthesis) {
@@ -519,6 +570,7 @@ export default function VideoCallDialog({
     ],
   )
 
+  // озвучка текста (Google TTS -> браузерный TTS)
   const speakText = useCallback(
     async (text: string) => {
       if (!isCallActiveRef.current) return
@@ -711,6 +763,7 @@ export default function VideoCallDialog({
     ],
   )
 
+  // заранее поднимаем голоса
   useEffect(() => {
     if (window.speechSynthesis) {
       const loadVoices = () => {
@@ -731,6 +784,7 @@ export default function VideoCallDialog({
     }
   }, [activeLanguage.code, getRefinedVoiceForLanguage])
 
+  // отправка текста пользователя в вебхук (через /api/turbotaai-agent)
   const processTranscription = useCallback(
     async (text: string) => {
       if (!isCallActiveRef.current) return
@@ -756,6 +810,7 @@ export default function VideoCallDialog({
         { id: prev.length + 1, role: "user", text },
       ])
 
+      // если ассистент ещё говорит — останавливаем озвучку
       if (isAiSpeaking || isVoicingRef.current) {
         if (currentAudioRef.current) {
           currentAudioRef.current.pause()
@@ -831,35 +886,16 @@ export default function VideoCallDialog({
           try {
             responseData = JSON.parse(textResponse)
           } catch {
-            responseData = { response: textResponse }
+            responseData = textResponse
           }
         }
 
-        let aiResponseText = ""
-
-        if (typeof responseData === "string") {
-          aiResponseText = responseData
-        } else if (Array.isArray(responseData) && responseData.length > 0) {
-          const firstItem = responseData[0]
-          aiResponseText =
-            firstItem.output ||
-            firstItem.response ||
-            firstItem.text ||
-            firstItem.message ||
-            JSON.stringify(firstItem)
-        } else if (responseData && typeof responseData === "object") {
-          aiResponseText =
-            responseData.response ||
-            responseData.text ||
-            responseData.message ||
-            responseData.output ||
-            responseData.content ||
-            responseData.result ||
-            JSON.stringify(responseData)
-        }
-
+        let aiResponseText = extractAnswer(responseData)
         const cleanedResponse = cleanResponseText(aiResponseText)
-        if (!cleanedResponse) throw new Error("Empty response received")
+
+        if (!cleanedResponse) {
+          throw new Error("Empty response received")
+        }
 
         if (isCallActiveRef.current) {
           setLastProcessedText(text)
@@ -896,7 +932,7 @@ export default function VideoCallDialog({
           )
         } else {
           errorMessage = t(
-            "I couldn't process your message. Could you try again.",
+            "I couldn't process your message. Could you try again?",
           )
         }
 
@@ -909,6 +945,10 @@ export default function VideoCallDialog({
             text: errorMessage,
           },
         ])
+
+        if (onError && error instanceof Error) {
+          onError(error)
+        }
       } finally {
         isProcessingRef.current = false
         if (isCallActiveRef.current) {
@@ -929,6 +969,7 @@ export default function VideoCallDialog({
       isAiSpeaking,
       hasEnhancedVideo,
       resolvedWebhookUrl,
+      onError,
     ],
   )
 
@@ -936,7 +977,7 @@ export default function VideoCallDialog({
     processTranscriptionRef.current = processTranscription
   }, [processTranscription])
 
-  // Камера — отдельно, без влияния на старт звонка
+  // Камера — отдельно от логики вызова
   useEffect(() => {
     if (isCallActive && !isCameraOff && userVideoRef.current) {
       navigator.mediaDevices
@@ -1018,6 +1059,7 @@ export default function VideoCallDialog({
     }
   }, [isMicMuted])
 
+  // аудио-разрешение для мобильных (тихий звук)
   const initializeMobileAudio = useCallback(async () => {
     if (audioInitialized) return
 
@@ -1204,6 +1246,7 @@ export default function VideoCallDialog({
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl flex flex-col h-[100dvh] sm:h-[90vh] max-h-none sm:max-h-[800px] overflow-hidden">
+        {/* HEADER */}
         <div className="p-3 sm:p-4 border-b flex justify-between items-center rounded-t-xl relative bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 text-white">
           <div className="flex flex-col flex-1 min-w-0 pr-2">
             <h3 className="font-semibold text-base sm:text-lg truncate flex items-center gap-2">
@@ -1236,8 +1279,10 @@ export default function VideoCallDialog({
           </Button>
         </div>
 
+        {/* BODY */}
         <div className="flex-1 overflow-y-auto p-3 sm:p-4 flex flex-col touch-pan-y">
           {!isCallActive ? (
+            // Экран до начала звонка
             <div className="flex-1 flex flex-col items-center justify-center">
               <div className="text-center mb-6 sm:mb-8 px-2">
                 <h3 className="text-xl sm:text-2xl font-semibold mb-2 sm:mb-3">
@@ -1309,7 +1354,9 @@ export default function VideoCallDialog({
               </div>
             </div>
           ) : (
+            // Экран во время звонка
             <div className="flex-1 flex flex-col">
+              {/* Видео-плеер */}
               <div className="relative w-full aspect-video sm:aspect-[16/10] bg-black rounded-lg overflow-hidden mb-3 sm:mb-4">
                 <div className="absolute inset-0">
                   {hasEnhancedVideo ? (
@@ -1424,6 +1471,7 @@ export default function VideoCallDialog({
                 )}
               </div>
 
+              {/* Чат */}
               <div className="flex-1 flex flex-col space-y-3 sm:space-y-4 overflow-y-auto touch-pan-y">
                 <div className="space-y-3 sm:space-y-4">
                   {messages.length === 0 && (
@@ -1477,6 +1525,7 @@ export default function VideoCallDialog({
           )}
         </div>
 
+        {/* БОТТОМ-ПАНЕЛЬ */}
         {isCallActive && (
           <div className="p-3 sm:p-4 border-t bg-gray-50 flex flex-col safe-area-bottom">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
