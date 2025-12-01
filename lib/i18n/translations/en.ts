@@ -1,7 +1,9 @@
-export const en = {
-  // Navigation and Header
+// lib/i18n/translations/en.ts
+
+export const en: Record<string, string> = {
+  // Navigation & menu
   Home: "Home",
-  About: "About",
+  About: "About the service",
   Services: "Services",
   Pricing: "Pricing",
   Contact: "Contact",
@@ -9,569 +11,33 @@ export const en = {
   "Sign Up": "Sign Up",
   "Create an Account": "Create an Account",
   "Log In": "Log In",
-  "Sign Out": "Sign Out",
-  Username: "Username",
-  Password: "Password",
-  "Confirm Password": "Confirm Password",
-  "Forgot Password?": "Forgot Password?",
-  "Already have an account?": "Already have an account?",
-  "Don't have an account?": "Don't have an account?",
-  Register: "Register",
-  "Registering...": "Registering...",
-  "Logging in...": "Logging in...",
-  "Username is required": "Username is required",
-  "Username must be at least 3 characters": "Username must be at least 3 characters",
-  "Password is required": "Password is required",
-  "Password must be at least 6 characters": "Password must be at least 6 characters",
-  "Passwords do not match": "Passwords do not match",
-  "This email is already registered": "This email is already registered",
-  "This username is already taken": "This username is already taken",
-  "An unexpected error occurred. Please try again.": "An unexpected error occurred. Please try again.",
-  "Invalid email or password": "Invalid email or password",
-  "Your Profile": "Your Profile",
-  "Full Name": "Full Name",
-  "Loading...": "Loading...",
-  "Forgot Password": "Forgot Password",
-  "Enter your registered email": "Enter your registered email",
-  "Send Reset Instructions": "Send Reset Instructions",
-  "Sending...": "Sending...",
-  "Password reset instructions have been sent to your email. Please check your inbox.":
-    "Password reset instructions have been sent to your email. Please check your inbox.",
-  "Remember your password?": "Remember your password?",
-  "Back to Login": "Back to Login",
-  "Reset Password": "Reset Password",
-  "New Password": "New Password",
-  "Confirm New Password": "Confirm New Password",
-  "Resetting Password...": "Resetting Password...",
-  "Your password has been successfully reset.": "Your password has been successfully reset.",
-  "Checking reset token...": "Checking reset token...",
-  Profile: "Profile",
-  "Profile avatar": "Profile avatar",
-  "Remove avatar": "Remove avatar",
-  "Upload avatar": "Upload avatar",
-  "Click the camera icon to upload a profile picture": "Click the camera icon to upload a profile picture",
-  "Please upload a valid image file (JPEG, PNG, GIF, WEBP)": "Please upload a valid image file (JPEG, PNG, GIF, WEBP)",
-  "Image size should be less than 2MB": "Image size should be less than 2MB",
-  "Failed to upload avatar. Please try again.": "Failed to upload avatar. Please try again.",
-  "Avatar updated successfully": "Avatar updated successfully",
-  "Avatar removed successfully": "Avatar removed successfully",
-  "Failed to remove avatar. Please try again.": "Failed to remove avatar. Please try again.",
 
-  // Hero Section
-  "AI-Powered Psychological Support": "AI-Powered Psychological Support",
-  "Professional, personalized psychological care through advanced AI technology. Connect through voice, chat, or video calls with our AI psychologist.":
-    "Professional, personalized psychological care through advanced AI technology. Connect through voice, chat, or video calls with our AI psychologist.",
-  "Get Started": "Get Started",
-  "Learn More": "Learn More",
-  "First 5 minutes free, then pay-as-you-go for continued support.":
-    "First 5 minutes free, then pay-as-you-go for continued support.",
+  "nav.home": "Home",
+  "nav.programs": "Programs",
+  "nav.clientStories": "Client stories",
+  "nav.contacts": "Contacts",
+  "nav.privacyPolicy": "Privacy Policy",
+  "nav.termsOfUse": "Terms of Use",
 
-  // Connection Options
-  "How would you like to connect?": "How would you like to connect?",
-  "Call an AI Psychologist": "Call an AI Psychologist",
-  "Speak directly with our AI psychologist for immediate support.":
-    "Speak directly with our AI psychologist for immediate support.",
-  "Start Voice Call": "Start Voice Call",
-  "Chat with AI": "Chat with AI",
-  "Text-based conversation with our AI for support at your own pace.":
-    "Text-based conversation with our AI for support at your own pace.",
-  "Start Chat": "Start Chat",
-  "Video Call with AI": "Video Call with AI",
-  "Face-to-face session with our 3D animated AI psychologist.":
-    "Face-to-face session with our 3D animated AI psychologist.",
-  "Start Video Call": "Start Video Call",
+  // Hero TurbotaAI
+  "AI-psychologist nearby 24/7": "AI-psychologist nearby 24/7",
+  "Psychological support when it feels hard, powered by AI":
+    "Psychological support when it feels hard, powered by AI",
+  "TurbotaAI listens without judgement, asks clarifying questions and gently guides you through breathing, grounding and simple exercises based on psychological books. In chat, voice or video — when you feel anxious, exhausted or alone.":
+    "TurbotaAI listens without judgement, asks clarifying questions and gently guides you through breathing, grounding and simple exercises based on psychological books. In chat, voice or video — when you feel anxious, exhausted or alone.",
+  "Start for free": "Start for free",
+  "How it works": "How it works",
 
-  // Features
-  "Key Features": "Key Features",
-  "Our AI-powered psychological support service combines cutting-edge technology with professional care principles.":
-    "Our AI-powered psychological support service combines cutting-edge technology with professional care principles.",
-  "First 5 Minutes Free": "First 5 Minutes Free",
-  "Try our service with no commitment. First 5 minutes of any session are completely free.":
-    "Try our service with no commitment. First 5 minutes of any session are completely free.",
-  "Pay As You Go": "Pay As You Go",
-  "Only pay for the time you need. No subscriptions or hidden fees.":
-    "Only pay for the time you need. No subscriptions or hidden fees.",
-  "Personalized Experience": "Personalized Experience",
-  "Our AI remembers your past sessions to provide better support over time.":
-    "Our AI remembers your past sessions to provide better support over time.",
-  "Multilingual Support": "Multilingual Support",
-  "Automatic language detection and support across all communication channels.":
-    "Automatic language detection and support across all communication channels.",
-  "Emotion Recognition": "Emotion Recognition",
-  "Advanced analysis of text and facial expressions to better understand your needs.":
-    "Advanced analysis of text and facial expressions to better understand your needs.",
-  "Private & Secure": "Private & Secure",
-  "Your data and conversations are protected with enterprise-grade security.":
-    "Your data and conversations are protected with enterprise-grade security.",
+  "When it feels bad right now": "When it feels bad right now",
+  "Anxiety, stress & burnout": "Anxiety, stress & burnout",
+  "7–21 day support programs": "7–21 day support programs",
 
-  // Services Page
-  "Our Services": "Our Services",
-  "Explore our range of AI-powered psychological support services designed to meet your unique needs.":
-    "Explore our range of AI-powered psychological support services designed to meet your unique needs.",
-  "Voice Support": "Voice Support",
-  "Our voice AI system provides real-time conversation with natural language understanding. Speak naturally and receive thoughtful responses and guidance. Perfect for those who prefer verbal communication and want a more personal experience.":
-    "Our voice AI system provides real-time conversation with natural language understanding. Speak naturally and receive thoughtful responses and guidance. Perfect for those who prefer verbal communication and want a more personal experience.",
-  "Immediate Response": "Immediate Response",
-  "Get instant support without waiting for an appointment.": "Get instant support without waiting for an appointment.",
-  "Secure Conversations": "Secure Conversations",
-  "All voice data is encrypted and processed securely.": "All voice data is encrypted and processed securely.",
-  "Voice Analysis": "Voice Analysis",
-  "Our AI can detect emotional cues in your voice to provide better support.":
-    "Our AI can detect emotional cues in your voice to provide better support.",
-  "Self-Paced": "Self-Paced",
-  "Take your time to express yourself without pressure.": "Take your time to express yourself without pressure.",
-  "Conversation History": "Conversation History",
-  "Access your chat history to review previous sessions.": "Access your chat history to review previous sessions.",
-  "Text Analysis": "Text Analysis",
-  "Advanced natural language processing to understand context and emotions.":
-    "Advanced natural language processing to understand context and emotions.",
-  "Visual Interaction": "Visual Interaction",
-  "See facial expressions and body language for a more personal experience.":
-    "See facial expressions and body language for a more personal experience.",
-  "Secure Video": "Secure Video",
-  "End-to-end encrypted video sessions for complete privacy.":
-    "End-to-end encrypted video sessions for complete privacy.",
-  "Compare Our Services": "Compare Our Services",
-  Feature: "Feature",
-  "Real-time Interaction": "Real-time Interaction",
-  "Visual Cues": "Visual Cues",
-  "Voice Tone Analysis": "Voice Tone Analysis",
-  "Self-paced Communication": "Self-paced Communication",
-  "Ready to get started?": "Ready to get started?",
-  "Choose the service that best fits your needs and preferences. All services include our first 5 minutes free guarantee.":
-    "Choose the service that best fits your needs and preferences. All services include our first 5 minutes free guarantee.",
+  "3 assistant modes · chat · voice · video":
+    "3 assistant modes · chat · voice · video",
+  "Choose how it's more comfortable for you to talk.":
+    "Choose how it's more comfortable for you to talk.",
 
-  // Footer
-  "AI Psychological Support": "AI Psychological Support",
-  "Professional, scalable, and aesthetically pleasing online service that utilizes AI to deliver quality psychological care.":
-    "Professional, scalable, and aesthetically pleasing online service that utilizes AI to deliver quality psychological care.",
-  "Quick Links": "Quick Links",
-  "About Us": "About Us",
-  Legal: "Legal",
-  "Terms of Service": "Terms of Service",
-  "Privacy Policy": "Privacy Policy",
-  "Cookie Policy": "Cookie Policy",
-  "GDPR Compliance": "GDPR Compliance",
-  "Automatic language detection": "Automatic language detection",
-
-  // Pricing Page
-  "Pricing Plans": "Pricing Plans",
-  "Choose the plan that best fits your needs. All plans include our core AI psychology features.":
-    "Choose the plan that best fits your needs. All plans include our core AI psychology features.",
-  Basic: "Basic",
-  Standard: "Standard",
-  Premium: "Premium",
-  "/month": "/month",
-  "Perfect for occasional support needs.": "Perfect for occasional support needs.",
-  "Ideal for regular psychological support.": "Ideal for regular psychological support.",
-  "Complete psychological support solution.": "Complete psychological support solution.",
-  "5 hours of AI sessions per month": "5 hours of AI sessions per month",
-  "15 hours of AI sessions per month": "15 hours of AI sessions per month",
-  "Unlimited AI sessions": "Unlimited AI sessions",
-  "Text and voice support": "Text and voice support",
-  "Text, voice, and video support": "Text, voice, and video support",
-  "Basic session history": "Basic session history",
-  "Comprehensive session history": "Comprehensive session history",
-  "Video sessions": "Video sessions",
-  "Video sessions (limited)": "Video sessions (limited)",
-  "Unlimited video sessions": "Unlimited video sessions",
-  "Advanced analytics": "Advanced analytics",
-  "Advanced analytics and insights": "Advanced analytics and insights",
-  Popular: "Popular",
-  "You selected the {{plan}} plan. In a real implementation, you would be redirected to a payment gateway.":
-    "You selected the {{plan}} plan. In a real implementation, you would be redirected to a payment gateway.",
-  "Frequently Asked Questions": "Frequently Asked Questions",
-  "Can I switch plans later?": "Can I switch plans later?",
-  "Yes, you can upgrade or downgrade your plan at any time. Changes will take effect at the start of your next billing cycle.":
-    "Yes, you can upgrade or downgrade your plan at any time. Changes will take effect at the start of your next billing cycle.",
-  "Is there a free trial?": "Is there a free trial?",
-  "All new users get a free 5-minute session with each communication method to try our service before subscribing.":
-    "All new users get a free 5-minute session with each communication method to try our service before subscribing.",
-  "How is my data protected?": "How is my data protected?",
-  "All conversations are encrypted end-to-end and stored securely. We never share your data with third parties.":
-    "All conversations are encrypted end-to-end and stored securely. We never share your data with third parties.",
-  "Can I cancel anytime?": "Can I cancel anytime?",
-  "Yes, you can cancel your subscription at any time. You'll continue to have access until the end of your current billing period.":
-    "Yes, you can cancel your subscription at any time. You'll continue to have access until the end of your current billing period.",
-  "Need a custom plan?": "Need a custom plan?",
-  "We offer custom enterprise solutions for organizations looking to provide psychological support to their members or employees.":
-    "We offer custom enterprise solutions for organizations looking to provide psychological support to their members or employees.",
-  "Contact Sales": "Contact Sales",
-
-  // About Page
-  "About Our AI Psychology Service": "About Our AI Psychology Service",
-  "Learn about our mission, technology, and how we're revolutionizing mental health support.":
-    "Learn about our mission, technology, and how we're revolutionizing mental health support.",
-  "Our Mission": "Our Mission",
-  "At AI Psychologist, we believe that quality mental health support should be accessible to everyone, regardless of location, time constraints, or financial limitations. Our mission is to leverage cutting-edge AI technology to provide personalized psychological support that is available 24/7.":
-    "At AI Psychologist, we believe that quality mental health support should be accessible to everyone, regardless of location, time constraints, or financial limitations. Our mission is to leverage cutting-edge AI technology to provide personalized psychological support that is available 24/7.",
-  "We've developed our AI systems with input from licensed psychologists and mental health professionals to ensure our service adheres to ethical standards and provides genuinely helpful support.":
-    "We've developed our AI systems with input from licensed psychologists and mental health professionals to ensure our service adheres to ethical standards and provides genuinely helpful support.",
-  "Our Technology": "Our Technology",
-  "Our AI psychology platform utilizes advanced natural language processing, emotion recognition, and personalized response systems to provide a supportive experience tailored to your needs.":
-    "Our AI psychology platform utilizes advanced natural language processing, emotion recognition, and personalized response systems to provide a supportive experience tailored to your needs.",
-  "The system continuously learns from interactions while maintaining strict privacy standards. Your conversations are encrypted and secure, and we never share your personal information with third parties.":
-    "The system continuously learns from interactions while maintaining strict privacy standards. Your conversations are encrypted and secure, and we never share your personal information with third parties.",
-  "How It Works": "How It Works",
-  "Voice Support": "Voice Support",
-  "Our voice AI system provides real-time conversation with natural language understanding. Speak naturally and receive thoughtful responses and guidance.":
-    "Our voice AI system provides real-time conversation with natural language understanding. Speak naturally and receive thoughtful responses and guidance.",
-  "Text Chat": "Text Chat",
-  "Text-based support allows you to express yourself in writing at your own pace. Perfect for those who prefer written communication or are in situations where speaking isn't possible.":
-    "Text-based support allows you to express yourself in writing at your own pace. Perfect for those who prefer written communication or are in situations where speaking isn't possible.",
-  "Video Sessions": "Video Sessions",
-  "Our 3D animated AI psychologist provides a face-to-face experience with visual cues and expressions, creating a more immersive and personal support session.":
-    "Our 3D animated AI psychologist provides a face-to-face experience with visual cues and expressions, creating a more immersive and personal support session.",
-  "Privacy & Ethics": "Privacy & Ethics",
-  "We take your privacy seriously. All conversations are encrypted end-to-end, and your personal data is never sold or shared with third parties. Our AI is designed with ethical guidelines that prioritize your wellbeing and safety.":
-    "We take your privacy seriously. All conversations are encrypted end-to-end, and your personal data is never sold or shared with third parties. Our AI is designed with ethical guidelines that prioritize your wellbeing and safety.",
-  "While our AI provides valuable support, we recognize its limitations. In crisis situations or when specialized treatment is needed, we will always recommend professional human care.":
-    "While our AI provides valuable support, we recognize its limitations. In crisis situations or when specialized treatment is needed, we will always recommend professional human care.",
-
-  // Team Section
-  "Our Team": "Our Team",
-  "Our team of AI psychology specialists": "Our team of AI psychology specialists",
-  "Passionate About Mental Health": "Passionate About Mental Health",
-  "Combining expertise in psychology and AI": "Combining expertise in psychology and AI",
-  "Our diverse team brings together expertise in psychology, artificial intelligence, and user experience design. We're committed to making mental health support accessible to everyone through innovative technology.":
-    "Our diverse team brings together expertise in psychology, artificial intelligence, and user experience design. We're committed to making mental health support accessible to everyone through innovative technology.",
-
-  // Language Selector
-  "No language found.": "No language found.",
-  "Search Results": "Search Results",
-  "Detected language": "Detected language",
-  Language: "Language",
-
-  // Auth Unavailable Messages
-  "Authentication is temporarily unavailable. Please contact support.":
-    "Authentication is temporarily unavailable. Please contact support.",
-  "Авторизация временно отключена": "Authentication temporarily disabled",
-  "Регистрация временно недоступна": "Registration temporarily unavailable",
-  "Это демо-окружение. Для работы с реальной авторизацией добавьте ключи Supabase в файл .env.local:":
-    "This is a demo environment. To enable real authentication, add Supabase keys to your .env.local file:",
-  "Вернуться на главную": "Return to homepage",
-  Guest: "Guest",
-
-  // Assistant Modal Translations
-  "AI Psychologist (Chat)": "AI Psychologist (Chat)",
-  "AI Psychologist (Voice Call)": "AI Psychologist (Voice Call)",
-  "AI Psychologist (Video Call)": "AI Psychologist (Video Call)",
-  "Choose Your AI Psychologist": "Choose Your AI Psychologist",
-  "Select the AI psychologist you'd like to speak with during your video call.":
-    "Select the AI psychologist you'd like to speak with during your video call.",
-  "Voice communication language": "Voice communication language",
-  "Video call language": "Video call language",
-  "Chat language": "Chat language",
-  "AI will understand and respond in this language with native accent":
-    "AI will understand and respond in this language with native accent",
-  "Choose AI voice gender:": "Choose AI voice gender:",
-  "Start Session": "Start Session",
-  "Start Call": "Start Call",
-  "End Call": "End Call",
-  "Close": "Close",
-  User: "User",
-
-  // Misc
-  "AI Psychologist": "AI Psychologist",
-  "Select Language": "Select Language",
-  "Search languages": "Search languages",
-  "All rights reserved": "All rights reserved",
-  "AI psychology concept with heart and brain icons": "AI psychology concept with heart and brain icons",
-  "Learn about our AI psychology service": "Learn about our AI psychology service",
-  "About our AI psychology service": "About our AI psychology service",
-
-  // Contact Section
-  "Contact Us": "Contact Us",
-  "Have questions or need assistance? Reach out to our support team and we'll get back to you as soon as possible.":
-    "Have questions or need assistance? Reach out to our support team and we'll get back to you as soon as possible.",
-  "Email Us": "Email Us",
-  "For general inquiries and support": "For general inquiries and support",
-  "Call Us": "Call Us",
-  "Monday to Friday, 9am to 5pm": "Monday to Friday, 9am to 5pm",
-  "Visit Us": "Visit Us",
-  "123 AI Avenue, Tech City": "123 AI Avenue, Tech City",
-  "By appointment only": "By appointment only",
-  "Send Us a Message": "Send Us a Message",
-  "Your Name": "Your Name",
-  "Enter your full name": "Enter your full name",
-  "Email Address": "Email Address",
-  "Enter your email address": "Enter your email address",
-  Subject: "Subject",
-  "Enter the subject of your message": "Enter the subject of your message",
-  "Your Message": "Your Message",
-  "Type your message here...": "Type your message here...",
-  "Send Message": "Send Message",
-  "Sending...": "Sending...",
-  "Thank you for your message!": "Thank you for your message!",
-  "We've received your inquiry and will get back to you as soon as possible.":
-    "We've received your inquiry and will get back to you as soon as possible.",
-  "Send another message": "Send another message",
-
-  // Voice and Video Call Interface
-  "AI Psychologist Voice Call": "AI Psychologist Voice Call",
-  "AI Psychologist Video Call": "AI Psychologist Video Call",
-  "Choose Your AI Psychologist": "Choose Your AI Psychologist",
-  "Select the AI psychologist you'd like to speak with during your video call.":
-    "Select the AI psychologist you'd like to speak with during your video call.",
-  "Dr. Alexander": "Dr. Alexander",
-  "Dr. Sophia": "Dr. Sophia",
-  "Dr. Maria": "Dr. Maria",
-  "Senior psychologist specializing in cognitive behavioral therapy with 15+ years of experience":
-    "Senior psychologist specializing in cognitive behavioral therapy with 15+ years of experience",
-  "Clinical psychologist specializing in anxiety, depression, and workplace stress management":
-    "Clinical psychologist specializing in anxiety, depression, and workplace stress management",
-  "Psychotherapist specializing in emotional regulation, trauma recovery, and relationship counseling":
-    "Psychotherapist specializing in emotional regulation, trauma recovery, and relationship counseling",
-  "Start Voice Session": "Start Voice Session",
-  "Start Video Session": "Start Video Session",
-  "Ready to start your voice session?": "Ready to start your voice session?",
-  "Ready to start your video session?": "Ready to start your video session?",
-  "Speak directly with our AI psychologist for immediate support.":
-    "Speak directly with our AI psychologist for immediate support.",
-  "Connect face-to-face with our AI psychologist for a more personal experience.":
-    "Connect face-to-face with our AI psychologist for a more personal experience.",
-  "Voice communication language": "Voice communication language",
-  "Video call language": "Video call language",
-  "AI will understand and respond in this language with native accent":
-    "AI will understand and respond in this language with native accent",
-  "AI will understand, transcribe, and respond in this language with native accent":
-    "AI will understand, transcribe, and respond in this language with native accent",
-  "Choose AI voice gender:": "Choose AI voice gender:",
-  Female: "Female",
-  Male: "Male",
-  "Native accent voice synthesis": "Native accent voice synthesis",
-  "Enhanced Video": "Enhanced Video",
-  "Native Voice": "Native Voice",
-
-  // Call Status and Controls
-  Connected: "Connected",
-  Disconnected: "Disconnected",
-  "Connecting...": "Connecting...",
-  "Initializing...": "Initializing...",
-  Idle: "Idle",
-  "Listening...": "Listening...",
-  "Listening in {{language}}...": "Listening in {{language}}...",
-  "Thinking...": "Thinking...",
-  "Speaking...": "Speaking...",
-  "Speaking in {{language}}...": "Speaking in {{language}}...",
-  "AI is speaking in {{language}}...": "AI is speaking in {{language}}...",
-  "Ready to listen in {{language}}": "Ready to listen in {{language}}",
-  "Microphone muted": "Microphone muted",
-  "Speaking Mode": "Speaking Mode",
-  "Listening Mode": "Listening Mode",
-  Mute: "Mute",
-  Unmute: "Unmute",
-  "End Call": "End Call",
-  "Start Call": "Start Call",
-
-  // Transcription
-  User: "User",
-  "You said:": "You said:",
-  "You said in {{language}}:": "You said in {{language}}:",
-  "AI Psychologist:": "AI Psychologist:",
-  "AI Psychologist in {{language}}:": "AI Psychologist in {{language}}:",
-  "Your Speech in {{language}}": "Your Speech in {{language}}",
-
-  // Error Messages and Notifications
-  "Network error occurred. Attempting to reconnect...": "Network error occurred. Attempting to reconnect...",
-  "Microphone access denied. Please allow microphone access and try again.":
-    "Microphone access denied. Please allow microphone access and try again.",
-  "Camera access denied. Please allow camera access and try again.":
-    "Camera access denied. Please allow camera access and try again.",
-  "Connection timeout. Please try again.": "Connection timeout. Please try again.",
-  "I couldn't process your message. Could you try again?": "I couldn't process your message. Could you try again?",
-  "I received your message but couldn't process the response properly.":
-    "I received your message but couldn't process the response properly.",
-  "I received your message but couldn't generate a proper response.":
-    "I received your message but couldn't generate a proper response.",
-  "I received your message but couldn't generate a response. Could you try rephrasing?":
-    "I received your message but couldn't generate a response. Could you try rephrasing?",
-  "I'm having trouble connecting. Let me try again.": "I'm having trouble connecting. Let me try again.",
-  "I'm sorry, I couldn't process what you said. Could you try again?":
-    "I'm sorry, I couldn't process what you said. Could you try again?",
-  "Failed to start the call. Please try again.": "Failed to start the call. Please try again.",
-  "Could not access your microphone. Please check your permissions.":
-    "Could not access your microphone. Please check your permissions.",
-  "Could not access your camera. Please check your permissions.":
-    "Could not access your camera. Please check your permissions.",
-  "Voice input is not supported in your browser. Please try using Chrome.":
-    "Voice input is not supported in your browser. Please try using Chrome.",
-  "Failed to start speech recognition. Trying alternative method...":
-    "Failed to start speech recognition. Trying alternative method...",
-  "Unable to connect to speech recognition service. Please check your internet connection.":
-    "Unable to connect to speech recognition service. Please check your internet connection.",
-  "Network check failed. You can try to continue anyway.": "Network check failed. You can try to continue anyway.",
-  "Continue Anyway": "Continue Anyway",
-  "Start Without Network Check": "Start Without Network Check",
-  "Processing error occurred": "Processing error occurred",
-  "Connection timeout": "Connection timeout",
-  "Voice input not supported in this browser": "Voice input not supported in this browser",
-  "Microphone access denied": "Microphone access denied",
-  "Camera access denied": "Camera access denied",
-  "Audio processing timed out. Please try again.": "Audio processing timed out. Please try again.",
-  "Please select an AI psychologist before starting the call.":
-    "Please select an AI psychologist before starting the call.",
-
-  // Default AI Responses
-  "I'm listening. Please speak when you're ready.": "I'm listening. Please speak when you're ready.",
-  "I'm here to listen and support you. Could you please share more about what's on your mind?":
-    "I'm here to listen and support you. Could you please share more about what's on your mind?",
-  "I'm here to help. Please feel free to share what's on your mind.":
-    "I'm here to help. Please feel free to share what's on your mind.",
-
-  // Common UI Elements
-  Close: "Close",
-  Cancel: "Cancel",
-  Save: "Save",
-  Delete: "Delete",
-  Edit: "Edit",
-  Submit: "Submit",
-  Send: "Send",
-  Back: "Back",
-  Next: "Next",
-  Previous: "Previous",
-  Continue: "Continue",
-  Finish: "Finish",
-  Yes: "Yes",
-  No: "No",
-  OK: "OK",
-  Settings: "Settings",
-  Help: "Help",
-  Search: "Search",
-  Filter: "Filter",
-  Sort: "Sort",
-  "Please wait...": "Please wait...",
-  Retry: "Retry",
-  Refresh: "Refresh",
-  Update: "Update",
-  Download: "Download",
-  Upload: "Upload",
-  Share: "Share",
-  Copy: "Copy",
-  Paste: "Paste",
-  Cut: "Cut",
-  Undo: "Undo",
-  Redo: "Redo",
-  Select: "Select",
-  "Select All": "Select All",
-  Clear: "Clear",
-  Reset: "Reset",
-  Apply: "Apply",
-  Confirm: "Confirm",
-  Approve: "Approve",
-  Reject: "Reject",
-  Accept: "Accept",
-  Decline: "Decline",
-
-  // Form Elements and Validation
-  Email: "Email",
-  "Enter your email": "Enter your email",
-  "Enter your password": "Enter your password",
-  "Enter your name": "Enter your name",
-  "Enter your message": "Enter your message",
-  "Search...": "Search...",
-  "Type here...": "Type here...",
-  Required: "Required",
-  Optional: "Optional",
-  "This field is required": "This field is required",
-  "Please enter a valid email address": "Please enter a valid email address",
-  "Please enter a valid phone number": "Please enter a valid phone number",
-  "Please enter a valid URL": "Please enter a valid URL",
-  "Please enter a valid date": "Please enter a valid date",
-  "Please enter a valid time": "Please enter a valid time",
-  "Please select an option": "Please select an option",
-  "Please check this box": "Please check this box",
-  "Please agree to the terms": "Please agree to the terms",
-  "Form submitted successfully": "Form submitted successfully",
-  "Form submission failed": "Form submission failed",
-  "Please correct the errors below": "Please correct the errors below",
-
-  // Status Messages
-  Success: "Success",
-  Error: "Error",
-  Warning: "Warning",
-  Information: "Information",
-  Completed: "Completed",
-  "In Progress": "In Progress",
-  Pending: "Pending",
-  Failed: "Failed",
-  Active: "Active",
-  Inactive: "Inactive",
-  Online: "Online",
-  Offline: "Offline",
-  Available: "Available",
-  Unavailable: "Unavailable",
-  Enabled: "Enabled",
-  Disabled: "Disabled",
-
-  // Time and Date
-  Today: "Today",
-  Yesterday: "Yesterday",
-  Tomorrow: "Tomorrow",
-  "This week": "This week",
-  "Last week": "Last week",
-  "Next week": "Next week",
-  "This month": "This month",
-  "Last month": "Last month",
-  "Next month": "Next month",
-  "This year": "This year",
-  "Last year": "Last year",
-  "Next year": "Next year",
-  Now: "Now",
-  Later: "Later",
-  Soon: "Soon",
-  Never: "Never",
-  Always: "Always",
-  Sometimes: "Sometimes",
-
-  // Numbers and Quantities
-  None: "None",
-  One: "One",
-  Two: "Two",
-  Three: "Three",
-  Four: "Four",
-  Five: "Five",
-  Six: "Six",
-  Seven: "Seven",
-  Eight: "Eight",
-  Nine: "Nine",
-  Ten: "Ten",
-  All: "All",
-  Some: "Some",
-  Many: "Many",
-  Few: "Few",
-  Several: "Several",
-  Multiple: "Multiple",
-  Single: "Single",
-  Double: "Double",
-  Triple: "Triple",
-  First: "First",
-  Second: "Second",
-  Third: "Third",
-  Last: "Last",
-  Latest: "Latest",
-  Newest: "Newest",
-  Oldest: "Oldest",
-
-  // Accessibility
-  "Skip to main content": "Skip to main content",
-  "Skip to navigation": "Skip to navigation",
-  "Skip to footer": "Skip to footer",
-  "Open menu": "Open menu",
-  "Close menu": "Close menu",
-  "Toggle menu": "Toggle menu",
-  "Open dialog": "Open dialog",
-  "Close dialog": "Close dialog",
-  Expand: "Expand",
-  Collapse: "Collapse",
-  "Show more": "Show more",
-  "Show less": "Show less",
-  "Load more": "Load more",
-  "View all": "View all",
-  Hide: "Hide",
-  Show: "Show",
-
-  // Hero Section - New Keys
+  // Myitra block
   "Myitra Platform · AI + Psychology": "Myitra Platform · AI + Psychology",
   "Live Psychological Support,": "Live Psychological Support,",
   "AI-Enhanced": "AI-Enhanced",
@@ -585,101 +51,412 @@ export const en = {
   "Myitra Psychology Session": "Myitra Psychology Session",
   "3 Assistant Modes": "3 Assistant Modes",
   "chat · voice · video": "chat · voice · video",
-  "Welcome Back": "Welcome Back",
-  "Sign in to continue your journey with AI Psychology": "Sign in to continue your journey with AI Psychology",
-  "Enter your credentials to access your account": "Enter your credentials to access your account",
-  "Signing in...": "Signing in...",
-  "Forgot password?": "Forgot password?",
-  "Hide password": "Hide password",
-  "Show password": "Show password",
-  "Create account": "Create account",
-  "By signing in, you agree to our": "By signing in, you agree to our",
-  "and": "and",
 
-  // Meta Tags and SEO
-  "AI Psychology Support Platform": "AI Psychology Support Platform",
-  "Professional AI-powered psychological support and counseling services":
-    "Professional AI-powered psychological support and counseling services",
-  "Get professional psychological support through AI technology. Voice, video, and text chat available 24/7.":
-    "Get professional psychological support through AI technology. Voice, video, and text chat available 24/7.",
-  "AI psychology, mental health support, online therapy, psychological counseling":
-    "AI psychology, mental health support, online therapy, psychological counseling",
+  // Home: 3 formats
+  "Choose how you want to talk": "Choose how you want to talk",
+  "How would you like to contact us?": "How would you like to contact us?",
+  "Start with a quick chat, a voice call or a video session with our AI-psychologist — choose the format that feels safest right now.":
+    "Start with a quick chat, a voice call or a video session with our AI-psychologist — choose the format that feels safest right now.",
 
-  // Navigation
-  "Programs": "Programs",
-  "Client Stories": "Client Stories",
+  "Chat with AI-psychologist": "Chat with AI-psychologist",
+  "Write what is happening in your own words and get structured support in a few minutes.":
+    "Write what is happening in your own words and get structured support in a few minutes.",
+  "Best when you need privacy and want to stay silent around other people.":
+    "Best when you need privacy and want to stay silent around other people.",
+  "You can return to the conversation history and exercises at any time.":
+    "You can return to the conversation history and exercises at any time.",
+  "Start chat": "Start chat",
 
-  // Chat Dialog
-  "AI Psychologist Chat": "AI Psychologist Chat",
-  "Chat communication in {{language}}": "Chat communication in {{language}}",
+  "Call AI-psychologist": "Call AI-psychologist",
+  "Voice format for more lively support when you want to hear a calm voice.":
+    "Voice format for more lively support when you want to hear a calm voice.",
+  "Helps reduce the feeling of loneliness in difficult moments.":
+    "Helps reduce the feeling of loneliness in difficult moments.",
+  "Suitable when emotions are strong and you need to speak out quickly.":
+    "Suitable when emotions are strong and you need to speak out quickly.",
+  "Start voice call": "Start voice call",
 
-  // Legal Pages
+  "Video session with AI": "Video session with AI",
+  "Face-to-face session with a 3D-avatar when you want to feel presence and eye contact.":
+    "Face-to-face session with a 3D-avatar when you want to feel presence and eye contact.",
+  "Gives a stronger feeling that someone is really next to you.":
+    "Gives a stronger feeling that someone is really next to you.",
+  "Best for deeper work, body reactions and long-term processes.":
+    "Best for deeper work, body reactions and long-term processes.",
+  "Start video call": "Start video call",
+
+  "Not sure which format? Start with a safe chat":
+    "Not sure which format? Start with a safe chat",
+
+  "Your browser may not fully support voice features. For the best experience, please use Chrome, Edge, or Safari.":
+    "Your browser may not fully support voice features. For the best experience, please use Chrome, Edge, or Safari.",
+  "Your browser may not fully support video features. For the best experience, please use Chrome, Edge, or Safari.":
+    "Your browser may not fully support video features. For the best experience, please use Chrome, Edge, or Safari.",
+
+  "There was an issue with the voice call. Please try again.":
+    "There was an issue with the voice call. Please try again.",
+  "There was an issue with the video call. Please try again.":
+    "There was an issue with the video call. Please try again.",
+
+  // Service features
+  "Support in minutes when it feels really bad":
+    "Support in minutes when it feels really bad",
+  "Open chat, voice or video exactly when it feels bad right now — без очередей, анкет и ожидания записи.":
+    "Open chat, voice or video exactly when it feels bad right now — without queues, forms, or waiting for an appointment.",
+  "Feels like a calm, respectful human conversation":
+    "Feels like a calm, respectful human conversation",
+  "Ассистент сначала слушает и задаёт мягкие уточняющие вопросы, а уже потом предлагает короткие упражнения и шаги.":
+    "The assistant first listens and asks gentle clarifying questions, then offers short exercises and steps.",
+  "Works in 10+ languages": "Works in 10+ languages",
+  "Украинский, русский, английский и другие популярные языки. Язык можно менять прямо во время диалога.":
+    "Ukrainian, Russian, English and other popular languages. You can switch the language right during the dialogue.",
+  "From quick help to 7–21 day programs":
+    "From quick help to 7–21 day programs",
+  "Готовые сценарии: «когда плохо прямо сейчас», работа с тревогой и стрессом, а также мягкие программы на 7–21 день с регулярными чек-инами.":
+    "Ready-made scenarios: “when it feels bad right now”, work with anxiety and stress, and gentle 7–21 day programs with regular check-ins.",
+  "Safe and confidential space": "Safe and confidential space",
+  "Разговоры шифруются и не используются для рекламы. Вы сами решаете, что рассказывать и когда удалять историю.":
+    "Conversations are encrypted and never used for advertising. You decide what to share and when to delete the history.",
+  "Simple pricing with a free start":
+    "Simple pricing with a free start",
+  "На запуске: тестовый период и несколько бесплатных вопросов. Затем — прозрачные тарифы без скрытых платежей: разовый доступ и помесячная подписка.":
+    "At launch: a trial period and several free questions. Then — transparent pricing without hidden fees: one-time access and monthly subscription.",
+
+  "Why people choose TurbotaAI": "Why people choose TurbotaAI",
+  "TurbotaAI is built for moments when you have no strength to search for a therapist or wait for an appointment, but really need someone to talk to right now.":
+    "TurbotaAI is built for moments when you have no strength to search for a therapist or wait for an appointment, but really need someone to talk to right now.",
+
+  // Contact block / page
+  "Contact Us": "Contact Us",
+  "Contact Page Description":
+    "Write to us if you need support, a consultation, or want to discuss collaboration.",
+  "Have questions or need assistance? Reach out to our support team and we'll get back to you as soon as possible.":
+    "Have questions or need assistance? Reach out to our support team and we'll get back to you as soon as possible.",
+
+  "Average reply": "Average reply",
+  "within 24 hours": "within 24 hours",
+  "Privacy": "Privacy",
+  "encrypted conversations": "encrypted conversations",
+
+  "Email us": "Email us",
+  "All questions about the service, payments, access to the assistant or cooperation — please write to this address.":
+    "All questions about the service, payments, access to the assistant or cooperation — please write to this address.",
+
+  "Support, partnerships and press": "Support, partnerships and press",
+  "Contact TurbotaAI team": "Contact TurbotaAI team",
+  "Have questions about how the AI-psychologist works, want to discuss partnership or need help with your account? Leave a request — we will answer as soon as possible.":
+    "Have questions about how the AI-psychologist works, want to discuss partnership or need help with your account? Leave a request — we will answer as soon as possible.",
+
+  "For urgent situations, please contact local emergency services or a crisis line in your country. TurbotaAI is not a substitute for emergency medical help.":
+    "For urgent situations, please contact local emergency services or a crisis line in your country. TurbotaAI is not a substitute for emergency medical help.",
+
+  "Send us a message": "Send us a message",
+  "Send Message": "Send Message",
+
+  "Your Name": "Your Name",
+  "Email Address": "Email Address",
+  Subject: "Subject",
+  "Your Message": "Your Message",
+  "Message is required": "Message is required",
+  "Message must be at least 10 characters":
+    "Message must be at least 10 characters",
+  "Thank you for your message!": "Thank you for your message!",
+  "We've received your inquiry and will get back to you as soon as possible.":
+    "We've received your inquiry and will get back to you as soon as possible.",
+
+  // Footer & disclaimer
+  "AI Psychological Support": "AI Psychological Support",
+  "Professional, scalable, and aesthetically pleasing online service that utilizes AI to deliver quality psychological care.":
+    "Professional, scalable, and aesthetically pleasing online service that utilizes AI to deliver quality psychological care.",
+  "Psychological support based on AI for everyday emotional difficulties.":
+    "Psychological support based on AI for everyday emotional difficulties.",
+
+  "Quick Links": "Quick Links",
+  Legal: "Legal",
+  "Terms of Service": "Terms of Service",
   "Privacy Policy": "Privacy Policy",
   "Terms of Use": "Terms of Use",
+
+  "This is not an emergency service":
+    "This is not an emergency service",
+  "TurbotaAI is not a replacement for a licensed psychologist or psychiatrist.":
+    "TurbotaAI is not a replacement for a licensed psychologist or psychiatrist.",
+  "If you are in immediate danger, contact emergency services or a crisis hotline in your country.":
+    "If you are in immediate danger, contact emergency services or a crisis hotline in your country.",
+
+  "All rights reserved": "All rights reserved",
+
+  // Programs / Stories (adapted)
+  "Our Programs": "Our Programs",
+  "Programs Page Description":
+    "Choose a program that matches your request and support format.",
+  "Single Session": "Single Session",
+  "Monthly Subscription": "Monthly Subscription",
+  "Corporate Program": "Corporate Program",
+  "Program Price - Single": "Program Price - Single",
+  "Program Price - Monthly": "Program Price - Monthly",
+  "Program Price - Corporate": "Program Price - Corporate",
+  "Choose Program": "Choose Program",
+
+  "Stories Page Description":
+    "Real reviews from people who received support through Myitra.",
+  "Story 1 Name": "Story 1 Name",
+  "Story 1 Text": "Story 1 Text",
+  "Story 2 Name": "Story 2 Name",
+  "Story 2 Text": "Story 2 Text",
+  "Story 3 Name": "Story 3 Name",
+  "Story 3 Text": "Story 3 Text",
+
+  // Client Stories page
+  "Real experiences from beta users":
+    "Real experiences from beta users",
+  "Client stories": "Client stories",
+  "These stories show how people use TurbotaAI in different life situations — from night anxiety and burnout to adaptation after moving. Names and details are changed for privacy.":
+    "These stories show how people use TurbotaAI in different life situations — from night anxiety and burnout to adaptation after moving. Names and details are changed for privacy.",
+
+  "Anna, 27 — product designer":
+    "Anna, 27 — product designer",
+  "Night chat instead of endless scrolling":
+    "Night chat instead of endless scrolling",
+  "“After a week with TurbotaAI I finally slept through the night without panic thoughts.”":
+    "“After a week with TurbotaAI I finally slept through the night without panic thoughts.”",
+  "Burnout after relocation & anxiety before sleep":
+    "Burnout after relocation & anxiety before sleep",
+  "Before TurbotaAI": "Before TurbotaAI",
+  "For several months Anna had been falling asleep at 3–4 a.m. She moved to another city, changed jobs and constantly replayed conversations in her head. She was too tired to look for a therapist, fill in forms or wait for an appointment.":
+    "For several months Anna had been falling asleep at 3–4 a.m. She moved to another city, changed jobs and constantly replayed conversations in her head. She was too tired to look for a therapist, fill in forms or wait for an appointment.",
+  "How the sessions looked": "How the sessions looked",
+  "Anna opened the chat when it felt worst — usually late at night. The assistant helped her name what was happening, notice body sensations and try short breathing and grounding exercises. When she wanted, they switched to Ukrainian from English without losing the thread.":
+    "Anna opened the chat when it felt worst — usually late at night. The assistant helped her name what was happening, notice body sensations and try short breathing and grounding exercises. When she wanted, they switched to Ukrainian from English without losing the thread.",
+  "What changed after 3 weeks": "What changed after 3 weeks",
+  "She started going to bed earlier and noticed that panic peaks became shorter. Anna still plans to work with a human therapist, but now she feels she has a safe backup option in her pocket for nights when everything “collapses” again.":
+    "She started going to bed earlier and noticed that panic peaks became shorter. Anna still plans to work with a human therapist, but now she feels she has a safe backup option in her pocket for nights when everything “collapses” again.",
+
+  "Max, 35 — team lead in IT":
+    "Max, 35 — team lead in IT",
+  "Voice calls on the way to work":
+    "Voice calls on the way to work",
+  "“Talking to a calm voice for ten minutes before stand-up is easier than pretending that everything is fine.”":
+    "“Talking to a calm voice for ten minutes before stand-up is easier than pretending that everything is fine.”",
+  "Panic before meetings & fear of mistakes":
+    "Panic before meetings & fear of mistakes",
+  "Support format he chose": "Support format he chose",
+  "On difficult days Max launched a short voice session on the way to the office. Together with the assistant they unpacked what exactly he was afraid of in upcoming meetings and rehearsed several phrases that would help him stay in the adult position.":
+    "On difficult days Max launched a short voice session on the way to the office. Together with the assistant they unpacked what exactly he was afraid of in upcoming meetings and rehearsed several phrases that would help him stay in the adult position.",
+  "Small but visible progress":
+    "Small but visible progress",
+  "After a month he noticed that he no longer cancelled calls at the last moment and could say “I need time to think about it” instead of freezing in silence. These are small steps, but they gave him back a feeling of control.":
+    "After a month he noticed that he no longer cancelled calls at the last moment and could say “I need time to think about it” instead of freezing in silence. These are small steps, but they gave him back a feeling of control.",
+
+  "Sofia, 19 — first-year student":
+    "Sofia, 19 — first-year student",
+  "From “no one understands me” to small routines":
+    "From “no one understands me” to small routines",
+  "“It’s easier to write to the AI first and only then to friends — when I understand what I really feel.”":
+    "“It’s easier to write to the AI first and only then to friends — when I understand what I really feel.”",
+  "Loneliness, adaptation to university & dorm life":
+    "Loneliness, adaptation to university & dorm life",
+  "What was happening": "What was happening",
+  "Sofia moved from a small town to another city to study. In the dorm she felt lonely, ashamed of “weakness” and did not want to burden her parents with her worries.":
+    "Sofia moved from a small town to another city to study. In the dorm she felt lonely, ashamed of “weakness” and did not want to burden her parents with her worries.",
+  "How she used TurbotaAI": "How she used TurbotaAI",
+  "Several times a week Sofia wrote about what had happened during the day: conflicts with roommates, fear of exams, difficulties with new people. The assistant helped her separate thoughts from facts and suggested simple experiments — for example, one small step toward someone safe in the group.":
+    "Several times a week Sofia wrote about what had happened during the day: conflicts with roommates, fear of exams, difficulties with new people. The assistant helped her separate thoughts from facts and suggested simple experiments — for example, one small step toward someone safe in the group.",
+  "Results after the first month":
+    "Results after the first month",
+  "Sofia found two people with whom she now goes to classes, and created a small evening routine instead of doomscrolling. She still experiences anxiety, but she no longer feels completely alone with it.":
+    "Sofia found two people with whom she now goes to classes, and created a small evening routine instead of doomscrolling. She still experiences anxiety, but she no longer feels completely alone with it.",
+
+  "Read full stories": "Read full stories",
+  "Tap a card to open a detailed story in a calm, full-screen view. You can close it at any time with the button or the Escape key.":
+    "Tap a card to open a detailed story in a calm, full-screen view. You can close it at any time with the button or the Escape key.",
+  "Stories are based on real patterns from TurbotaAI testing, but names and details are changed. TurbotaAI does not replace emergency mental health care.":
+    "Stories are based on real patterns from TurbotaAI testing, but names and details are changed. TurbotaAI does not replace emergency mental health care.",
+
+  // Login / no account
+  "During the testing phase you can use the platform without creating an account.":
+    "During the testing phase you can use the platform without creating an account.",
+  "Now you can start a chat, voice call or video session with the AI-psychologist directly from the main page.":
+    "Now you can start a chat, voice call or video session with the AI-psychologist directly from the main page.",
+  "Later this page will be used for full registration, saving programs and personal settings.":
+    "Later this page will be used for full registration, saving programs and personal settings.",
+  "Back to main page": "Back to main page",
+
+  // Contacts: interface languages
+  Languages: "Languages",
+  "Ukrainian · Russian · English":
+    "Ukrainian · Russian · English",
+
+  // Privacy policy
   "Information We Collect": "Information We Collect",
   "How We Use Your Information": "How We Use Your Information",
   "Data Security": "Data Security",
   "Your Rights": "Your Rights",
-  "Privacy Policy - Information We Collect Description": "We collect information you provide directly, usage data, and technical information to improve our services.",
-  "Privacy Policy - How We Use Description": "We use your information to provide services, improve user experience, and ensure platform security.",
-  "Privacy Policy - Data Security Description": "Your data is protected with enterprise-grade encryption and security measures.",
-  "Privacy Policy - Your Rights Description": "You have the right to access, modify, or delete your personal information at any time.",
-  "Privacy Policy - Contact Description": "For privacy-related inquiries, contact us at privacy@myitra.com",
+
+  // TurbotaAI programs
+  "Flexible programs for different life situations":
+    "Flexible programs for different life situations",
+  Programs: "Programs",
+  "You can start with a one-time session and later switch to regular support or a program for your team.":
+    "You can start with a one-time session and later switch to regular support or a program for your team.",
+  "Single support session": "Single support session",
+  "One-time session when it feels very bad and you need support right now without waiting.":
+    "One-time session when it feels very bad and you need support right now without waiting.",
+  "Sudden anxiety, panic, difficult evening or night.":
+    "Sudden anxiety, panic, difficult evening or night.",
+  "You want to share what is happening, but there is no safe person nearby.":
+    "You want to share what is happening, but there is no safe person nearby.",
+  "Chat or voice, about 30–40 minutes.":
+    "Chat or voice, about 30–40 minutes.",
+
+  "Regular support program": "Regular support program",
+  "Monthly subscription": "Monthly subscription",
+  Format: "Format",
+  "Format for those who want to track their condition, receive small tasks and not be alone with emotions.":
+    "Format for those who want to track their condition, receive small tasks and not be alone with emotions.",
+  "Chronic stress, burnout, long-term anxiety.":
+    "Chronic stress, burnout, long-term anxiety.",
+  "You want to build habits and routines, not just survive crises.":
+    "You want to build habits and routines, not just survive crises.",
+  "Several short sessions per week + small daily steps.":
+    "Several short sessions per week + small daily steps.",
+
+  "For clinics, NGOs and companies":
+    "For clinics, NGOs and companies",
+  "Corporate access": "Corporate access",
+  "Access to TurbotaAI for teams and organizations that want to support employees or clients.":
+    "Access to TurbotaAI for teams and organizations that want to support employees or clients.",
+  "Medical and psychological centers.":
+    "Medical and psychological centers.",
+  "NGOs and initiatives that work with vulnerable groups.":
+    "NGOs and initiatives that work with vulnerable groups.",
+  "Companies that care about emotional state of employees.":
+    "Companies that care about emotional state of employees.",
+  "Team access, admin panel and separate support line.":
+    "Team access, admin panel and separate support line.",
+  "Payment integration will be configured together with you. Now we focus on the quality of support and the scenarios of the assistant.":
+    "Payment integration will be configured together with you. Now we focus on the quality of support and the scenarios of the assistant.",
+
+  // Terms of use
   "Acceptance of Terms": "Acceptance of Terms",
   "Use of Services": "Use of Services",
   "User Responsibilities": "User Responsibilities",
   "Limitation of Liability": "Limitation of Liability",
   "Changes to Terms": "Changes to Terms",
-  "Terms - Acceptance Description": "By using Myitra services, you agree to these terms and conditions.",
-  "Terms - Use of Services Description": "Our services are provided for psychological support and must be used responsibly.",
-  "Terms - User Responsibilities Description": "Users must provide accurate information and use services ethically.",
-  "Terms - Limitation of Liability Description": "Myitra is not liable for indirect damages arising from service use.",
-  "Terms - Changes Description": "We may update these terms periodically. Continued use constitutes acceptance.",
 
-  // Programs Page
-  "Our Programs": "Our Programs",
-  "Programs Page Description": "Choose a program that fits your needs for professional psychological support.",
-  "Single Session": "Single Session",
-  "Monthly Subscription": "Monthly Subscription",
-  "Corporate Program": "Corporate Program",
-  "Program Price - Single": "$49",
-  "Program Price - Monthly": "$149/mo",
-  "Program Price - Corporate": "Contact us",
-  "One-time consultation": "One-time consultation",
-  "All communication modes": "All communication modes",
-  "Session recording": "Session recording",
-  "Unlimited sessions": "Unlimited sessions",
-  "Priority support": "Priority support",
-  "Progress tracking": "Progress tracking",
-  "Personalized recommendations": "Personalized recommendations",
-  "Team access": "Team access",
-  "Admin dashboard": "Admin dashboard",
-  "Custom integrations": "Custom integrations",
-  "Dedicated support": "Dedicated support",
-  "Choose Program": "Choose Program",
+  // About / product
+  "About the product": "About the product",
+  "TurbotaAI — AI-psychologist that stays nearby when it feels hard":
+    "TurbotaAI — AI-psychologist that stays nearby when it feels hard",
+  "TurbotaAI is a digital assistant built on psychological literature and modern AI. It does not replace a live therapist, but gives gentle, structured support when it is difficult to reach someone or when you need to talk right now — in chat, voice or video.":
+    "TurbotaAI is a digital assistant built on psychological literature and modern AI. It does not replace a live therapist, but gives gentle, structured support when it is difficult to reach someone or when you need to talk right now — in chat, voice or video.",
+  "Who TurbotaAI is for": "Who TurbotaAI is for",
+  "On the first versions we focus on people who need emotional support in everyday life — without stigma and without long waiting.":
+    "On the first versions we focus on people who need emotional support in everyday life — without stigma and without long waiting.",
+  "• Women who feel stress, anxiety, burnout or loneliness.":
+    "• Women who feel stress, anxiety, burnout or loneliness.",
+  "• Teenagers 12–18 who need a safe space to talk about emotions and self-esteem.":
+    "• Teenagers 12–18 who need a safe space to talk about emotions and self-esteem.",
+  "• People who are alone or feel isolated and want to be heard.":
+    "• People who are alone or feel isolated and want to be heard.",
+  "• Later — veterans and their families as a separate module.":
+    "• Later — veterans and their families as a separate module.",
 
-  // Stories Page
-  "Stories Page Description": "Real experiences from people who found support through Myitra.",
-  "Story 1 Name": "Anna M.",
-  "Story 1 Text": "Myitra helped me through a difficult period. The AI psychologist was always available when I needed support.",
-  "Story 2 Name": "Elena K.",
-  "Story 2 Text": "The combination of professional psychology and AI technology is amazing. I feel heard and understood.",
-  "Story 3 Name": "Dmitry S.",
-  "Story 3 Text": "Corporate program transformed our team's mental health approach. Highly recommend!",
+  "How the assistant works": "How the assistant works",
+  "The assistant listens first, asks clarifying questions and only then offers recommendations — step by step, without pressure.":
+    "The assistant listens first, asks clarifying questions and only then offers recommendations — step by step, without pressure.",
+  "• Chat, voice or video — you choose the format.":
+    "• Chat, voice or video — you choose the format.",
+  "• Clarifying questions instead of 20 tips at once — the assistant tries to understand your state.":
+    "• Clarifying questions instead of 20 tips at once — the assistant tries to understand your state.",
+  "• Breathing, grounding, short exercises, diary of emotions, small daily steps.":
+    "• Breathing, grounding, short exercises, diary of emotions, small daily steps.",
+  "• Short programs for 7–21 days to gently change habits and support you regularly.":
+    "• Short programs for 7–21 days to gently change habits and support you regularly.",
+  "• Answers are based on selected psychological books and materials that were tested with a psychologist.":
+    "• Answers are based on selected psychological books and materials that were tested with a psychologist.",
 
-  // Contacts Page
-  "Contact Page Description": "Get in touch with us for support, inquiries, or partnership opportunities.",
-  "Name is required": "Name is required",
-  "Email is required": "Email is required",
-  "Subject is required": "Subject is required",
-  "Message is required": "Message is required",
-  "Message must be at least 10 characters": "Message must be at least 10 characters",
+  "What TurbotaAI is not": "What TurbotaAI is not",
+  "It is important to be honest about the limits of technology.":
+    "It is important to be honest about the limits of technology.",
+  "• TurbotaAI is not a doctor and not a psychiatrist.":
+    "• TurbotaAI is not a doctor and not a psychiatrist.",
+  "• It does not make diagnoses and does not replace emergency help.":
+    "• It does not make diagnoses and does not replace emergency help.",
+  "• In crisis or risk of harm to yourself or others, you should contact emergency services or a human specialist.":
+    "• In crisis or risk of harm to yourself or others, you should contact emergency services or a human specialist.",
+  "• The assistant is a supportive tool that can live alongside individual or group therapy.":
+    "• The assistant is a supportive tool that can live alongside individual or group therapy.",
 
-  // Navigation keys
-  "nav.home": "Home",
-  "nav.programs": "Programs",
-  "nav.clientStories": "Client Stories",
-  "nav.contacts": "Contacts",
-  "nav.privacyPolicy": "Privacy Policy",
-  "nav.termsOfUse": "Terms of Use",
+  "Sessions, test period and subscription":
+    "Sessions, test period and subscription",
+  "On the first launch we plan to test the service with a free period, so that users can safely try the assistant and we can see how people really use TurbotaAI.":
+    "On the first launch we plan to test the service with a free period, so that users can safely try the assistant and we can see how people really use TurbotaAI.",
+  "After testing you can keep a small free part (for example, a few questions) and then switch to a simple paid model: a monthly subscription for regular support and a one-time access option for those who want to try a single extended session.":
+    "After testing you can keep a small free part (for example, a few questions) and then switch to a simple paid model: a monthly subscription for regular support and a one-time access option for those who want to try a single extended session.",
+  "All payments will be processed through a certified payment provider, and refunds will be handled manually through support e-mail if something goes wrong.":
+    "All payments will be processed through a certified payment provider, and refunds will be handled manually through support e-mail if something goes wrong.",
+
+  "On launch in Ukraine": "On launch in Ukraine",
+  "The first versions of TurbotaAI will be tested on the Ukrainian market with support for several languages. This will allow us to refine the quality of answers, tone of communication and scenarios before scaling to other countries.":
+    "The first versions of TurbotaAI will be tested on the Ukrainian market with support for several languages. This will allow us to refine the quality of answers, tone of communication and scenarios before scaling to other countries.",
+  "The goal is a safe, respectful assistant that you can open at any moment when you need to talk — without stigma and overcomplicated interfaces.":
+    "The goal is a safe, respectful assistant that you can open at any moment when you need to talk — without stigma and overcomplicated interfaces.",
+
+  // Contact form
+  "Contact form is temporarily unavailable. Webhook is not configured yet.":
+    "Contact form is temporarily unavailable. Webhook is not configured yet.",
+  "Please fill in your email and message.":
+    "Please fill in your email and message.",
+  "Your message has been sent. We will reply to you as soon as possible.":
+    "Your message has been sent. We will reply to you as soon as possible.",
+  "Something went wrong while sending the message. Please try again a bit later.":
+    "Something went wrong while sending the message. Please try again a bit later.",
+  "Your name": "Your name",
+  "How can we address you?": "How can we address you?",
+  "Your email": "Your email",
+  "Your message": "Your message",
+  "Briefly describe your request or idea.":
+    "Briefly describe your request or idea.",
+  "Sending...": "Sending...",
+  "Send message": "Send message",
+
+  // Modals: chat / voice / video
+  "In crisis situations, please contact local emergency services immediately.":
+    "In crisis situations, please contact local emergency services immediately.",
+
+  // Chat modal
+  "Describe what is happening in your own words. The assistant will answer in a few short, structured messages.":
+    "Describe what is happening in your own words. The assistant will answer in a few short, structured messages.",
+  "How to start": "How to start",
+  "You can start with one sentence: for example, 'I feel anxious and can't sleep', 'I can't concentrate', or 'I don't know what to do in a relationship'.":
+    "You can start with one sentence: for example, 'I feel anxious and can't sleep', 'I can't concentrate', or 'I don't know what to do in a relationship'.",
+  "Write here what is happening to you...":
+    "Write here what is happening to you...",
+
+  // Voice modal
+  "Voice session with AI-psychologist":
+    "Voice session with AI-psychologist",
+  "You can talk out loud, the assistant will listen, answer and voice the reply.":
+    "You can talk out loud, the assistant will listen, answer and voice the reply.",
+  "Press the button to start the call. Allow microphone access, then speak as if with a real psychologist.":
+    "Press the button to start the call. Allow microphone access, then speak as if with a real psychologist.",
+  "Your e-mail will be used only to personalize the session. (guest@example.com)":
+    "Your e-mail will be used only to personalize the session. (guest@example.com)",
+  "Start voice session": "Start voice session",
+
+  // Video modal
+  "AI Psychologist Video Call": "AI Psychologist Video Call",
+  "Video session in Ukrainian · ➟": "Video session in Ukrainian · ➟",
+  "Choose Your AI Psychologist": "Choose Your AI Psychologist",
+  "Select the AI psychologist you'd like to speak with during your video call.":
+    "Select the AI psychologist you'd like to speak with during your video call.",
+  "Video call language:": "Video call language:",
+  Ukrainian: "Ukrainian",
+  "All characters use Google TTS for authentic native accent.":
+    "All characters use Google TTS for authentic native accent.",
+  "Clinical psychologist specializing in anxiety, depression, and workplace stress management":
+    "Clinical psychologist specializing in anxiety, depression, and workplace stress management",
+  Selected: "Selected",
+  "Start Video Call": "Start Video Call",
 }
