@@ -524,6 +524,9 @@ export const uk: Record<string, string> = {
   Selected: "Обрано",
   "Start Video Call": "Почати відеодзвінок",
   "Video session in Ukrainian": "Відеосесія українською",
+    "AI will understand and respond in this language with native accent":"ШІ зрозуміє і відповість на обраній мові",
+  "Video session in Russian": "Відеосесія російською",
+  "Video session in English": "Відеосесія на англійською",
     // ─────────────────────
   // Terms of Use – полные абзацы
   // ─────────────────────
