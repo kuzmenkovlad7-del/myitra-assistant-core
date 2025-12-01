@@ -3,7 +3,8 @@
 import { useLanguage } from "@/lib/i18n/language-context"
 
 export default function TermsOfUsePage() {
-  const { t } = useLanguage()
+  const { t, language } = useLanguage()
+  const isUk = language === "uk"
 
   return (
     <div className="container mx-auto px-4 py-16">
@@ -11,7 +12,6 @@ export default function TermsOfUsePage() {
         <h1 className="text-4xl font-bold mb-8 text-foreground">
           {t("Terms of Use")}
         </h1>
-
         <p className="text-sm text-muted-foreground mb-8">
           {t("Last Updated: November 2025")}
         </p>
@@ -24,16 +24,14 @@ export default function TermsOfUsePage() {
             </h2>
             <div className="space-y-4">
               <p>
-                By accessing or using TurbotaAI&apos;s AI psychology services
-                (the &quot;Service&quot;), you agree to be bound by these Terms
-                of Use and all applicable laws and regulations. If you do not
-                agree with these terms, you must not use the Service.
+                {isUk
+                  ? "Користуючись сервісом TurbotaAI (далі — «Сервіс»), ви погоджуєтеся з цими Умовами користування та всіма застосовними законами й нормативами. Якщо ви не погоджуєтеся з якоюсь частиною умов, ви не можете користуватися Сервісом."
+                  : "By accessing or using TurbotaAI's AI psychology services (the \"Service\"), you agree to be bound by these Terms of Use and all applicable laws and regulations. If you do not agree with any part of these terms, you may not use the Service."}
               </p>
               <p>
-                These Terms constitute a legally binding agreement between you
-                and the operator of TurbotaAI Psychology Services. Your
-                continued use of the Service after we publish updates means that
-                you accept the revised Terms.
+                {isUk
+                  ? "Ці Умови є юридично обов’язковою угодою між вами та оператором TurbotaAI Psychology Services. Продовжуючи користуватися Сервісом після оновлення умов, ви підтверджуєте, що приймаєте нову редакцію."
+                  : "These Terms constitute a legally binding agreement between you and the operator of TurbotaAI Psychology Services. Your continued use of the Service after we publish updates means that you accept the revised Terms."}
               </p>
             </div>
           </section>
@@ -44,16 +42,37 @@ export default function TermsOfUsePage() {
               {t("Eligibility")}
             </h2>
             <div className="space-y-4">
-              <p>To use our Service, you confirm that you:</p>
+              <p>
+                {isUk
+                  ? "Щоб користуватися Сервісом, ви підтверджуєте, що:"
+                  : "To use our Service, you confirm that you:"}
+              </p>
               <ul className="list-disc list-inside space-y-2 ml-2">
-                <li>Are at least 18 years of age</li>
-                <li>Have the legal capacity to enter into a contract</li>
                 <li>
-                  Are not prohibited from using online services under any
-                  applicable laws
+                  {isUk
+                    ? "маєте щонайменше 18 років;"
+                    : "Are at least 18 years of age;"}
                 </li>
-                <li>Provide accurate and complete information when requested</li>
-                <li>Will keep your account credentials secure</li>
+                <li>
+                  {isUk
+                    ? "маєте повну цивільну дієздатність для укладення договорів;"
+                    : "Have the legal capacity to enter into a contract;"}
+                </li>
+                <li>
+                  {isUk
+                    ? "не обмежені у праві користуватися онлайн-сервісами згідно із законодавством, що до вас застосовується;"
+                    : "Are not prohibited from using online services under any applicable laws;"}
+                </li>
+                <li>
+                  {isUk
+                    ? "надаєте точну та повну інформацію, коли ми запитуємо її для реєстрації чи ідентифікації;"
+                    : "Provide accurate and complete information when requested for registration or identification;"}
+                </li>
+                <li>
+                  {isUk
+                    ? "забезпечуєте конфіденційність своїх облікових даних і несете відповідальність за всі дії, що відбуваються під вашим акаунтом."
+                    : "Maintain the confidentiality of your account credentials and are responsible for all activity that occurs under your account."}
+                </li>
               </ul>
             </div>
           </section>
@@ -65,29 +84,35 @@ export default function TermsOfUsePage() {
             </h2>
             <div className="space-y-4">
               <p>
-                TurbotaAI provides AI-based psychological support, educational
-                content, and self-help tools. You understand and agree that:
+                {isUk
+                  ? "Сервіс TurbotaAI надає розмовну психологічну підтримку за допомогою моделей штучного інтелекту. Ви розумієте та погоджуєтеся, що:"
+                  : "TurbotaAI provides conversational psychological support powered by AI models. You understand and agree that:"}
               </p>
               <ul className="list-disc list-inside space-y-2 ml-2">
                 <li>
-                  The Service is not a substitute for professional medical,
-                  psychiatric, or psychotherapeutic care
+                  {isUk
+                    ? "Сервіс не є заміною консультації лікаря, психіатра або ліцензованого психотерапевта."
+                    : "The Service is not a substitute for consultation with a doctor, psychiatrist, or licensed psychotherapist."}
                 </li>
                 <li>
-                  The AI assistant cannot make medical diagnoses, prescribe
-                  medication, or provide emergency help
+                  {isUk
+                    ? "Ми не ставимо медичних чи психіатричних діагнозів і не призначаємо лікування."
+                    : "We do not provide medical or psychiatric diagnoses and do not prescribe treatment."}
                 </li>
                 <li>
-                  In any crisis or emergency you must immediately contact local
-                  emergency services or a crisis hotline
+                  {isUk
+                    ? "У разі загрози життю, самогубних думок або іншої невідкладної ситуації ви повинні негайно звернутися до служб екстреної допомоги чи на кризову лінію."
+                    : "In case of danger to life, suicidal thoughts, or any other emergency, you must immediately contact local emergency services or a crisis hotline."}
                 </li>
                 <li>
-                  All information and suggestions are for informational and
-                  supportive purposes only
+                  {isUk
+                    ? "Відповіді асистента мають інформаційний і підтримувальний характер і не є прямими інструкціями до дії."
+                    : "The assistant’s responses are for informational and supportive purposes only and do not constitute direct instructions or orders to act."}
                 </li>
                 <li>
-                  You are solely responsible for any actions you take based on
-                  interactions with the Service
+                  {isUk
+                    ? "Будь-які дії, які ви здійснюєте на основі взаємодії з асистентом, ви робите на власний розсуд і ризик."
+                    : "Any actions you take based on interactions with the assistant are taken at your own discretion and risk."}
                 </li>
               </ul>
             </div>
@@ -99,35 +124,36 @@ export default function TermsOfUsePage() {
               {t("User Responsibilities")}
             </h2>
             <div className="space-y-4">
-              <p>When using the Service, you agree to:</p>
+              <p>
+                {isUk
+                  ? "Використовуючи TurbotaAI, ви зобов’язуєтеся:"
+                  : "When using TurbotaAI, you agree to:"}
+              </p>
               <ul className="list-disc list-inside space-y-2 ml-2">
                 <li>
-                  Provide accurate, current and complete information where
-                  required
+                  {isUk
+                    ? "не надавати хибну інформацію про себе та своє становище;"
+                    : "Not provide false information about yourself or your situation;"}
                 </li>
                 <li>
-                  Maintain the confidentiality of your login details and any
-                  one-time links
+                  {isUk
+                    ? "не передавати доступ до акаунта третім особам і не продавати його;"
+                    : "Not share, sell, or otherwise transfer your account to any third party;"}
                 </li>
                 <li>
-                  Notify us promptly of any unauthorized use of your account or
-                  security breach you become aware of
+                  {isUk
+                    ? "повідомляти нас, якщо ви підозрюєте несанкціонований доступ до свого акаунта;"
+                    : "Notify us if you suspect any unauthorized access to your account;"}
                 </li>
                 <li>
-                  Use the Service only for lawful purposes and in accordance
-                  with these Terms
+                  {isUk
+                    ? "використовувати Сервіс лише в законних цілях і не намагатися завдати шкоди іншим користувачам або платформі;"
+                    : "Use the Service only for lawful purposes and not attempt to harm other users or the platform;"}
                 </li>
                 <li>
-                  Not attempt to interfere with or disrupt the Service, its
-                  infrastructure or security
-                </li>
-                <li>
-                  Not use automated tools to access the Service unless expressly
-                  permitted
-                </li>
-                <li>
-                  Respect the intellectual property and privacy rights of
-                  TurbotaAI and third parties
+                  {isUk
+                    ? "поважати конфіденційність інших людей та не розкривати чужі персональні дані без дозволу."
+                    : "Respect the privacy of others and not disclose personal information of third parties without their consent."}
                 </li>
               </ul>
             </div>
@@ -139,35 +165,41 @@ export default function TermsOfUsePage() {
               {t("Prohibited Activities")}
             </h2>
             <div className="space-y-4">
-              <p>You expressly agree that you will not:</p>
+              <p>
+                {isUk
+                  ? "Ви прямо погоджуєтеся, що не будете:"
+                  : "You expressly agree that you will not:"}
+              </p>
               <ul className="list-disc list-inside space-y-2 ml-2">
-                <li>Use the Service for any illegal or unauthorized purpose</li>
                 <li>
-                  Attempt to gain unauthorized access to any part of the Service
-                  or related systems
+                  {isUk
+                    ? "використовувати Сервіс для будь-яких незаконних або шахрайських дій;"
+                    : "Use the Service for any illegal or fraudulent purpose;"}
                 </li>
                 <li>
-                  Reverse engineer, decompile, or otherwise attempt to extract
-                  the source code of the Service
+                  {isUk
+                    ? "намагатися отримати несанкціонований доступ до серверів, баз даних або облікових записів інших користувачів;"
+                    : "Attempt to gain unauthorized access to servers, databases, or other users’ accounts;"}
                 </li>
                 <li>
-                  Collect or harvest personal data about other users without
-                  their consent
+                  {isUk
+                    ? "модифікувати, декомпілювати, реверс-інженерити або іншим чином намагатися отримати вихідний код Сервісу;"
+                    : "Modify, decompile, reverse engineer, or otherwise attempt to obtain the source code of the Service;"}
                 </li>
                 <li>
-                  Upload, transmit, or distribute viruses, malware, or other
-                  harmful code
+                  {isUk
+                    ? "завантажувати або передавати віруси, шкідливе програмне забезпечення чи інший код, що може зашкодити системам;"
+                    : "Upload or transmit viruses, malicious software, or other code that may damage systems;"}
                 </li>
                 <li>
-                  Impersonate any person or entity, or misrepresent your
-                  affiliation with a person or entity
+                  {isUk
+                    ? "видавати себе за іншу особу чи організацію або неправдиво вказувати свою роль чи стосунок до TurbotaAI;"
+                    : "Impersonate any person or organization or misrepresent your affiliation with TurbotaAI;"}
                 </li>
                 <li>
-                  Interfere with or disrupt the Service, servers, or networks
-                </li>
-                <li>
-                  Use the Service to harass, threaten, abuse, or otherwise harm
-                  others
+                  {isUk
+                    ? "використовувати Сервіс для переслідування, залякування чи образ інших людей."
+                    : "Use the Service to harass, intimidate, or abuse others."}
                 </li>
               </ul>
             </div>
@@ -180,29 +212,15 @@ export default function TermsOfUsePage() {
             </h2>
             <div className="space-y-4">
               <p>
-                All content and materials available through the Service,
-                including text, graphics, logos, icons, images, audio, video and
-                software, are owned or licensed by TurbotaAI Psychology Services
-                and are protected by copyright, trademark and other intellectual
-                property laws.
+                {isUk
+                  ? "Увесь контент Сервісу, включно з текстами, графікою, логотипами, іконками, зображеннями, аудіо та програмним забезпеченням, належить TurbotaAI Psychology Services або використовується на підставі ліцензії й захищений законами про авторське право та інші права інтелектуальної власності."
+                  : "All content of the Service, including text, graphics, logos, icons, images, audio, and software, is owned by TurbotaAI Psychology Services or used under license and is protected by copyright and other intellectual property laws."}
               </p>
               <p>
-                We grant you a limited, non-exclusive, non-transferable license
-                to access and use the Service for personal, non-commercial
-                purposes. This license does not allow you to:
+                {isUk
+                  ? "Ви отримуєте обмежену, невиключну, таку, що не передається, ліцензію на особисте некомерційне використання Сервісу. Ви не можете відтворювати, змінювати, поширювати чи використовувати контент у комерційних цілях без нашого письмового дозволу."
+                  : "You are granted a limited, non-exclusive, non-transferable license to use the Service for personal, non-commercial purposes. You may not reproduce, modify, distribute, or use any content for commercial purposes without our prior written consent."}
               </p>
-              <ul className="list-disc list-inside space-y-2 ml-2">
-                <li>Copy or reproduce content except for personal use</li>
-                <li>Modify, adapt, or create derivative works</li>
-                <li>
-                  Distribute, sell, rent, lease, or publicly display any part of
-                  the Service
-                </li>
-                <li>
-                  Use our trademarks, branding, or name without prior written
-                  consent
-                </li>
-              </ul>
             </div>
           </section>
 
@@ -213,25 +231,31 @@ export default function TermsOfUsePage() {
             </h2>
             <div className="space-y-4">
               <p>
-                Information about current pricing, subscription options and test
-                periods is displayed on the platform. By purchasing any paid
-                access, you agree to:
+                {isUk
+                  ? "Ціни на платні функції TurbotaAI вказані на відповідних сторінках Сервісу. Оформляючи покупку або підписку, ви погоджуєтеся:"
+                  : "Pricing for paid features of TurbotaAI is listed on the relevant pages of the Service. By purchasing access or a subscription, you agree to:"}
               </p>
               <ul className="list-disc list-inside space-y-2 ml-2">
-                <li>Pay all fees applicable to your chosen plan</li>
                 <li>
-                  Provide valid and up-to-date payment and billing information
+                  {isUk
+                    ? "сплачувати всі застосовні збори та податки згідно з умовами, відображеними під час оплати;"
+                    : "Pay all applicable fees and taxes as displayed at the time of purchase;"}
                 </li>
                 <li>
-                  Authorize us or our payment provider to charge your payment
-                  method for recurring subscriptions where applicable
+                  {isUk
+                    ? "надавати коректну платіжну інформацію та своєчасно оновлювати її у разі змін;"
+                    : "Provide accurate payment information and update it when it changes;"}
                 </li>
-                <li>Pay any taxes, duties, or government charges if applied</li>
+                <li>
+                  {isUk
+                    ? "дозволяти нам та нашому платіжному провайдеру списувати кошти з обраного способу оплати відповідно до обраного тарифу."
+                    : "Authorize us and our payment provider to charge your selected payment method according to the chosen plan."}
+                </li>
               </ul>
-              <p className="mt-4">
-                We may change prices and billing models in the future. Any
-                changes will be communicated in advance and will not affect an
-                already paid billing period.
+              <p>
+                {isUk
+                  ? "Ми можемо змінювати вартість сервісу в майбутньому. Про зміни тарифів ми повідомлятимемо завчасно; нові ціни застосовуються з наступного періоду оплати."
+                  : "We may update our pricing in the future. We will notify you in advance, and new prices will apply from the next billing period."}
               </p>
             </div>
           </section>
@@ -243,30 +267,14 @@ export default function TermsOfUsePage() {
             </h2>
             <div className="space-y-4">
               <p>
-                You may cancel your subscription or stop using the Service at
-                any time via your account settings or by contacting support.
-                Unless otherwise stated, cancellations take effect at the end of
-                the current billing period.
+                {isUk
+                  ? "Ви можете скасувати підписку в налаштуваннях акаунта. Доступ до платних функцій зберігатиметься до кінця вже оплачуваного періоду."
+                  : "You may cancel your subscription in your account settings. Your access to paid features will continue until the end of the current billing period."}
               </p>
               <p>
-                Refunds may be granted at our sole discretion in specific
-                situations, for example:
-              </p>
-              <ul className="list-disc list-inside space-y-2 ml-2">
-                <li>
-                  Significant technical issues preventing reasonable use of the
-                  Service
-                </li>
-                <li>Mistaken duplicate payments</li>
-                <li>
-                  Other exceptional cases evaluated individually by the support
-                  team
-                </li>
-              </ul>
-              <p className="mt-4">
-                To request a refund, please contact us at the support email
-                listed below within the timeframe indicated in our refund
-                policy, if any.
+                {isUk
+                  ? "Питання повернення коштів розглядається індивідуально. Зазвичай повернення можливе у випадку технічних збоїв, які тривалий час не дозволяють користуватися сервісом, або помилкового списання."
+                  : "Refund requests are handled on a case-by-case basis. In general, refunds may be granted when technical issues prevent you from using the Service for a prolonged period or when you have been charged in error."}
               </p>
             </div>
           </section>
@@ -278,37 +286,14 @@ export default function TermsOfUsePage() {
             </h2>
             <div className="space-y-4">
               <p>
-                To the maximum extent permitted by law, TurbotaAI Psychology
-                Services and its owners, employees, and partners shall not be
-                liable for:
+                {isUk
+                  ? "У межах, максимально дозволених законом, TurbotaAI Psychology Services не несе відповідальності за будь-які непрямі, випадкові, особливі, штрафні чи побічні збитки, зокрема за втрату прибутку, даних або переривання бізнес-процесів, що виникають унаслідок користування Сервісом або неможливості ним користуватися."
+                  : "To the fullest extent permitted by law, TurbotaAI Psychology Services shall not be liable for any indirect, incidental, special, punitive, or consequential damages, including loss of profits, data, or business interruption, arising out of or in connection with your use of, or inability to use, the Service."}
               </p>
-              <ul className="list-disc list-inside space-y-2 ml-2">
-                <li>
-                  Any indirect, incidental, special, consequential, or punitive
-                  damages
-                </li>
-                <li>
-                  Loss of profits, revenue, data, goodwill, or business
-                  opportunities
-                </li>
-                <li>
-                  Any interruption of the Service, technical failures, or data
-                  loss
-                </li>
-                <li>
-                  Unauthorized access to or alteration of your transmissions or
-                  data
-                </li>
-                <li>
-                  Any actions or content of third parties using or linked to the
-                  Service
-                </li>
-              </ul>
-              <p className="mt-4">
-                Where liability cannot be excluded, our total aggregate
-                liability arising out of or relating to the Service will not
-                exceed the amount you paid for the Service during the twelve
-                months preceding the event giving rise to the claim.
+              <p>
+                {isUk
+                  ? "Сукупна відповідальність TurbotaAI за будь-які претензії, пов’язані з користуванням Сервісом, не перевищує суму, фактично сплачену вами за користування платними функціями за останні 12 місяців."
+                  : "The total liability of TurbotaAI for any claims related to your use of the Service shall not exceed the total amount you have paid for paid features during the twelve months preceding the event giving rise to the claim."}
               </p>
             </div>
           </section>
@@ -320,16 +305,14 @@ export default function TermsOfUsePage() {
             </h2>
             <div className="space-y-4">
               <p>
-                The Service is provided on an &quot;as is&quot; and &quot;as
-                available&quot; basis. We make no representations or warranties
-                of any kind, express or implied, including but not limited to
-                warranties of merchantability, fitness for a particular purpose,
-                non-infringement, or reliability of results.
+                {isUk
+                  ? "Сервіс надається за принципом «як є» та «в міру доступності». Ми не гарантуємо, що TurbotaAI працюватиме безперервно, без помилок, відповідатиме всім вашим очікуванням або повністю вирішить ваші психологічні запити."
+                  : "The Service is provided on an \"as is\" and \"as available\" basis. We do not guarantee that TurbotaAI will operate without interruptions or errors, that it will meet all your expectations, or that it will fully resolve your psychological concerns."}
               </p>
               <p>
-                We do not warrant that the Service will be uninterrupted,
-                error-free, secure, or that any defects will be corrected. Any
-                use of the Service is at your sole risk.
+                {isUk
+                  ? "У тій мірі, у якій це дозволено законом, ми відмовляємося від будь-яких прямих або непрямих гарантій, включно з гарантіями придатності для певної мети, товарної якості та ненарушення прав третіх осіб."
+                  : "To the extent permitted by law, we disclaim all express or implied warranties, including warranties of fitness for a particular purpose, merchantability, and non-infringement."}
               </p>
             </div>
           </section>
@@ -341,18 +324,25 @@ export default function TermsOfUsePage() {
             </h2>
             <div className="space-y-4">
               <p>
-                You agree to indemnify, defend, and hold harmless TurbotaAI
-                Psychology Services, its affiliates, officers, employees, and
-                agents from and against any claims, demands, losses, damages, or
-                expenses (including reasonable attorneys&apos; fees) arising
-                from:
+                {isUk
+                  ? "Ви погоджуєтеся відшкодувати збитки, захищати та звільнити від відповідальності TurbotaAI Psychology Services, її співробітників та партнерів від будь-яких претензій, збитків, зобов’язань чи витрат, що виникають унаслідок:"
+                  : "You agree to indemnify, defend, and hold harmless TurbotaAI Psychology Services and its employees and partners from any claims, damages, liabilities, or expenses arising out of:"}
               </p>
               <ul className="list-disc list-inside space-y-2 ml-2">
-                <li>Your use or misuse of the Service</li>
-                <li>Your violation of these Terms</li>
-                <li>Your violation of any rights of another person</li>
                 <li>
-                  Your violation of any applicable laws, rules, or regulations
+                  {isUk
+                    ? "вашого фактичного чи передбачуваного порушення цих Умов;"
+                    : "Your actual or alleged violation of these Terms;"}
+                </li>
+                <li>
+                  {isUk
+                    ? "вашого неправомірного використання Сервісу;"
+                    : "Your misuse of the Service;"}
+                </li>
+                <li>
+                  {isUk
+                    ? "порушення вами прав третіх осіб, включно з правами інтелектуальної власності чи права на приватність."
+                    : "Your infringement of any third-party rights, including intellectual property or privacy rights."}
                 </li>
               </ul>
             </div>
@@ -365,19 +355,14 @@ export default function TermsOfUsePage() {
             </h2>
             <div className="space-y-4">
               <p>
-                We may suspend or terminate your access to the Service at any
-                time, with or without notice, if we reasonably believe that you:
+                {isUk
+                  ? "Ми можемо тимчасово призупинити або повністю припинити доступ до вашого акаунта на власний розсуд, якщо вважаємо, що ви порушуєте ці Умови, завдаєте шкоди Сервісу або іншим користувачам чи створюєте для нас юридичні ризики."
+                  : "We may suspend or terminate your access to the Service at our sole discretion if we believe that you are violating these Terms, harming the Service or other users, or creating legal risk for us."}
               </p>
-              <ul className="list-disc list-inside space-y-2 ml-2">
-                <li>Violated these Terms of Use</li>
-                <li>Misused the Service or harmed other users</li>
-                <li>Engaged in fraudulent, abusive, or illegal activity</li>
-              </ul>
-              <p className="mt-4">
-                Upon termination, your right to use the Service will immediately
-                cease. Sections relating to intellectual property, limitation of
-                liability, disclaimer of warranties, and indemnification will
-                survive termination.
+              <p>
+                {isUk
+                  ? "У разі припинення доступу ваше право користуватися Сервісом негайно припиняється. Положення щодо інтелектуальної власності, обмеження відповідальності, відмови від гарантій та відшкодування збитків залишаються чинними й після припинення дії Умов."
+                  : "Upon termination, your right to use the Service ceases immediately. The provisions regarding intellectual property, limitation of liability, disclaimer of warranties, and indemnification will remain in effect even after termination."}
               </p>
             </div>
           </section>
@@ -389,44 +374,14 @@ export default function TermsOfUsePage() {
             </h2>
             <div className="space-y-4">
               <p>
-                These Terms of Use are governed by the laws of the jurisdiction
-                in which TurbotaAI Psychology Services operates, without regard
-                to conflict-of-law principles.
+                {isUk
+                  ? "Ці Умови регулюються законодавством юрисдикції, у якій офіційно зареєстровано TurbotaAI Psychology Services, без урахування колізій норм права."
+                  : "These Terms are governed by the laws of the jurisdiction in which TurbotaAI Psychology Services is officially registered, without regard to conflict-of-law principles."}
               </p>
               <p>
-                Wherever permitted by law, any dispute arising out of or related
-                to these Terms or the Service shall be resolved through
-                confidential, binding arbitration or another alternative dispute
-                resolution mechanism selected by us, rather than in court, except
-                where applicable law requires otherwise.
-              </p>
-            </div>
-          </section>
-
-          {/* Changes to Terms */}
-          <section>
-            <h2 className="text-2xl font-semibold mb-4 text-foreground">
-              {t("Changes to Terms")}
-            </h2>
-            <div className="space-y-4">
-              <p>
-                We may update these Terms of Use from time to time. When we make
-                material changes, we will notify you by:
-              </p>
-              <ul className="list-disc list-inside space-y-2 ml-2">
-                <li>Updating the &quot;Last Updated&quot; date at the top</li>
-                <li>
-                  Posting a prominent notice on the website or inside the
-                  application
-                </li>
-                <li>
-                  Sending an email to the address associated with your account,
-                  where applicable
-                </li>
-              </ul>
-              <p className="mt-4">
-                Your continued use of the Service after the effective date of
-                updated Terms constitutes your acceptance of those changes.
+                {isUk
+                  ? "Сторони прагнутимуть розв’язувати спори шляхом переговорів. Якщо це неможливо, спір може бути переданий на розгляд компетентного суду або, за домовленістю сторін, у арбітраж відповідно до застосовних правил."
+                  : "The parties will first attempt to resolve any dispute through negotiations. If this is not possible, the dispute may be submitted to the competent courts or, by mutual agreement, to arbitration in accordance with applicable rules."}
               </p>
             </div>
           </section>
@@ -438,31 +393,19 @@ export default function TermsOfUsePage() {
             </h2>
             <div className="space-y-4">
               <p>
-                If any provision of these Terms of Use is held to be invalid,
-                illegal, or unenforceable, that provision will be enforced to
-                the maximum extent permissible and the remaining provisions will
-                remain in full force and effect.
-              </p>
-            </div>
-          </section>
-
-          {/* Contact Information */}
-          <section>
-            <h2 className="text-2xl font-semibold mb-4 text-foreground">
-              {t("Contact Information")}
-            </h2>
-            <div className="space-y-4">
-              <p>
-                If you have any questions about these Terms of Use or the
-                Service, you can contact us by e-mail:
+                {isUk
+                  ? "Якщо будь-яке положення цих Умов буде визнано недійсним або таким, що не може бути виконано, воно вважається зміненим настільки, наскільки це потрібно для приведення його у відповідність до закону, або виключеним з тексту. Решта положень залишаються чинними."
+                  : "If any provision of these Terms is found to be invalid or unenforceable, it will be modified to the minimum extent necessary to comply with the law, or deemed severed from the Terms. The remaining provisions will continue in full force and effect."}
               </p>
               <p>
-                <a
-                  href="mailto:support@turbotaai.com"
-                  className="text-primary underline-offset-2 hover:underline"
-                >
-                  support@turbotaai.com
-                </a>
+                {isUk
+                  ? "Невикористання нами будь-якого права чи положення цих Умов не означає відмову від такого права або положення."
+                  : "Our failure to enforce any right or provision of these Terms shall not be deemed a waiver of such right or provision."}
+              </p>
+              <p>
+                {isUk
+                  ? "Ці Умови користування є повною угодою між вами та TurbotaAI Psychology Services щодо користування Сервісом і замінюють собою всі попередні домовленості або усні/письмові угоди з цього приводу."
+                  : "These Terms of Use constitute the entire agreement between you and TurbotaAI Psychology Services regarding your use of the Service and supersede any prior agreements or understandings relating to it."}
               </p>
             </div>
           </section>
