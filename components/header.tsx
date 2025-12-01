@@ -1,171 +1,152 @@
 "use client"
 
-import type React from "react"
-import { useState } from "react"
 import Link from "next/link"
-import { Menu } from "lucide-react"
+import { Instagram, Facebook, Github } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { LanguageSelector } from "@/components/language-selector"
 import { useLanguage } from "@/lib/i18n/language-context"
 import Logo from "@/components/logo"
-import { APP_NAME } from "@/lib/app-config"
+import { APP_NAME, APP_SUPPORT_EMAIL } from "@/lib/app-config"
 
-type MainLink = {
+type FooterLink = {
   href: string
   labelKey?: string
   label?: string
 }
 
-const mainLinks: MainLink[] = [
+const mainLinks: FooterLink[] = [
   { href: "/", labelKey: "nav.home" },
   { href: "/programs", labelKey: "nav.programs" },
   { href: "/client-stories", labelKey: "nav.clientStories" },
-  // используем общий ключ, чтобы пункт переводился на все языки
+  // тот же ключ, чтобы в хедере и футере был один текст
   { href: "/about", labelKey: "About the product" },
   { href: "/contacts", labelKey: "nav.contacts" },
 ]
 
-export default function Header() {
+const legalLinks: FooterLink[] = [
+  { href: "/privacy-policy", labelKey: "nav.privacyPolicy" },
+  { href: "/terms-of-use", labelKey: "nav.termsOfUse" },
+]
+
+const socialLinks = [
+  { href: "https://instagram.com/turbotaai", icon: Instagram, label: "Instagram" },
+  { href: "https://facebook.com/turbotaai", icon: Facebook, label: "Facebook" },
+  { href: "https://github.com/turbotaai", icon: Github, label: "Github" },
+]
+
+export default function Footer() {
   const { t } = useLanguage()
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const currentYear = new Date().getFullYear()
 
-  const scrollToSection = (
-    e: React.MouseEvent<HTMLAnchorElement>,
-    href: string,
-  ) => {
-    if (href.startsWith("#")) {
-      e.preventDefault()
-      const element = document.querySelector(href)
-      if (element) {
-        element.scrollIntoView({ behavior: "smooth", block: "start" })
-        setMobileMenuOpen(false)
-      }
-    } else {
-      setMobileMenuOpen(false)
-    }
-  }
-
-  const scrollToAssistant = () => {
-    const element = document.querySelector("#assistant")
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "start" })
-    }
-  }
-
-  const renderLabel = (link: MainLink) =>
+  const renderLabel = (link: FooterLink) =>
     link.labelKey ? t(link.labelKey) : link.label
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-slate-200/80 bg-white/90 backdrop-blur-sm">
-      <div className="flex h-16 w-full items-center justify-between px-4 sm:px-6 lg:px-10 xl:px-16">
-        {/* Logo */}
-        <Link
-          href="/"
-          className="flex items-center gap-2 rounded-full px-1 py-1 transition-colors hover:bg-slate-50"
-        >
-          <Logo />
-          <span className="text-xl font-semibold text-slate-900">
-            {APP_NAME}
-          </span>
-        </Link>
+    <footer className="mt-16 w-full border-t border-slate-200 bg-white">
+      <div className="container mx-auto px-4 py-10 lg:py-12">
+        <div className="grid gap-10 md:grid-cols-3 lg:grid-cols-4">
+          {/* Логотип + слоган + дисклеймер */}
+          <div className="space-y-4 md:col-span-2">
+            <div className="flex items-center gap-2">
+              <Logo />
+              <span className="text-lg font-semibold text-slate-900">
+                {APP_NAME}
+              </span>
+            </div>
 
-        {/* Desktop nav */}
-        <nav className="hidden items-center gap-6 lg:flex">
-          {mainLinks.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              onClick={(e) => scrollToSection(e, link.href)}
-              className="text-sm font-medium text-slate-700 transition-colors hover:text-slate-900"
+            <p className="max-w-md text-sm text-slate-600">
+              {t(
+                "Psychological support based on AI for everyday emotional difficulties.",
+              )}
+            </p>
+
+            <div className="mt-4 rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3 text-xs text-slate-700 sm:text-sm">
+              <p className="font-semibold text-violet-900">
+                {t("This is not an emergency service")}
+              </p>
+              <p className="mt-1">
+                {t(
+                  "TurbotaAI is not a replacement for a licensed psychologist or psychiatrist.",
+                )}
+              </p>
+              <p className="mt-1">
+                {t(
+                  "If you are in immediate danger, contact emergency services or a crisis hotline in your country.",
+                )}
+              </p>
+            </div>
+          </div>
+
+          {/* Быстрые ссылки */}
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">
+              {t("Quick Links")}
+            </h3>
+            <nav className="mt-4 flex flex-col gap-2 text-sm text-slate-600">
+              {mainLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="transition-colors hover:text-slate-900"
+                >
+                  {renderLabel(link)}
+                </Link>
+              ))}
+            </nav>
+          </div>
+
+          {/* Контакты / соцсети */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-slate-900">
+              {t("Contact Us")}
+            </h3>
+
+            <a
+              href={`mailto:${APP_SUPPORT_EMAIL}`}
+              className="text-sm text-slate-600 underline underline-offset-2 hover:text-slate-900"
             >
-              {renderLabel(link)}
-            </Link>
-          ))}
-        </nav>
+              {APP_SUPPORT_EMAIL}
+            </a>
 
-        {/* Desktop actions */}
-        <div className="hidden items-center gap-3 lg:flex">
-          <LanguageSelector />
-
-          <Link href="/login">
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 hover:bg-slate-100 hover:text-slate-900"
-            >
-              {t("Sign In")}
-            </Button>
-          </Link>
-
-          <Button
-            onClick={scrollToAssistant}
-            size="sm"
-            className="rounded-full bg-slate-900 px-5 text-sm font-medium text-white shadow-sm hover:bg-slate-800 hover:shadow-md"
-          >
-            {t("Talk Now")}
-          </Button>
-        </div>
-
-        {/* Mobile nav */}
-        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-          <SheetTrigger asChild className="lg:hidden">
-            <Button variant="ghost" size="icon" className="text-slate-800">
-              <Menu className="h-6 w-6" />
-              <span className="sr-only">Toggle menu</span>
-            </Button>
-          </SheetTrigger>
-
-          <SheetContent side="left" className="w-[300px] border-border bg-white">
-            <div className="flex flex-col gap-6 pt-6">
-              <div className="flex items-center gap-2">
-                <Logo />
-                <span className="text-xl font-semibold text-slate-900">
-                  {APP_NAME}
-                </span>
-              </div>
-
-              <nav className="flex flex-col gap-4">
-                {mainLinks.map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    onClick={(e) => scrollToSection(e, link.href)}
-                    className="text-base font-medium text-slate-800 transition-colors hover:text-slate-900"
-                  >
-                    {renderLabel(link)}
-                  </Link>
-                ))}
-              </nav>
-
-              <div className="border-t border-slate-200 pt-6">
-                <LanguageSelector />
-              </div>
-
-              <div className="flex flex-col gap-3">
-                <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
+            <div className="flex flex-wrap gap-2">
+              {socialLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={link.label}
+                >
                   <Button
-                    variant="outline"
-                    className="w-full border-slate-200 bg-white text-slate-800 hover:bg-slate-100 hover:text-slate-900"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 rounded-full border border-slate-200 text-slate-500 transition-colors hover:border-violet-500 hover:bg-violet-50 hover:text-violet-600"
                   >
-                    {t("Sign In")}
+                    <link.icon className="h-4 w-4" />
                   </Button>
                 </Link>
-
-                <Button
-                  onClick={() => {
-                    setMobileMenuOpen(false)
-                    scrollToAssistant()
-                  }}
-                  className="w-full rounded-full bg-slate-900 text-white hover:bg-slate-800"
-                >
-                  {t("Talk Now")}
-                </Button>
-              </div>
+              ))}
             </div>
-          </SheetContent>
-        </Sheet>
+          </div>
+        </div>
+
+        {/* Нижняя полоса */}
+        <div className="mt-8 flex flex-col items-center justify-between gap-4 border-t border-slate-200 pt-6 text-xs text-slate-500 sm:flex-row">
+          <p>
+            © {currentYear} {APP_NAME}. {t("All rights reserved")}.
+          </p>
+          <nav className="flex flex-wrap items-center gap-4">
+            {legalLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="transition-colors hover:text-slate-700"
+              >
+                {renderLabel(link)}
+              </Link>
+            ))}
+          </nav>
+        </div>
       </div>
-    </header>
+    </footer>
   )
 }
