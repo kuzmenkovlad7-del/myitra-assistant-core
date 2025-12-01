@@ -3,7 +3,7 @@
 
 import type React from "react"
 import Image from "next/image"
-import Link from "next/link"               // 👈 добавили
+import Link from "next/link"
 import { ArrowRight } from "lucide-react"
 import { RainbowButton } from "@/components/ui/rainbow-button"
 import { useLanguage } from "@/lib/i18n/language-context"
@@ -24,7 +24,36 @@ export function HomeHero() {
         bg-gradient-to-r from-slate-50 via-slate-50 to-indigo-50/35
       "
     >
-      {/* ...всё без изменений до блока с кнопками... */}
+      {/* мягкий фон справа */}
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-full max-w-xl bg-[radial-gradient(circle_at_top,_rgba(129,140,248,0.6),transparent_60%)]" />
+
+      <div
+        className="
+          relative mx-auto flex max-w-6xl flex-col items-start
+          px-4 pt-10 pb-16
+          md:px-6 lg:px-8
+          md:grid md:grid-cols-2 md:items-center
+          lg:pt-16 lg:pb-20
+          min-h-[calc(100vh-88px)]
+        "
+      >
+        {/* Левая колонка: текст + кнопки */}
+        <div className="relative z-10 max-w-xl">
+          {/* бейджик статуса */}
+          <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-white px-4 py-1 text-xs font-medium text-slate-600 shadow-sm ring-1 ring-slate-200">
+            <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_0_3px_rgba(16,185,129,0.35)]" />
+            {t("AI-psychologist nearby 24/7")}
+          </div>
+
+          <h1 className="mb-5 text-3xl font-bold leading-tight text-slate-900 sm:text-4xl md:text-5xl">
+            {t("Psychological support when it feels hard, powered by AI")}
+          </h1>
+
+          <p className="mb-7 max-w-lg text-sm text-slate-600 sm:text-base">
+            {t(
+              "TurbotaAI listens without judgement, asks clarifying questions and gently guides you through breathing, grounding and simple exercises based on psychological books. In chat, voice or video — when you feel anxious, exhausted or alone.",
+            )}
+          </p>
 
           {/* Кнопки */}
           <div className="mb-6 flex flex-wrap items-center gap-3">
@@ -36,7 +65,7 @@ export function HomeHero() {
             </a>
 
             <Link
-              href="/about"                 // 👈 ведёт на страницу «Про нас»
+              href="/about"
               className="
                 inline-flex h-12 items-center justify-center rounded-full
                 border border-slate-200 bg-white px-6 text-sm font-semibold
