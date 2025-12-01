@@ -462,12 +462,12 @@ export default function VideoCallDialog({
 
           void processTranscriptionRef.current?.(textToProcess)
         }
-      }, 1500)
+      }, 0)
 
       if (hasNewFinalResult) {
         const buf = finalTranscriptBuffer.trim()
         if (
-          buf.length > 2 &&
+          buf.length > 0 &&
           !isProcessingRef.current &&
           !isAiSpeakingRef.current
         ) {
