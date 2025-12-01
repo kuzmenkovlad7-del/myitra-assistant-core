@@ -1,257 +1,487 @@
-"use client"
+"use client";
 
-import { useLanguage } from "@/lib/i18n/language-context"
+import { useTranslation } from "@/lib/i18n/useTranslation";
 
 export default function PrivacyPolicyPage() {
-  const { t, language } = useLanguage()
-  const isUk = language === "uk"
+  const { t, language } = useTranslation();
+  const isUk = language === "uk";
 
   return (
-    <div className="container mx-auto px-4 py-16">
-      <div className="max-w-4xl mx-auto bg-card rounded-3xl shadow-lg p-8 md:p-12">
-        <h1 className="text-4xl font-bold mb-8 text-foreground">
-          {t("Privacy Policy")}
-        </h1>
+    <main className="min-h-screen bg-slate-50">
+      <div className="mx-auto max-w-4xl px-4 py-16 sm:px-6 lg:px-8">
+        <article className="rounded-3xl bg-white/80 shadow-sm border border-slate-100 px-4 py-8 sm:px-10 sm:py-10">
+          <header className="mb-10">
+            <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+              {t("Privacy Policy")}
+            </h1>
+            <p className="mt-2 text-sm text-slate-500">
+              {t("Last Updated: November 2025")}
+            </p>
+          </header>
 
-        <p className="text-sm text-muted-foreground mb-8">
-          {t("Last Updated: November 2025")}
-        </p>
+          <div className="space-y-8 text-[15px] leading-relaxed text-slate-800">
+            {/* Вступ */}
+            <section className="space-y-3">
+              <h2 className="text-xl font-semibold">
+                {t("Information We Collect")}
+              </h2>
+              {isUk ? (
+                <>
+                  <p>
+                    Ця Політика конфіденційності пояснює, яку інформацію збирає
+                    TurbotaAI, як ми її використовуємо та захищаємо. Ми
+                    розробляємо Сервіс так, щоб дати вам відчуття безпеки й
+                    поваги до особистих кордонів.
+                  </p>
+                  <p>
+                    Використовуючи Сервіс, ви погоджуєтеся з умовами цієї
+                    Політики. Якщо ви не згодні з нею, будь ласка, не
+                    використовуйте Сервіс.
+                  </p>
+                  <h3 className="font-semibold">
+                    1. Персональна та контактна інформація
+                  </h3>
+                  <p>Ми можемо збирати таку інформацію:</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>ім&apos;я або псевдонім, який ви вводите;</li>
+                    <li>
+                      адресу електронної пошти, якщо ви залишаєте її для
+                      зворотного зв&apos;язку або реєстрації;
+                    </li>
+                    <li>
+                      іншу інформацію, яку ви добровільно надаєте в формах
+                      (наприклад, у формі контакту або реєстрації).
+                    </li>
+                  </ul>
 
-        <div className="space-y-8 text-muted-foreground">
-          {/* 1. Information we collect */}
-          <section>
-            <h2 className="text-2xl font-semibold mb-4 text-foreground">
-              {t("Information We Collect")}
-            </h2>
+                  <h3 className="font-semibold">
+                    2. Зміст сесій та повідомлень
+                  </h3>
+                  <p>
+                    Під час роботи з чат-, голосовим або відео-асистентом ми
+                    обробляємо зміст ваших повідомлень, голосу або тексту, щоб
+                    надавати відповіді та рекомендації. Залежно від налаштувань,
+                    частина цих даних може тимчасово зберігатися для:
+                  </p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>формування історії діалогу;</li>
+                    <li>покращення якості відповідей асистента;</li>
+                    <li>
+                      аналізу типових запитів (в анонімізованому або
+                      агрегованому вигляді).
+                    </li>
+                  </ul>
 
-            <div className="space-y-6">
-              {/* Personal info */}
-              <div>
-                <h3 className="text-lg font-semibold mb-2 text-foreground">
-                  {t("Personal Information")}
-                </h3>
+                  <h3 className="font-semibold">3. Технічна інформація</h3>
+                  <p>Ми також можемо отримувати технічні дані, зокрема:</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>IP-адресу та приблизне місцезнаходження;</li>
+                    <li>
+                      інформацію про пристрій, браузер, операційну систему;
+                    </li>
+                    <li>
+                      файли cookie та схожі технології, необхідні для роботи
+                      Сервісу та аналітики.
+                    </li>
+                  </ul>
+                </>
+              ) : (
+                <>
+                  <p>
+                    This Privacy Policy explains what information TurbotaAI
+                    collects, how we use it and how we protect it. We design the
+                    Service to respect your privacy and personal boundaries.
+                  </p>
+                  <p>
+                    By using the Service, you agree to the terms of this Policy.
+                    If you do not agree, please do not use the Service.
+                  </p>
+                  <h3 className="font-semibold">
+                    1. Personal and contact information
+                  </h3>
+                  <p>We may collect the following information:</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>your name or nickname that you provide;</li>
+                    <li>
+                      e-mail address if you submit it for contact or
+                      registration;
+                    </li>
+                    <li>
+                      any other information you voluntarily provide in forms
+                      (for example, in the contact or sign-up form).
+                    </li>
+                  </ul>
+
+                  <h3 className="font-semibold">
+                    2. Session content and messages
+                  </h3>
+                  <p>
+                    When you use chat, voice or video assistant, we process the
+                    content of your messages, spoken input or text in order to
+                    generate responses and guidance. Depending on settings, some
+                    of this data may be temporarily stored to:
+                  </p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>maintain a conversation history;</li>
+                    <li>improve the quality of the assistant&apos;s replies;</li>
+                    <li>
+                      analyse common patterns in anonymised or aggregated form.
+                    </li>
+                  </ul>
+
+                  <h3 className="font-semibold">3. Technical information</h3>
+                  <p>We may also collect technical data, such as:</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>IP address and approximate location;</li>
+                    <li>
+                      information about your device, browser and operating
+                      system;
+                    </li>
+                    <li>
+                      cookies and similar technologies required for the Service
+                      to work and for analytics.
+                    </li>
+                  </ul>
+                </>
+              )}
+            </section>
+
+            {/* Як ми використовуємо інформацію */}
+            <section className="space-y-3">
+              <h2 className="text-xl font-semibold">
+                {t("How We Use Your Information")}
+              </h2>
+              {isUk ? (
+                <>
+                  <p>Ми використовуємо зібрані дані для таких цілей:</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>надання вам доступу до чат-, голосових та відеосесій;</li>
+                    <li>
+                      адаптації відповідей асистента до вашого запиту та мови;
+                    </li>
+                    <li>
+                      підтримки роботи Сервісу, діагностики збоїв та
+                      безпеки;
+                    </li>
+                    <li>
+                      аналізу використання Сервісу для покращення сценаріїв і
+                      якості підтримки;
+                    </li>
+                    <li>
+                      комунікації з вами (наприклад, відповіді на запити,
+                      службові сповіщення).
+                    </li>
+                  </ul>
+                  <p>
+                    Ми не продаємо ваші персональні дані третім особам і не
+                    використовуємо зміст ваших сесій для таргетованої реклами.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>We use the collected data for the following purposes:</p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>
+                      to provide you with access to chat, voice and video
+                      sessions;
+                    </li>
+                    <li>
+                      to adapt the assistant&apos;s responses to your request
+                      and language;
+                    </li>
+                    <li>
+                      to maintain the Service, diagnose errors and ensure
+                      security;
+                    </li>
+                    <li>
+                      to analyse how the Service is used and improve our
+                      support scenarios;
+                    </li>
+                    <li>
+                      to communicate with you (for example, responses to
+                      requests, important notifications).
+                    </li>
+                  </ul>
+                  <p>
+                    We do not sell your personal data to third parties and do
+                    not use the content of your sessions for targeted
+                    advertising.
+                  </p>
+                </>
+              )}
+            </section>
+
+            {/* Правові підстави / Legal basis */}
+            <section className="space-y-3">
+              <h2 className="text-xl font-semibold">
+                {t("Data Security")}
+              </h2>
+              {isUk ? (
+                <>
+                  <p>
+                    Ми застосовуємо технічні та організаційні заходи безпеки,
+                    щоб захистити дані від несанкціонованого доступу, втрати чи
+                    зловживання. Сюди можуть входити шифрування, обмеження
+                    доступу, аудит логів та інші практики кібербезпеки.
+                  </p>
+                  <p>
+                    Водночас жодна онлайн-система не може гарантувати
+                    абсолютну безпеку. Ви також відіграєте роль у захисті своїх
+                    даних — наприклад, не передавайте облікові дані третім
+                    особам і використовуйте надійні паролі (якщо акаунти будуть
+                    запроваджені).
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    We apply technical and organisational security measures to
+                    protect data from unauthorised access, loss or misuse. These
+                    may include encryption, access controls, log audits and
+                    other cybersecurity practices.
+                  </p>
+                  <p>
+                    However, no online system can guarantee absolute security.
+                    You also play a role in keeping your data safe — for
+                    example, by not sharing your credentials with others and by
+                    using strong passwords (if user accounts are introduced).
+                  </p>
+                </>
+              )}
+            </section>
+
+            {/* Зберігання даних */}
+            <section className="space-y-3">
+              <h2 className="text-xl font-semibold">
+                {t("Data Retention")}
+              </h2>
+              {isUk ? (
+                <>
+                  <p>
+                    Ми зберігаємо дані лише стільки, скільки це потрібно для
+                    досягнення цілей, описаних у цій Політиці, або доки цього
+                    вимагає закон.
+                  </p>
+                  <p>
+                    Історія діалогів і технічні логи можуть видалятися або
+                    анонімізуватися через певний період часу. У майбутньому
+                    інтерфейс може містити окремі налаштування для видалення
+                    історії користувачем.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    We retain data only for as long as necessary to fulfil the
+                    purposes described in this Policy or as required by law.
+                  </p>
+                  <p>
+                    Conversation history and technical logs may be deleted or
+                    anonymised after a certain period of time. In the future the
+                    interface may include settings that allow you to delete your
+                    history yourself.
+                  </p>
+                </>
+              )}
+            </section>
+
+            {/* Треті сторони та передача даних */}
+            <section className="space-y-3">
+              <h2 className="text-xl font-semibold">
+                {t("Third-Party Services")}
+              </h2>
+              {isUk ? (
+                <>
+                  <p>
+                    Для роботи Сервісу ми можемо використовувати сторонні
+                    сервіси — наприклад, хостинг-провайдерів, платіжні системи,
+                    платформи для відеозв&apos;язку або постачальників моделей
+                    штучного інтелекту.
+                  </p>
+                  <p>
+                    Такі постачальники можуть обробляти ваші дані від нашого
+                    імені та згідно з нашими інструкціями. Ми прагнемо
+                    співпрацювати лише з тими компаніями, які дотримуються
+                    належних стандартів захисту даних.
+                  </p>
+                  <p>
+                    Оскільки інфраструктура може розміщуватися в різних країнах,
+                    ваші дані іноді можуть передаватися за межі країни, в якій
+                    ви проживаєте. Ми вживаємо заходів, щоб така передача
+                    відповідала вимогам застосовного законодавства.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    To operate the Service we may use third-party providers such
+                    as hosting companies, payment processors, video platforms or
+                    AI model providers.
+                  </p>
+                  <p>
+                    These providers may process your data on our behalf and in
+                    accordance with our instructions. We aim to work only with
+                    entities that follow appropriate data protection standards.
+                  </p>
+                  <p>
+                    Because infrastructure may be located in different
+                    countries, your data may sometimes be transferred outside
+                    the country where you live. We take steps to ensure that
+                    such transfers comply with applicable data protection laws.
+                  </p>
+                </>
+              )}
+            </section>
+
+            {/* Діти */}
+            <section className="space-y-3">
+              <h2 className="text-xl font-semibold">
+                {t("Children's Privacy")}
+              </h2>
+              {isUk ? (
+                <>
+                  <p>
+                    TurbotaAI не призначена для самостійного використання
+                    дітьми молодше 13 років. Якщо ви молодші 18 років, вам може
+                    знадобитися згода батьків або опікунів відповідно до
+                    законодавства вашої країни.
+                  </p>
+                  <p>
+                    Якщо ми дізнаємося, що зібрали персональні дані дитини без
+                    належної згоди, ми зробимо кроки для їх видалення.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    TurbotaAI is not intended for independent use by children
+                    under the age of 13. If you are under 18, parental or
+                    guardian consent may be required under the laws of your
+                    country.
+                  </p>
+                  <p>
+                    If we become aware that we have collected personal data from
+                    a child without appropriate consent, we will take steps to
+                    delete such information.
+                  </p>
+                </>
+              )}
+            </section>
+
+            {/* Ваші права */}
+            <section className="space-y-3">
+              <h2 className="text-xl font-semibold">{t("Your Rights")}</h2>
+              {isUk ? (
+                <>
+                  <p>
+                    Залежно від законодавства вашої країни ви можете мати право:
+                  </p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>отримувати інформацію про те, які дані ми зберігаємо;</li>
+                    <li>вимагати виправлення неточної інформації;</li>
+                    <li>
+                      просити видалити частину даних (якщо ми не зобов&apos;язані
+                      зберігати їх за законом);
+                    </li>
+                    <li>
+                      заперечувати проти певних способів обробки або обмежувати
+                      їх;
+                    </li>
+                    <li>подати скаргу до наглядового органу із захисту даних.</li>
+                  </ul>
+                  <p>
+                    Щоб скористатися своїми правами, ви можете написати нам через
+                    форму зворотного зв&apos;язку або на email, вказаний у
+                    розділі «Контакти».
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    Depending on the laws of your country, you may have the
+                    right to:
+                  </p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>request information about the data we hold about you;</li>
+                    <li>ask us to correct inaccurate information;</li>
+                    <li>
+                      request deletion of certain data (where we are not
+                      required to keep it by law);
+                    </li>
+                    <li>
+                      object to or restrict certain types of processing; and
+                    </li>
+                    <li>
+                      lodge a complaint with a data protection supervisory
+                      authority.
+                    </li>
+                  </ul>
+                  <p>
+                    To exercise your rights, you can contact us via the feedback
+                    form or the e-mail address listed in the &quot;Contact&quot;
+                    section.
+                  </p>
+                </>
+              )}
+            </section>
+
+            {/* Зміни політики */}
+            <section className="space-y-3">
+              <h2 className="text-xl font-semibold">
+                {t("Changes to This Policy")}
+              </h2>
+              {isUk ? (
+                <>
+                  <p>
+                    Ми можемо час від часу оновлювати цю Політику
+                    конфіденційності. Дата останнього оновлення вказана у
+                    верхній частині сторінки.
+                  </p>
+                  <p>
+                    Якщо ми внесемо суттєві зміни, ми можемо додатково повідомити
+                    вас через Сервіс або електронною поштою (якщо вона
+                    доступна). Продовжуючи користуватися Сервісом після змін, ви
+                    погоджуєтеся з оновленою Політикою.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    We may update this Privacy Policy from time to time. The
+                    date of the latest update is shown at the top of this page.
+                  </p>
+                  <p>
+                    If we make material changes, we may additionally notify you
+                    through the Service or by e-mail (if available). By
+                    continuing to use the Service after the changes take effect,
+                    you agree to the updated Policy.
+                  </p>
+                </>
+              )}
+            </section>
+
+            {/* Контакти */}
+            <section className="space-y-3">
+              <h2 className="text-xl font-semibold">
+                {t("Contact Information")}
+              </h2>
+              {isUk ? (
                 <p>
-                  {isUk
-                    ? "Коли ви створюєте обліковий запис, ми збираємо ваше ім’я, електронну адресу та облікові дані для входу. Ця інформація потрібна, щоб надавати послуги TurbotaAI та підтримувати безпеку вашого акаунта."
-                    : "When you create an account, we collect your name, email address, and authentication credentials. This information is necessary to provide our services and maintain your account security."}
+                  Якщо у вас є запитання щодо цієї Політики конфіденційності
+                  або способів обробки ваших даних, зв&apos;яжіться з нами через
+                  сторінку «Контакти» або за електронною адресою, вказаною там.
                 </p>
-              </div>
-
-              {/* Session data */}
-              <div>
-                <h3 className="text-lg font-semibold mb-2 text-foreground">
-                  {t("Session Data")}
-                </h3>
+              ) : (
                 <p>
-                  {isUk
-                    ? "Під час взаємодії з нашим AI-психологом ми можемо збирати текстові діалоги, голосові записи (якщо ви використовуєте голосові або відеофункції) та технічні метадані сесій — тривалість, час початку та завершення, базову інформацію про формат сесії. Це допомагає підтримувати якість сервісу, аналізувати навантаження та покращувати сценарії підтримки."
-                    : "During your interactions with our AI psychologist, we may collect text conversations, voice recordings (when you use voice or video features), and basic session metadata such as duration, start and end time, and the format of the session. This helps us maintain service quality, analyze load, and improve our support scenarios."}
+                  If you have any questions about this Privacy Policy or how we
+                  process your data, please contact us via the &quot;Contact&quot;
+                  page or the e-mail address provided there.
                 </p>
-              </div>
-
-              {/* Technical info */}
-              <div>
-                <h3 className="text-lg font-semibold mb-2 text-foreground">
-                  {t("Technical Information")}
-                </h3>
-                <p>
-                  {isUk
-                    ? "Ми автоматично збираємо технічні дані: тип пристрою та браузера, IP-адресу, мову інтерфейсу, приблизне місцезнаходження (на рівні міста чи країни), файли cookies та інші ідентифікатори сеансу. Ці дані потрібні, щоб захищати платформу від зловживань і забезпечувати коректну роботу сервісу."
-                    : "We automatically collect technical data such as device type and browser, IP address, interface language, approximate location (on a city or country level), cookies and other session identifiers. This information is necessary to protect the platform from abuse and ensure that the service works correctly."}
-                </p>
-              </div>
-            </div>
-          </section>
-
-          {/* 2. How we use your information */}
-          <section>
-            <h2 className="text-2xl font-semibold mb-4 text-foreground">
-              {t("How We Use Your Information")}
-            </h2>
-            <p className="mb-4">
-              {isUk
-                ? "Ми використовуємо зібрану інформацію тільки для роботи сервісу та його розвитку. Зокрема:"
-                : "We use the information we collect solely to operate and improve the Service. In particular, we use it for:"}
-            </p>
-
-            <ul className="list-disc list-inside space-y-2 ml-2">
-              <li>
-                {isUk
-                  ? "надання персоналізованої психологічної підтримки за допомогою ШІ відповідно до вашого запиту;"
-                  : "Providing personalized AI-based psychological support tailored to your needs;"}
-              </li>
-              <li>
-                {isUk
-                  ? "збереження історії діалогів та вправ (якщо це дозволено налаштуваннями), щоб підтримувати безперервність між сесіями;"
-                  : "Maintaining conversation history and exercises (where enabled) so that you can continue your work between sessions;"}
-              </li>
-              <li>
-                {isUk
-                  ? "аналізу в агрегованому та знеособленому вигляді для покращення якості моделей, сценаріїв та інтерфейсу;"
-                  : "Analyzing data in aggregated and de-identified form to improve our models, scenarios, and product experience;"}
-              </li>
-              <li>
-                {isUk
-                  ? "надсилання сервісних повідомлень: оновлення, попередження про безпеку, важливі зміни умов та політик;"
-                  : "Sending service-related messages such as updates, security alerts, and important changes to our terms and policies;"}
-              </li>
-              <li>
-                {isUk
-                  ? "забезпечення безпеки платформи, виявлення шахрайських дій та технічних збоїв."
-                  : "Ensuring platform security, detecting fraudulent activity, and investigating technical incidents."}
-              </li>
-            </ul>
-          </section>
-
-          {/* 3. Data security */}
-          <section>
-            <h2 className="text-2xl font-semibold mb-4 text-foreground">
-              {t("Data Security")}
-            </h2>
-            <p>
-              {isUk
-                ? "Ми застосовуємо технічні, адміністративні та організаційні заходи безпеки, щоб захистити ваші дані від несанкціонованого доступу, втрати, зловживання чи розголошення. Доступ до персональної інформації мають лише обмежені члени команди та підрядники, яким це потрібно для роботи сервісу."
-                : "We use technical, administrative, and organizational safeguards to protect your data from unauthorized access, loss, misuse, or disclosure. Only a limited number of team members and trusted contractors have access to personal information, and only where it is necessary to operate the Service."}
-            </p>
-            <p className="mt-4">
-              {isUk
-                ? "Жодна онлайн-платформа не може гарантувати абсолютну безпеку. Ми оперативно реагуємо на інциденти, повідомляємо користувачів у разі серйозних витоків даних і співпрацюємо з відповідними органами, якщо це потрібно."
-                : "No online service can guarantee absolute security. However, we respond promptly to incidents, notify affected users in case of a serious data breach, and cooperate with relevant authorities where required by law."}
-            </p>
-          </section>
-
-          {/* 4. Your rights */}
-          <section>
-            <h2 className="text-2xl font-semibold mb-4 text-foreground">
-              {t("Your Rights")}
-            </h2>
-            <p className="mb-4">
-              {isUk
-                ? "Залежно від законодавства вашої країни, ви можете мати такі права щодо своїх персональних даних:"
-                : "Depending on the laws of your country, you may have the following rights regarding your personal data:"}
-            </p>
-
-            <ul className="list-disc list-inside space-y-2 ml-2">
-              <li>
-                {isUk
-                  ? "право отримати копію своїх персональних даних, які ми обробляємо;"
-                  : "The right to request a copy of the personal data we process about you;"}
-              </li>
-              <li>
-                {isUk
-                  ? "право вимагати виправлення неточної або неповної інформації;"
-                  : "The right to request correction of inaccurate or incomplete information;"}
-              </li>
-              <li>
-                {isUk
-                  ? "право вимагати обмеження обробки або видалення даних у визначених законом випадках;"
-                  : "The right to request restriction of processing or deletion of your data in cases provided by law;"}
-              </li>
-              <li>
-                {isUk
-                  ? "право відкликати згоду на обробку даних, якщо ми спираємося на вашу згоду як на правову підставу;"
-                  : "The right to withdraw your consent where we rely on consent as the legal basis for processing;"}
-              </li>
-              <li>
-                {isUk
-                  ? "право подати скаргу до наглядового органу з питань захисту даних."
-                  : "The right to lodge a complaint with a data protection authority."}
-              </li>
-            </ul>
-
-            <p className="mt-4">
-              {isUk
-                ? "Щоб реалізувати свої права, ви можете написати нам на адресу підтримки, указанну на сторінці контактів. Ми можемо попросити вас підтвердити особу, щоб захистити ваш акаунт."
-                : "To exercise your rights, you can contact us via the support email listed on the Contacts page. We may ask you to verify your identity to protect your account."}
-            </p>
-          </section>
-
-          {/* 5. Data retention */}
-          <section>
-            <h2 className="text-2xl font-semibold mb-4 text-foreground">
-              {t("Data Retention")}
-            </h2>
-            <p>
-              {isUk
-                ? "Ми зберігаємо ваші дані стільки, скільки це потрібно для надання сервісу, виконання юридичних зобов’язань та вирішення спорів. Частина даних (наприклад, журнали доступу та технічні лог-файли) може зберігатися в агрегованому та знеособленому вигляді для аналітики."
-                : "We retain your data for as long as necessary to provide the Service, comply with legal obligations, and resolve disputes. Some data, such as access logs and technical logs, may be stored in aggregated and de-identified form for analytics."}
-            </p>
-            <p className="mt-4">
-              {isUk
-                ? "Якщо ви просите видалити акаунт, ми видаляємо або анонімізуємо персональні дані, за винятком випадків, коли закон зобов’язує нас зберігати їх довше (наприклад, бухгалтерські документи)."
-                : "If you request deletion of your account, we will delete or anonymize your personal data, except where we are legally required to keep certain information (for example, for accounting or reporting purposes)."}
-            </p>
-          </section>
-
-          {/* 6. Third-party services */}
-          <section>
-            <h2 className="text-2xl font-semibold mb-4 text-foreground">
-              {t("Third-Party Services")}
-            </h2>
-            <p>
-              {isUk
-                ? "Для роботи TurbotaAI ми можемо використовувати сторонні сервіси: хостинг-провайдерів, платіжні системи, сервіси аналітики та платформи для обробки голосу чи відео. Вони обробляють дані тільки від нашого імені та за нашими інструкціями."
-                : "To operate TurbotaAI, we may rely on third-party service providers such as hosting providers, payment processors, analytics tools, and voice or video platforms. These providers process data only on our behalf and according to our instructions."}
-            </p>
-            <p className="mt-4">
-              {isUk
-                ? "Ми уважно відбираємо партнерів і укладаємо з ними договори про обробку даних там, де це необхідно. Ми не продаємо персональні дані користувачів рекламним мережам."
-                : "We carefully select our partners and, where required, sign data processing agreements with them. We do not sell users’ personal data to advertising networks."}
-            </p>
-          </section>
-
-          {/* 7. International transfers */}
-          <section>
-            <h2 className="text-2xl font-semibold mb-4 text-foreground">
-              {t("International Data Transfers")}
-            </h2>
-            <p>
-              {isUk
-                ? "Сервери та постачальники послуг, з якими ми працюємо, можуть розташовуватися в різних країнах. Це означає, що ваші дані можуть передаватися за межі вашої держави проживання."
-                : "The servers and service providers we use may be located in different countries. This means that your data may be transferred outside of your country of residence."}
-            </p>
-            <p className="mt-4">
-              {isUk
-                ? "Ми забезпечуємо належний рівень захисту таких передавань, спираючись на договори, стандартні договірні положення або інші механізми, передбачені законодавством про захист даних."
-                : "We ensure an appropriate level of protection for such transfers by relying on contracts, standard contractual clauses, or other mechanisms permitted under applicable data protection laws."}
-            </p>
-          </section>
-
-          {/* 8. Children's privacy */}
-          <section>
-            <h2 className="text-2xl font-semibold mb-4 text-foreground">
-              {t("Children's Privacy")}
-            </h2>
-            <p>
-              {isUk
-                ? "Сервіс TurbotaAI не призначений для дітей молодше 13 років (або іншого віку, визначеного законодавством вашої країни). Ми свідомо не збираємо персональні дані дітей без згоди батьків чи опікунів."
-                : "TurbotaAI is not intended for children under the age of 13 (or other age defined by your local law). We do not knowingly collect personal data from children without consent from a parent or legal guardian."}
-            </p>
-            <p className="mt-4">
-              {isUk
-                ? "Якщо ви вважаєте, що дитина надала нам свої дані без дозволу дорослих, будь ласка, зв’яжіться з нами — ми видалимо таку інформацію."
-                : "If you believe that a child has provided us with personal information without appropriate consent, please contact us and we will delete such data."}
-            </p>
-          </section>
-
-          {/* 9. Changes to this policy */}
-          <section>
-            <h2 className="text-2xl font-semibold mb-4 text-foreground">
-              {t("Changes to This Policy")}
-            </h2>
-            <p>
-              {isUk
-                ? "Ми можемо час від часу оновлювати цю Політику конфіденційності, щоб відобразити зміни в сервісі або вимогах законодавства."
-                : "We may update this Privacy Policy from time to time to reflect changes in the Service or in applicable law."}
-            </p>
-            <p className="mt-4">
-              {isUk
-                ? "Про важливі зміни ми будемо повідомляти через електронну пошту, помітне повідомлення в інтерфейсі або іншим зрозумілим способом. Продовжуючи користуватися сервісом після оновлення політики, ви погоджуєтеся з її новою редакцією."
-                : "We will notify you of material changes via email, a prominent notice in the interface, or other reasonable means. By continuing to use the Service after an update, you agree to the revised Policy."}
-            </p>
-          </section>
-        </div>
+              )}
+            </section>
+          </div>
+        </article>
       </div>
-    </div>
-  )
+    </main>
+  );
 }
