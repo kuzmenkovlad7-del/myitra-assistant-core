@@ -509,12 +509,6 @@ export default function VoiceCallDialog({
                         "Press the button to start the call. Allow microphone access, then speak as if with a real psychologist.",
                       )}
                     </p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      {t(
-                        "Your e-mail will be used only to personalize the session.",
-                      )}{" "}
-                      ({userEmailDisplay})
-                    </p>
                   </div>
                 )}
 
