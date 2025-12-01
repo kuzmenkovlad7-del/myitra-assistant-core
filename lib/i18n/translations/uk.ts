@@ -524,4 +524,220 @@ export const uk: Record<string, string> = {
   Selected: "Обрано",
   "Start Video Call": "Почати відеодзвінок",
   "Video session in Ukrainian": "Відеосесія українською",
+    // ─────────────────────
+  // Terms of Use – полные абзацы
+  // ─────────────────────
+  "Last Updated: November 2025": "Оновлено: листопад 2025 року",
+
+  "By accessing or using TurbotaAI's AI psychology services (the \"Service\"), you agree to be bound by these Terms of Use and all applicable laws and regulations. If you do not agree with any part of these Terms, you must not use the Service.":
+    "Користуючись сервісами AI-психології TurbotaAI (далі — «Сервіс»), ви підтверджуєте, що погоджуєтеся з цими Умовами користування та всіма чинними законами й нормативними актами. Якщо ви не згодні з будь-якою частиною цих Умов, будь ласка, не використовуйте Сервіс.",
+
+  "These Terms constitute a legally binding agreement between you and the operator of TurbotaAI Psychology Services. Your continued use of the Service after we publish updates means that you accept the revised Terms.":
+    "Ці Умови є юридично зобов'язувальною угодою між вами та оператором сервісу TurbotaAI Psychology Services. Ваше подальше користування Сервісом після публікації оновлень означає, що ви приймаєте змінені Умови.",
+
+  "To use the Service, you confirm that you:":
+    "Щоб користуватися Сервісом, ви підтверджуєте, що:",
+
+  "are at least 18 years of age;":
+    "вам виповнилося щонайменше 18 років;",
+
+  "have the legal capacity to enter into a contract;":
+    "ви маєте повну цивільну дієздатність для укладення договорів;",
+
+  "are not prohibited from using online services under any applicable laws;":
+    "ви не обмежені у праві користуватися онлайн-сервісами відповідно до чинного законодавства;",
+
+  "provide accurate and up-to-date information when requested for registration or identification;":
+    "ви надаєте правдиву, точну та актуальну інформацію, коли це потрібно для реєстрації чи ідентифікації;",
+
+  "are responsible for maintaining the confidentiality of your account credentials (if an account is created) and for all activity that occurs under your account.":
+    "ви самостійно відповідаєте за конфіденційність своїх облікових даних (якщо акаунт створено) та за всі дії, що відбуваються під вашим обліковим записом.",
+
+  "TurbotaAI provides AI-based psychological support tools. The Service is not a medical facility and does not provide services that qualify as medical or psychiatric treatment.":
+    "TurbotaAI надає інструменти психологічної підтримки на основі штучного інтелекту. Сервіс не є медичним закладом і не надає послуг, що прирівнюються до лікарського чи психіатричного лікування.",
+
+  "You agree to use the Service only for personal, non-commercial purposes, unless otherwise agreed with us in a separate written agreement. You must not:":
+    "Ви погоджуєтеся використовувати Сервіс виключно для особистих, некомерційних цілей, якщо інше не передбачено окремою письмовою угодою з нами. Ви не можете:",
+
+  "copy, modify or distribute the Service;":
+    "копіювати, змінювати або поширювати Сервіс;",
+
+  "attempt to gain unauthorized access to our systems or other users' data;":
+    "намагатися отримати несанкціонований доступ до наших систем або до даних інших користувачів;",
+
+  "use the Service to promote hate, harassment, self-harm or harm to others;":
+    "використовувати Сервіс для розпалювання ворожнечі, переслідування, завдання шкоди собі чи іншим;",
+
+  "use the Service in any way that may violate the law or the rights of third parties.":
+    "використовувати Сервіс у будь-який спосіб, який може порушувати закон або права третіх осіб.",
+
+  "The Service may be updated from time to time, and we may modify features, design or availability without prior notice.":
+    "Сервіс може час від часу оновлюватися, і ми можемо змінювати функціональність, дизайн або доступність без попереднього повідомлення.",
+
+  "You are responsible for the information you choose to share with the Service. Do not disclose data that you are not comfortable storing in digital form, unless otherwise stated in our Privacy Policy.":
+    "Ви несете відповідальність за інформацію, якою ділитеся через Сервіс. Не розкривайте дані, які ви не готові зберігати в цифровому вигляді, якщо інше прямо не передбачено нашою Політикою конфіденційності.",
+
+  "You agree not to use the Service to send insults, threats, spam, advertising or any other unwanted or illegal content.":
+    "Ви погоджуєтеся не використовувати Сервіс для надсилання образ, погроз, спаму, реклами чи будь-якого іншого небажаного або незаконного контенту.",
+
+  "If you violate these Terms, or if we reasonably believe that your behaviour may harm the Service or other users, we may temporarily restrict or terminate your access to the Service.":
+    "Якщо ви порушуєте ці Умови, або якщо ми обґрунтовано вважаємо, що ваша поведінка може зашкодити Сервісу чи іншим користувачам, ми можемо тимчасово обмежити або припинити ваш доступ до Сервісу.",
+
+  "During the testing phase, some features of TurbotaAI may be provided free of charge or with limited access. Information about pricing, subscriptions and one-time sessions will be published separately in the Service interface and/or on the website.":
+    "На етапі тестування деякі функції TurbotaAI можуть надаватися безкоштовно або з обмеженим доступом. Інформація про тарифи, підписки та разові сесії буде окремо опублікована в інтерфейсі Сервісу та/або на сайті.",
+
+  "If you purchase a paid subscription or a one-time service, you agree to the applicable payment terms displayed on the pricing page. Payments may be processed via third-party payment providers.":
+    "Якщо ви оформлюєте платну підписку або купуєте разову послугу, ви погоджуєтеся з умовами оплати, зазначеними на сторінці тарифу. Платежі можуть оброблятися через сторонніх платіжних провайдерів.",
+
+  "Refund conditions (if available) will be described in a separate section of the pricing page or in our refund policy. Please review these terms carefully before making a payment.":
+    "Умови повернення коштів (якщо вони передбачені) будуть описані в окремому розділі сторінки тарифу або в нашій політиці повернення. Будь ласка, уважно ознайомтеся з ними перед оплатою.",
+
+  "The TurbotaAI Service is provided \"as is\" without any express or implied warranties regarding its accuracy, completeness or fitness for your particular purposes. We aim to keep the Service stable but do not guarantee that it will be available without interruptions or errors.":
+    "Сервіс TurbotaAI надається «як є» без будь-яких прямих або неявних гарантій щодо його точності, повноти чи відповідності вашим конкретним цілям. Ми прагнемо підтримувати стабільну роботу Сервісу, але не гарантуємо, що він буде доступний безперервно та без помилок.",
+
+  "TurbotaAI is not an emergency service and does not replace consultations with a doctor, psychiatrist or other licensed healthcare professional. If you are in danger or may harm yourself or others, you must immediately contact emergency services or a human specialist.":
+    "TurbotaAI не є екстреною службою та не замінює консультацію лікаря, психіатра або іншого ліцензованого фахівця в галузі охорони здоров'я. Якщо ви в небезпеці або можете завдати шкоди собі чи іншим, негайно зверніться до служб екстреної допомоги або до живого спеціаліста.",
+
+  "To the maximum extent permitted by law, we shall not be liable for any direct, indirect, incidental, punitive or consequential damages arising out of or in connection with your use of, or inability to use, the Service.":
+    "У межах, дозволених законом, ми не несемо відповідальності за будь-які прямі, непрямі, випадкові, штрафні або опосередковані збитки, що виникають унаслідок або у зв'язку з користуванням Сервісом чи неможливістю його використання.",
+
+  "We may update these Terms from time to time. The date of the latest update is indicated at the top of this page. In case of material changes, we may additionally notify you through the Service or by e-mail (if available).":
+    "Ми можемо час від часу оновлювати ці Умови. Дата останнього оновлення зазначена у верхній частині сторінки. У разі суттєвих змін ми можемо додатково повідомити вас через Сервіс або електронною поштою (якщо вона в нас є).",
+
+  "By continuing to use the Service after the new Terms come into effect, you agree to the updated Terms. If you do not agree with the changes, you must stop using the Service.":
+    "Продовжуючи користуватися Сервісом після набуття чинності новими Умовами, ви погоджуєтеся з ними. Якщо ви не згодні з оновленими Умовами, ви повинні припинити користування Сервісом.",
+
+  "If you have any questions about these Terms of Use, you can contact us via the contact form on the website or by using the e-mail address listed in the \"Contact\" section.":
+    "Якщо у вас є запитання щодо цих Умов користування, ви можете зв'язатися з нами через форму зворотного зв'язку на сайті або за електронною адресою, вказаною в розділі «Контакти».",
+
+  // ─────────────────────
+  // Privacy Policy – полные абзацы
+  // ─────────────────────
+  "This Privacy Policy explains what information TurbotaAI collects, how we use it and how we protect it. We design the Service to respect your privacy and personal boundaries.":
+    "Ця Політика конфіденційності пояснює, яку інформацію збирає TurbotaAI, як ми її використовуємо та захищаємо. Ми створюємо Сервіс так, щоб поважати вашу приватність і особисті кордони.",
+
+  "By using the Service, you agree to the terms of this Policy. If you do not agree, please do not use the Service.":
+    "Користуючись Сервісом, ви погоджуєтеся з умовами цієї Політики. Якщо ви не згодні з нею, будь ласка, не використовуйте Сервіс.",
+
+  "1. Personal and contact information":
+    "1. Персональна та контактна інформація",
+
+  "We may collect the following information:":
+    "Ми можемо збирати таку інформацію:",
+
+  "your name or nickname that you provide;":
+    "ім'я або псевдонім, який ви вказуєте;",
+
+  "e-mail address if you submit it for contact or registration;":
+    "адресу електронної пошти, якщо ви залишаєте її для контакту або реєстрації;",
+
+  "any other information you voluntarily provide in forms (for example, in the contact or sign-up form).":
+    "будь-яку іншу інформацію, яку ви добровільно надаєте у формах (наприклад, у формі контакту чи реєстрації).",
+
+  "2. Session content and messages":
+    "2. Зміст сесій та повідомлень",
+
+  "When you use chat, voice or video assistant, we process the content of your messages, spoken input or text in order to generate responses and guidance. Depending on settings, some of this data may be temporarily stored to:":
+    "Під час використання чат-, голосового або відео-асистента ми обробляємо зміст ваших повідомлень, голосових звернень чи тексту, щоб формувати відповіді та рекомендації. Залежно від налаштувань, частина цих даних може тимчасово зберігатися для:",
+
+  "maintain a conversation history;":
+    "ведення історії діалогу;",
+
+  "improve the quality of the assistant's replies;":
+    "покращення якості відповідей асистента;",
+
+  "analyse common patterns in anonymised or aggregated form.":
+    "аналізу типових патернів в анонімізованому або агрегованому вигляді.",
+
+  "3. Technical information": "3. Технічна інформація",
+
+  "We may also collect technical data, such as:":
+    "Ми також можемо збирати технічні дані, зокрема:",
+
+  "IP address and approximate location;":
+    "IP-адресу та приблизне місцезнаходження;",
+
+  "information about your device, browser and operating system;":
+    "інформацію про ваш пристрій, браузер та операційну систему;",
+
+  "cookies and similar technologies required for the Service to work and for analytics.":
+    "cookie-файли та подібні технології, необхідні для роботи Сервісу та аналітики.",
+
+  "We use the collected data for the following purposes:":
+    "Ми використовуємо зібрані дані для таких цілей:",
+
+  "to provide you with access to chat, voice and video sessions;":
+    "надання вам доступу до чат-, голосових та відеосесій;",
+
+  "to adapt the assistant's responses to your request and language;":
+    "адаптації відповідей асистента до вашого запиту та мови;",
+
+  "to maintain the Service, diagnose errors and ensure security;":
+    "підтримки роботи Сервісу, діагностики збоїв та забезпечення безпеки;",
+
+  "to analyse how the Service is used and improve our support scenarios;":
+    "аналізу використання Сервісу та покращення наших сценаріїв підтримки;",
+
+  "to communicate with you (for example, responses to requests, important notifications).":
+    "комунікації з вами (наприклад, відповіді на запити, важливі сповіщення).",
+
+  "We do not sell your personal data to third parties and do not use the content of your sessions for targeted advertising.":
+    "Ми не продаємо ваші персональні дані третім особам і не використовуємо зміст ваших сесій для таргетованої реклами.",
+
+  "We apply technical and organisational security measures to protect data from unauthorised access, loss or misuse. These may include encryption, access controls, log audits and other cybersecurity practices.":
+    "Ми застосовуємо технічні та організаційні заходи безпеки, щоб захистити дані від несанкціонованого доступу, втрати чи зловживання. Сюди можуть входити шифрування, обмеження доступу, аудит логів та інші практики кібербезпеки.",
+
+  "However, no online system can guarantee absolute security. You also play a role in keeping your data safe — for example, by not sharing your credentials with others and by using strong passwords (if user accounts are introduced).":
+    "Водночас жодна онлайн-система не може гарантувати абсолютну безпеку. Ви також відіграєте роль у захисті своїх даних — наприклад, не передавайте облікові дані третім особам і використовуйте надійні паролі (якщо акаунти будуть запроваджені).",
+
+  "We retain data only for as long as necessary to fulfil the purposes described in this Policy or as required by law.":
+    "Ми зберігаємо дані лише стільки, скільки це потрібно для досягнення цілей, описаних у цій Політиці, або доки цього вимагає закон.",
+
+  "Conversation history and technical logs may be deleted or anonymised after a certain period of time. In the future the interface may include settings that allow you to delete your history yourself.":
+    "Історія діалогів і технічні логи можуть видалятися або анонімізуватися через певний період часу. У майбутньому інтерфейс може містити окремі налаштування, щоб ви могли самостійно видаляти свою історію.",
+
+  "To operate the Service we may use third-party providers such as hosting companies, payment processors, video platforms or AI model providers.":
+    "Для роботи Сервісу ми можемо використовувати сторонніх постачальників — наприклад, хостинг-провайдерів, платіжні системи, платформи для відеозв'язку або постачальників моделей ШІ.",
+
+  "These providers may process your data on our behalf and in accordance with our instructions. We aim to work only with entities that follow appropriate data protection standards.":
+    "Такі постачальники можуть обробляти ваші дані від нашого імені та згідно з нашими інструкціями. Ми прагнемо співпрацювати лише з тими компаніями, які дотримуються належних стандартів захисту даних.",
+
+  "Because infrastructure may be located in different countries, your data may sometimes be transferred outside the country where you live. We take steps to ensure that such transfers comply with applicable data protection laws.":
+    "Оскільки інфраструктура може розміщуватися в різних країнах, ваші дані іноді можуть передаватися за межі країни, в якій ви проживаєте. Ми вживаємо заходів, щоб така передача відповідала вимогам застосовного законодавства.",
+
+  "TurbotaAI is not intended for independent use by children under the age of 13. If you are under 18, parental or guardian consent may be required under the laws of your country.":
+    "TurbotaAI не призначена для самостійного використання дітьми молодше 13 років. Якщо вам менше 18, згода батьків або опікунів може бути обов'язковою згідно із законодавством вашої країни.",
+
+  "If we become aware that we have collected personal data from a child without appropriate consent, we will take steps to delete such information.":
+    "Якщо ми дізнаємося, що зібрали персональні дані дитини без належної згоди, ми вживемо заходів для їх видалення.",
+
+  "Depending on the laws of your country, you may have the right to:":
+    "Залежно від законодавства вашої країни ви можете мати право:",
+
+  "request information about the data we hold about you;":
+    "отримувати інформацію про те, які дані ми зберігаємо про вас;",
+
+  "ask us to correct inaccurate information;":
+    "вимагати виправлення неточної інформації;",
+
+  "request deletion of certain data (where we are not required to keep it by law);":
+    "просити видалити частину даних (якщо ми не зобов'язані зберігати їх за законом);",
+
+  "object to or restrict certain types of processing; and":
+    "заперечувати проти певних способів обробки або обмежувати їх;",
+
+  "lodge a complaint with a data protection supervisory authority.":
+    "подати скаргу до наглядового органу із захисту даних.",
+
+  "To exercise your rights, you can contact us via the feedback form or the e-mail address listed in the \"Contact\" section.":
+    "Щоб скористатися своїми правами, ви можете написати нам через форму зворотного зв'язку або на електронну адресу, вказану в розділі «Контакти».",
+
+  "We may update this Privacy Policy from time to time. The date of the latest update is shown at the top of this page.":
+    "Ми можемо час від часу оновлювати цю Політику конфіденційності. Дата останнього оновлення вказана у верхній частині сторінки.",
+
+  "If we make material changes, we may additionally notify you through the Service or by e-mail (if available). By continuing to use the Service after the changes take effect, you agree to the updated Policy.":
+    "Якщо ми внесемо суттєві зміни, ми можемо додатково повідомити вас через Сервіс або електронною поштою (якщо вона в нас є). Продовжуючи користуватися Сервісом після змін, ви погоджуєтеся з оновленою Політикою.",
+
+  "If you have any questions about this Privacy Policy or how we process your data, please contact us via the \"Contact\" page or the e-mail address provided there.":
+    "Якщо у вас є запитання щодо цієї Політики конфіденційності або способів обробки ваших даних, зв'яжіться з нами через сторінку «Контакти» або за електронною адресою, вказаною там.",
 }
