@@ -97,7 +97,7 @@ export const uk: Record<string, string> = {
   "Start video call": "Почати відеодзвінок",
 
   "Not sure which format? Start with a safe chat":
-    "Не впевнені, з чого почати? Спробуйте спершу безпечний чат",
+    "Якщо сумніваєтеся — почніть із безпечного чату",
 
   "Your browser may not fully support voice features. For the best experience, please use Chrome, Edge, or Safari.":
     "Ваш браузер може некоректно підтримувати голосові функції. Для найкращої роботи спробуйте Chrome, Edge або Safari.",
@@ -322,6 +322,14 @@ export const uk: Record<string, string> = {
   "How We Use Your Information": "Як ми використовуємо вашу інформацію",
   "Data Security": "Безпека даних",
   "Your Rights": "Ваші права",
+  "Personal Information": "Персональна інформація",
+  "Session Data": "Дані сесій",
+  "Technical Information": "Технічна інформація",
+  "Data Retention": "Зберігання даних",
+  "Third-Party Services": "Сторонні сервіси",
+  "International Data Transfers": "Міжнародна передача даних",
+  "Children's Privacy": "Конфіденційність дітей",
+  "Changes to This Policy": "Зміни до цієї політики",
 
   // ─────────────────────
   // Програми TurbotaAI
@@ -331,7 +339,7 @@ export const uk: Record<string, string> = {
   Programs: "Програми",
   "You can start with a one-time session and later switch to regular support or a program for your team.":
     "Можна почати з разової сесії, а згодом перейти до регулярної підтримки чи програми для своєї команди.",
-   "Good when": "Коли це підходить",
+  "Good when": "Коли це підходить",
   "Single support session": "Разова сесія підтримки",
   "One-time session when it feels very bad and you need support right now without waiting.":
     "Разова сесія, коли дуже погано й потрібна підтримка просто зараз, без очікування.",
@@ -378,8 +386,22 @@ export const uk: Record<string, string> = {
   "User Responsibilities": "Відповідальність користувача",
   "Limitation of Liability": "Обмеження відповідальності",
   "Changes to Terms": "Зміни умов",
+  Eligibility: "Право користування сервісом",
+  "Prohibited Activities": "Заборонені дії",
+  "Intellectual Property": "Інтелектуальна власність",
+  "Payment and Billing": "Оплата та білінг",
+  "Cancellation and Refunds": "Скасування та повернення коштів",
+  "Disclaimer of Warranties": "Відмова від гарантій",
+  Indemnification: "Відшкодування збитків",
+  Termination: "Припинення доступу",
+  "Governing Law and Dispute Resolution":
+    "Застосовне право та вирішення спорів",
+  Severability: "Подільність положень",
+  "Contact Information": "Контактна інформація",
+  "Last Updated": "Оновлено",
+  "Last Updated: November 2025": "Оновлено: листопад 2025 року",
 
-    // ─────────────────────
+  // ─────────────────────
   // About / Про продукт
   // ─────────────────────
   "About the product": "Про продукт",
@@ -459,7 +481,8 @@ export const uk: Record<string, string> = {
     "Коротко опишіть свій запит або ідею.",
   "Sending...": "Надсилання...",
   "Send message": "Надіслати повідомлення",
-    // ─────────────────────
+
+  // ─────────────────────
   // Modals: chat / voice / video assistants
   // ─────────────────────
   "In crisis situations, please contact local emergency services immediately.":
@@ -500,29 +523,4 @@ export const uk: Record<string, string> = {
   Selected: "Обрано",
   "Start Video Call": "Почати відеодзвінок",
   "Video session in Ukrainian": "Відео сесія українською",
-    // Общие сервисные фразы
-  "Last Updated": "Оновлено",
-
-  // Privacy Policy – доп. заголовки
-  "Personal Information": "Персональна інформація",
-  "Session Data": "Дані сесій",
-  "Technical Information": "Технічна інформація",
-  "Data Retention": "Зберігання даних",
-  "Third-Party Services": "Сторонні сервіси",
-  "International Data Transfers": "Міжнародна передача даних",
-  "Children's Privacy": "Конфіденційність дітей",
-  "Changes to This Policy": "Зміни до цієї політики",
-
-  // Terms of Use – доп. заголовки
-  Eligibility: "Право користування сервісом",
-  "Prohibited Activities": "Заборонені дії",
-  "Intellectual Property": "Інтелектуальна власність",
-  "Payment and Billing": "Оплата та білінг",
-  "Cancellation and Refunds": "Скасування та повернення коштів",
-  "Disclaimer of Warranties": "Відмова від гарантій",
-  Indemnification: "Відшкодування збитків",
-  Termination: "Припинення доступу",
-  "Governing Law and Dispute Resolution":
-    "Застосовне право та вирішення спорів",
-  Severability: "Подільність положень",
 }
