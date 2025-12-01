@@ -460,4 +460,221 @@ export const en: Record<string, string> = {
     "Clinical psychologist specializing in anxiety, depression, and workplace stress management",
   Selected: "Selected",
   "Start Video Call": "Start Video Call",
+    // ─────────────────────
+  // Terms of Use – full paragraphs
+  // ─────────────────────
+  "Last Updated: November 2025": "Last Updated: November 2025",
+
+  "By accessing or using TurbotaAI's AI psychology services (the \"Service\"), you agree to be bound by these Terms of Use and all applicable laws and regulations. If you do not agree with any part of these Terms, you must not use the Service.":
+    "By accessing or using TurbotaAI's AI psychology services (the \"Service\"), you agree to be bound by these Terms of Use and all applicable laws and regulations. If you do not agree with any part of these Terms, you must not use the Service.",
+
+  "These Terms constitute a legally binding agreement between you and the operator of TurbotaAI Psychology Services. Your continued use of the Service after we publish updates means that you accept the revised Terms.":
+    "These Terms constitute a legally binding agreement between you and the operator of TurbotaAI Psychology Services. Your continued use of the Service after we publish updates means that you accept the revised Terms.",
+
+  "To use the Service, you confirm that you:":
+    "To use the Service, you confirm that you:",
+
+  "are at least 18 years of age;":
+    "are at least 18 years of age;",
+
+  "have the legal capacity to enter into a contract;":
+    "have the legal capacity to enter into a contract;",
+
+  "are not prohibited from using online services under any applicable laws;":
+    "are not prohibited from using online services under any applicable laws;",
+
+  "provide accurate and up-to-date information when requested for registration or identification;":
+    "provide accurate and up-to-date information when requested for registration or identification;",
+
+  "are responsible for maintaining the confidentiality of your account credentials (if an account is created) and for all activity that occurs under your account.":
+    "are responsible for maintaining the confidentiality of your account credentials (if an account is created) and for all activity that occurs under your account.",
+
+  "TurbotaAI provides AI-based psychological support tools. The Service is not a medical facility and does not provide services that qualify as medical or psychiatric treatment.":
+    "TurbotaAI provides AI-based psychological support tools. The Service is not a medical facility and does not provide services that qualify as medical or psychiatric treatment.",
+
+  "You agree to use the Service only for personal, non-commercial purposes, unless otherwise agreed with us in a separate written agreement. You must not:":
+    "You agree to use the Service only for personal, non-commercial purposes, unless otherwise agreed with us in a separate written agreement. You must not:",
+
+  "copy, modify or distribute the Service;":
+    "copy, modify or distribute the Service;",
+
+  "attempt to gain unauthorized access to our systems or other users' data;":
+    "attempt to gain unauthorized access to our systems or other users' data;",
+
+  "use the Service to promote hate, harassment, self-harm or harm to others;":
+    "use the Service to promote hate, harassment, self-harm or harm to others;",
+
+  "use the Service in any way that may violate the law or the rights of third parties.":
+    "use the Service in any way that may violate the law or the rights of third parties.",
+
+  "The Service may be updated from time to time, and we may modify features, design or availability without prior notice.":
+    "The Service may be updated from time to time, and we may modify features, design or availability without prior notice.",
+
+  "You are responsible for the information you choose to share with the Service. Do not disclose data that you are not comfortable storing in digital form, unless otherwise stated in our Privacy Policy.":
+    "You are responsible for the information you choose to share with the Service. Do not disclose data that you are not comfortable storing in digital form, unless otherwise stated in our Privacy Policy.",
+
+  "You agree not to use the Service to send insults, threats, spam, advertising or any other unwanted or illegal content.":
+    "You agree not to use the Service to send insults, threats, spam, advertising or any other unwanted or illegal content.",
+
+  "If you violate these Terms, or if we reasonably believe that your behaviour may harm the Service or other users, we may temporarily restrict or terminate your access to the Service.":
+    "If you violate these Terms, or if we reasonably believe that your behaviour may harm the Service or other users, we may temporarily restrict or terminate your access to the Service.",
+
+  "During the testing phase, some features of TurbotaAI may be provided free of charge or with limited access. Information about pricing, subscriptions and one-time sessions will be published separately in the Service interface and/or on the website.":
+    "During the testing phase, some features of TurbotaAI may be provided free of charge or with limited access. Information about pricing, subscriptions and one-time sessions will be published separately in the Service interface and/or on the website.",
+
+  "If you purchase a paid subscription or a one-time service, you agree to the applicable payment terms displayed on the pricing page. Payments may be processed via third-party payment providers.":
+    "If you purchase a paid subscription or a one-time service, you agree to the applicable payment terms displayed on the pricing page. Payments may be processed via third-party payment providers.",
+
+  "Refund conditions (if available) will be described in a separate section of the pricing page or in our refund policy. Please review these terms carefully before making a payment.":
+    "Refund conditions (if available) will be described in a separate section of the pricing page or in our refund policy. Please review these terms carefully before making a payment.",
+
+  "The TurbotaAI Service is provided \"as is\" without any express or implied warranties regarding its accuracy, completeness or fitness for your particular purposes. We aim to keep the Service stable but do not guarantee that it will be available without interruptions or errors.":
+    "The TurbotaAI Service is provided \"as is\" without any express or implied warranties regarding its accuracy, completeness or fitness for your particular purposes. We aim to keep the Service stable but do not guarantee that it will be available without interruptions or errors.",
+
+  "TurbotaAI is not an emergency service and does not replace consultations with a doctor, psychiatrist or other licensed healthcare professional. If you are in danger or may harm yourself or others, you must immediately contact emergency services or a human specialist.":
+    "TurbotaAI is not an emergency service and does not replace consultations with a doctor, psychiatrist or other licensed healthcare professional. If you are in danger or may harm yourself or others, you must immediately contact emergency services or a human specialist.",
+
+  "To the maximum extent permitted by law, we shall not be liable for any direct, indirect, incidental, punitive or consequential damages arising out of or in connection with your use of, or inability to use, the Service.":
+    "To the maximum extent permitted by law, we shall not be liable for any direct, indirect, incidental, punitive or consequential damages arising out of or in connection with your use of, or inability to use, the Service.",
+
+  "We may update these Terms from time to time. The date of the latest update is indicated at the top of this page. In case of material changes, we may additionally notify you through the Service or by e-mail (if available).":
+    "We may update these Terms from time to time. The date of the latest update is indicated at the top of this page. In case of material changes, we may additionally notify you through the Service or by e-mail (if available).",
+
+  "By continuing to use the Service after the new Terms come into effect, you agree to the updated Terms. If you do not agree with the changes, you must stop using the Service.":
+    "By continuing to use the Service after the new Terms come into effect, you agree to the updated Terms. If you do not agree with the changes, you must stop using the Service.",
+
+  "If you have any questions about these Terms of Use, you can contact us via the contact form on the website or by using the e-mail address listed in the \"Contact\" section.":
+    "If you have any questions about these Terms of Use, you can contact us via the contact form on the website or by using the e-mail address listed in the \"Contact\" section.",
+
+  // ─────────────────────
+  // Privacy Policy – full paragraphs
+  // ─────────────────────
+  "This Privacy Policy explains what information TurbotaAI collects, how we use it and how we protect it. We design the Service to respect your privacy and personal boundaries.":
+    "This Privacy Policy explains what information TurbotaAI collects, how we use it and how we protect it. We design the Service to respect your privacy and personal boundaries.",
+
+  "By using the Service, you agree to the terms of this Policy. If you do not agree, please do not use the Service.":
+    "By using the Service, you agree to the terms of this Policy. If you do not agree, please do not use the Service.",
+
+  "1. Personal and contact information":
+    "1. Personal and contact information",
+
+  "We may collect the following information:":
+    "We may collect the following information:",
+
+  "your name or nickname that you provide;":
+    "your name or nickname that you provide;",
+
+  "e-mail address if you submit it for contact or registration;":
+    "e-mail address if you submit it for contact or registration;",
+
+  "any other information you voluntarily provide in forms (for example, in the contact or sign-up form).":
+    "any other information you voluntarily provide in forms (for example, in the contact or sign-up form).",
+
+  "2. Session content and messages":
+    "2. Session content and messages",
+
+  "When you use chat, voice or video assistant, we process the content of your messages, spoken input or text in order to generate responses and guidance. Depending on settings, some of this data may be temporarily stored to:":
+    "When you use chat, voice or video assistant, we process the content of your messages, spoken input or text in order to generate responses and guidance. Depending on settings, some of this data may be temporarily stored to:",
+
+  "maintain a conversation history;":
+    "maintain a conversation history;",
+
+  "improve the quality of the assistant's replies;":
+    "improve the quality of the assistant's replies;",
+
+  "analyse common patterns in anonymised or aggregated form.":
+    "analyse common patterns in anonymised or aggregated form.",
+
+  "3. Technical information":
+    "3. Technical information",
+
+  "We may also collect technical data, such as:":
+    "We may also collect technical data, such as:",
+
+  "IP address and approximate location;":
+    "IP address and approximate location;",
+
+  "information about your device, browser and operating system;":
+    "information about your device, browser and operating system;",
+
+  "cookies and similar technologies required for the Service to work and for analytics.":
+    "cookies and similar technologies required for the Service to work and for analytics.",
+
+  "We use the collected data for the following purposes:":
+    "We use the collected data for the following purposes:",
+
+  "to provide you with access to chat, voice and video sessions;":
+    "to provide you with access to chat, voice and video sessions;",
+
+  "to adapt the assistant's responses to your request and language;":
+    "to adapt the assistant's responses to your request and language;",
+
+  "to maintain the Service, diagnose errors and ensure security;":
+    "to maintain the Service, diagnose errors and ensure security;",
+
+  "to analyse how the Service is used and improve our support scenarios;":
+    "to analyse how the Service is used and improve our support scenarios;",
+
+  "to communicate with you (for example, responses to requests, important notifications).":
+    "to communicate with you (for example, responses to requests, important notifications).",
+
+  "We do not sell your personal data to third parties and do not use the content of your sessions for targeted advertising.":
+    "We do not sell your personal data to third parties and do not use the content of your sessions for targeted advertising.",
+
+  "We apply technical and organisational security measures to protect data from unauthorised access, loss or misuse. These may include encryption, access controls, log audits and other cybersecurity practices.":
+    "We apply technical and organisational security measures to protect data from unauthorised access, loss or misuse. These may include encryption, access controls, log audits and other cybersecurity practices.",
+
+  "However, no online system can guarantee absolute security. You also play a role in keeping your data safe — for example, by not sharing your credentials with others and by using strong passwords (if user accounts are introduced).":
+    "However, no online system can guarantee absolute security. You also play a role in keeping your data safe — for example, by not sharing your credentials with others and by using strong passwords (if user accounts are introduced).",
+
+  "We retain data only for as long as necessary to fulfil the purposes described in this Policy or as required by law.":
+    "We retain data only for as long as necessary to fulfil the purposes described in this Policy or as required by law.",
+
+  "Conversation history and technical logs may be deleted or anonymised after a certain period of time. In the future the interface may include settings that allow you to delete your history yourself.":
+    "Conversation history and technical logs may be deleted or anonymised after a certain period of time. In the future the interface may include settings that allow you to delete your history yourself.",
+
+  "To operate the Service we may use third-party providers such as hosting companies, payment processors, video platforms or AI model providers.":
+    "To operate the Service we may use third-party providers such as hosting companies, payment processors, video platforms or AI model providers.",
+
+  "These providers may process your data on our behalf and in accordance with our instructions. We aim to work only with entities that follow appropriate data protection standards.":
+    "These providers may process your data on our behalf and in accordance with our instructions. We aim to work only with entities that follow appropriate data protection standards.",
+
+  "Because infrastructure may be located in different countries, your data may sometimes be transferred outside the country where you live. We take steps to ensure that such transfers comply with applicable data protection laws.":
+    "Because infrastructure may be located in different countries, your data may sometimes be transferred outside the country where you live. We take steps to ensure that such transfers comply with applicable data protection laws.",
+
+  "TurbotaAI is not intended for independent use by children under the age of 13. If you are under 18, parental or guardian consent may be required under the laws of your country.":
+    "TurbotaAI is not intended for independent use by children under the age of 13. If you are under 18, parental or guardian consent may be required under the laws of your country.",
+
+  "If we become aware that we have collected personal data from a child without appropriate consent, we will take steps to delete such information.":
+    "If we become aware that we have collected personal data from a child without appropriate consent, we will take steps to delete such information.",
+
+  "Depending on the laws of your country, you may have the right to:":
+    "Depending on the laws of your country, you may have the right to:",
+
+  "request information about the data we hold about you;":
+    "request information about the data we hold about you;",
+
+  "ask us to correct inaccurate information;":
+    "ask us to correct inaccurate information;",
+
+  "request deletion of certain data (where we are not required to keep it by law);":
+    "request deletion of certain data (where we are not required to keep it by law);",
+
+  "object to or restrict certain types of processing; and":
+    "object to or restrict certain types of processing; and",
+
+  "lodge a complaint with a data protection supervisory authority.":
+    "lodge a complaint with a data protection supervisory authority.",
+
+  "To exercise your rights, you can contact us via the feedback form or the e-mail address listed in the \"Contact\" section.":
+    "To exercise your rights, you can contact us via the feedback form or the e-mail address listed in the \"Contact\" section.",
+
+  "We may update this Privacy Policy from time to time. The date of the latest update is shown at the top of this page.":
+    "We may update this Privacy Policy from time to time. The date of the latest update is shown at the top of this page.",
+
+  "If we make material changes, we may additionally notify you through the Service or by e-mail (if available). By continuing to use the Service after the changes take effect, you agree to the updated Policy.":
+    "If we make material changes, we may additionally notify you through the Service or by e-mail (if available). By continuing to use the Service after the changes take effect, you agree to the updated Policy.",
+
+  "If you have any questions about this Privacy Policy or how we process your data, please contact us via the \"Contact\" page or the e-mail address provided there.":
+    "If you have any questions about this Privacy Policy or how we process your data, please contact us via the \"Contact\" page or the e-mail address provided there.",
 }
