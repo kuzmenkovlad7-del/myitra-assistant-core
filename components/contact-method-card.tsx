@@ -55,7 +55,13 @@ export function ContactMethodCard({
       <button
         type="button"
         onClick={onClick}
-        className="mt-5 inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white shadow-sm transition group-hover:bg-slate-900/90"
+        className={cn(
+          "mt-5 inline-flex items-center justify-center rounded-full px-4 py-2 text-xs font-medium shadow-sm transition",
+          // На мобиле — на всю ширину для нормального тапа
+          "w-full bg-slate-900 text-white group-hover:bg-slate-900/90",
+          // На десктопе – как раньше
+          "sm:w-auto",
+        )}
       >
         {buttonText}
         <ArrowRight className="ml-1 h-3.5 w-3.5" />
