@@ -15,6 +15,7 @@ export const en: Record<string, string> = {
   "nav.home": "Home",
   "nav.programs": "Programs",
   "nav.clientStories": "Client stories",
+  "nav.about": "About us",
   "nav.contacts": "Contacts",
   "nav.privacyPolicy": "Privacy Policy",
   "nav.termsOfUse": "Terms of Use",
