@@ -227,4 +227,153 @@ export const uk: Record<string, string> = {
   "Story 3 Name": "Дмитро С.",
   "Story 3 Text":
     "Корпоративна програма змінила підхід нашої команди до ментального здоровʼя. Дуже рекомендую!",
+
+  // ─────────────────────
+  // Нові ключі: сторінка Client Stories
+  // ─────────────────────
+  "Real experiences from beta users":
+    "Реальний досвід бета-користувачів",
+  "Client stories": "Історії клієнтів",
+  "These stories show how people use TurbotaAI in different life situations — from night anxiety and burnout to adaptation after moving. Names and details are changed for privacy.":
+    "Ці історії показують, як люди використовують TurbotaAI у різних життєвих ситуаціях — від нічної тривоги та вигорання до адаптації після переїзду. Імена й деталі змінені з міркувань конфіденційності.",
+
+  "Anna, 27 — product designer":
+    "Анна, 27 років — продакт-дизайнерка",
+  "Night chat instead of endless scrolling":
+    "Нічний чат замість безкінечного скролу",
+  "“After a week with TurbotaAI I finally slept through the night without panic thoughts.”":
+    "«Після тижня з TurbotaAI я нарешті проспала ніч без панічних думок».",
+  "Burnout after relocation & anxiety before sleep":
+    "Вигорання після переїзду та тривога перед сном",
+  "Before TurbotaAI": "До TurbotaAI",
+  "For several months Anna had been falling asleep at 3–4 a.m. She moved to another city, changed jobs and constantly replayed conversations in her head. She was too tired to look for a therapist, fill in forms or wait for an appointment.":
+    "Кілька місяців Анна засинала о 3–4 ночі. Вона переїхала в інше місто, змінила роботу й постійно прокручувала в голові розмови. У неї не було сил шукати терапевта, заповнювати анкети чи чекати на запис.",
+  "How the sessions looked": "Як виглядали сесії",
+  "Anna opened the chat when it felt worst — usually late at night. The assistant helped her name what was happening, notice body sensations and try short breathing and grounding exercises. When she wanted, they switched to Ukrainian from English without losing the thread.":
+    "Анна відкривала чат у ті моменти, коли було найважче — зазвичай пізно ввечері. Асистент допомагав назвати те, що з нею відбувається, помічати відчуття в тілі й пробувати короткі дихальні та ґраундинг-вправи. Коли їй хотілося, вони переключалися з англійської на українську, не втрачаючи нитку розмови.",
+  "What changed after 3 weeks": "Що змінилося за 3 тижні",
+  "She started going to bed earlier and noticed that panic peaks became shorter. Anna still plans to work with a human therapist, but now she feels she has a safe backup option in her pocket for nights when everything “collapses” again.":
+    "Вона почала лягати спати раніше й помітила, що піки паніки стали коротшими. Анна й надалі планує працювати з живим терапевтом, але тепер відчуває, що має безпечний запасний варіант у кишені на ті ночі, коли «все знову валиться».",
+
+  "Max, 35 — team lead in IT":
+    "Макс, 35 років — тімлід в IT",
+  "Voice calls on the way to work":
+    "Голосові дзвінки по дорозі на роботу",
+  "“Talking to a calm voice for ten minutes before stand-up is easier than pretending that everything is fine.”":
+    "«Поговорити десять хвилин зі спокійним голосом перед стендапом легше, ніж робити вигляд, що все добре».",
+  "Panic before meetings & fear of mistakes":
+    "Паніка перед зустрічами та страх помилок",
+  "Support format he chose": "Який формат підтримки він обрав",
+  "On difficult days Max launched a short voice session on the way to the office. Together with the assistant they unpacked what exactly he was afraid of in upcoming meetings and rehearsed several phrases that would help him stay in the adult position.":
+    "У складні дні Макс запускав коротку голосову сесію дорогою до офісу. Разом з асистентом вони розбирали, чого саме він боїться на майбутніх зустрічах, і проговорювали кілька фраз, які допомагали залишатися в дорослій позиції.",
+  "Small but visible progress":
+    "Невеликий, але помітний прогрес",
+  "After a month he noticed that he no longer cancelled calls at the last moment and could say “I need time to think about it” instead of freezing in silence. These are small steps, but they gave him back a feeling of control.":
+    "Через місяць він помітив, що більше не скасовує дзвінки в останню хвилину й може сказати «Мені потрібно час, щоб це обдумати» замість того, щоб завмирати в тиші. Це невеликі кроки, але вони повернули йому відчуття контролю.",
+
+  "Sofia, 19 — first-year student":
+    "Софія, 19 років — студентка першого курсу",
+  "From “no one understands me” to small routines":
+    "Від «мене ніхто не розуміє» до маленьких рутин",
+  "“It’s easier to write to the AI first and only then to friends — when I understand what I really feel.”":
+    "«Мені легше спочатку написати ШІ, а вже потім друзям — коли я розумію, що насправді відчуваю».",
+  "Loneliness, adaptation to university & dorm life":
+    "Самотність, адаптація до університету та життя в гуртожитку",
+  "What was happening": "Що відбувалося",
+  "Sofia moved from a small town to another city to study. In the dorm she felt lonely, ashamed of “weakness” and did not want to burden her parents with her worries.":
+    "Софія переїхала з маленького міста до іншого, щоб навчатися. У гуртожитку вона почувалася самотньою, соромилася своєї «слабкості» й не хотіла обтяжувати батьків своїми переживаннями.",
+  "How she used TurbotaAI": "Як вона використовувала TurbotaAI",
+  "Several times a week Sofia wrote about what had happened during the day: conflicts with roommates, fear of exams, difficulties with new people. The assistant helped her separate thoughts from facts and suggested simple experiments — for example, one small step toward someone safe in the group.":
+    "Кілька разів на тиждень Софія писала про те, що сталося за день: конфлікти з сусідками, страх перед іспитами, труднощі з новими людьми. Асистент допомагав відділяти думки від фактів і пропонував прості експерименти — наприклад, один маленький крок назустріч комусь безпечному в групі.",
+  "Results after the first month":
+    "Результати після першого місяця",
+  "Sofia found two people with whom she now goes to classes, and created a small evening routine instead of doomscrolling. She still experiences anxiety, but she no longer feels completely alone with it.":
+    "Софія знайшла двох людей, з якими тепер ходить на заняття, і створила невелику вечірню рутину замість безкінечного скролу. Тривога все ще є, але вона більше не лишається з нею зовсім наодинці.",
+
+  "Read full stories": "Прочитати повні історії",
+  "Tap a card to open a detailed story in a calm, full-screen view. You can close it at any time with the button or the Escape key.":
+    "Натисніть на картку, щоб відкрити детальну історію в спокійному повноекранному форматі. Ви можете закрити її в будь-який момент кнопкою або клавішею Escape.",
+  "Stories are based on real patterns from TurbotaAI testing, but names and details are changed. TurbotaAI does not replace emergency mental health care.":
+    "Історії засновані на реальних патернах із тестування TurbotaAI, але імена й деталі змінені. TurbotaAI не замінює екстрену психіатричну чи медичну допомогу.",
+
+  // ─────────────────────
+  // Login / доступ без акаунта
+  // ─────────────────────
+  "During the testing phase you can use the platform without creating an account.":
+    "На етапі тестування ви можете користуватися платформою без створення акаунта.",
+  "Now you can start a chat, voice call or video session with the AI-psychologist directly from the main page.":
+    "Зараз ви можете розпочати чат, голосовий дзвінок або відеосесію з AI-психологом прямо з головної сторінки.",
+  "Later this page will be used for full registration, saving programs and personal settings.":
+    "Пізніше ця сторінка буде використовуватися для повної реєстрації, збереження програм та особистих налаштувань.",
+  "Back to main page": "Повернутися на головну",
+
+  // ─────────────────────
+  // Контакти: мови інтерфейсу
+  // ─────────────────────
+  Languages: "Мови",
+  "Ukrainian · Russian · English":
+    "Українська · Російська · Англійська",
+
+  // ─────────────────────
+  // Політика конфіденційності
+  // ─────────────────────
+  "Information We Collect": "Яку інформацію ми збираємо",
+  "How We Use Your Information": "Як ми використовуємо вашу інформацію",
+  "Data Security": "Безпека даних",
+  "Your Rights": "Ваші права",
+
+  // ─────────────────────
+  // Програми TurbotaAI
+  // ─────────────────────
+  "Flexible programs for different life situations":
+    "Гнучкі програми для різних життєвих ситуацій",
+  Programs: "Програми",
+  "You can start with a one-time session and later switch to regular support or a program for your team.":
+    "Можна почати з разової сесії, а згодом перейти до регулярної підтримки чи програми для своєї команди.",
+  "Single support session": "Разова сесія підтримки",
+  "One-time session when it feels very bad and you need support right now without waiting.":
+    "Разова сесія, коли дуже погано й потрібна підтримка просто зараз, без очікування.",
+  "Sudden anxiety, panic, difficult evening or night.":
+    "Раптова тривога, паніка, важкий вечір чи ніч.",
+  "You want to share what is happening, but there is no safe person nearby.":
+    "Хочеться поділитися тим, що відбувається, але поруч немає безпечної людини.",
+  "Chat or voice, about 30–40 minutes.":
+    "Чат або голосовий формат, приблизно 30–40 хвилин.",
+
+  "Regular support program": "Програма регулярної підтримки",
+  "Monthly subscription": "Місячна підписка",
+  Format: "Формат",
+  "Format for those who want to track their condition, receive small tasks and not be alone with emotions.":
+    "Формат для тих, хто хоче відстежувати свій стан, отримувати невеликі завдання й не залишатися наодинці з емоціями.",
+  "Chronic stress, burnout, long-term anxiety.":
+    "Хронічний стрес, вигорання, довготривала тривога.",
+  "You want to build habits and routines, not just survive crises.":
+    "Хочете вибудовувати звички та рутини, а не лише виживати в кризах.",
+  "Several short sessions per week + small daily steps.":
+    "Кілька коротких сесій на тиждень + маленькі щоденні кроки.",
+
+  "For clinics, NGOs and companies":
+    "Для клінік, ГО та компаній",
+  "Corporate access": "Корпоративний доступ",
+  "Access to TurbotaAI for teams and organizations that want to support employees or clients.":
+    "Доступ до TurbotaAI для команд та організацій, які хочуть підтримувати співробітників або клієнтів.",
+  "Medical and psychological centers.":
+    "Медичні та психологічні центри.",
+  "NGOs and initiatives that work with vulnerable groups.":
+    "Громадські організації та ініціативи, що працюють із вразливими групами.",
+  "Companies that care about emotional state of employees.":
+    "Компанії, яким важливий емоційний стан співробітників.",
+  "Team access, admin panel and separate support line.":
+    "Командний доступ, адмін-панель і окрема лінія підтримки.",
+  "Payment integration will be configured together with you. Now we focus on the quality of support and the scenarios of the assistant.":
+    "Інтеграцію оплати ми налаштуємо разом із вами. Зараз ми зосереджуємося на якості підтримки та сценаріях роботи асистента.",
+
+  // ─────────────────────
+  // Умови користування (Terms of Use)
+  // ─────────────────────
+  "Acceptance of Terms": "Прийняття умов",
+  "Use of Services": "Використання сервісу",
+  "User Responsibilities": "Відповідальність користувача",
+  "Limitation of Liability": "Обмеження відповідальності",
+  "Changes to Terms": "Зміни умов",
 }
