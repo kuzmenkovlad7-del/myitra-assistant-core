@@ -21,6 +21,7 @@ export const uk: Record<string, string> = {
   "nav.home": "Головна",
   "nav.programs": "Програми",
   "nav.clientStories": "Історії клієнтів",
+  "nav.about": "Про нас",
   "nav.contacts": "Контакти",
   "nav.privacyPolicy": "Політика конфіденційності",
   "nav.termsOfUse": "Умови користування",
