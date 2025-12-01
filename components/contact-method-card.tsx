@@ -21,12 +21,28 @@ export function ContactMethodCard({
   buttonText,
   onClick,
 }: ContactMethodCardProps) {
+  const handleClick = () => {
+    if (onClick) onClick()
+  }
+
+  const handleKeyDown: React.KeyboardEventHandler<HTMLDivElement> = (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault()
+      if (onClick) onClick()
+    }
+  }
+
   return (
     <div
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : -1}
+      onClick={onClick ? handleClick : undefined}
+      onKeyDown={onClick ? handleKeyDown : undefined}
       className={cn(
         "group flex h-full flex-col justify-between rounded-3xl",
         "bg-slate-50/90 px-6 py-6 text-left shadow-sm ring-1 ring-slate-200",
         "transition hover:-translate-y-1 hover:bg-white hover:shadow-lg hover:shadow-indigo-100/80",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-50",
       )}
     >
       <div>
@@ -52,14 +68,10 @@ export function ContactMethodCard({
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={onClick}
-        className="mt-5 inline-flex w-full items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white shadow-sm transition group-hover:bg-slate-900/90 md:w-auto"
-      >
+      <div className="mt-5 inline-flex items-center justify-center rounded-full bg-slate-900 px-4 py-2 text-xs font-medium text-white shadow-sm transition group-hover:bg-slate-900/90">
         {buttonText}
         <ArrowRight className="ml-1 h-3.5 w-3.5" />
-      </button>
+      </div>
     </div>
   )
 }
