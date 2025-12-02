@@ -15,6 +15,7 @@
     "@ai-sdk/openai": "latest",
     "@emotion/react": "latest",
     "@emotion/styled": "latest",
+    "@google-cloud/text-to-speech": "^6.4.0",
     "@neondatabase/serverless": "^0.9.0",
     "@radix-ui/react-alert-dialog": "^1.0.5",
     "@radix-ui/react-aspect-ratio": "^1.0.3",
