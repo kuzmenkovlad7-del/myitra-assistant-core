@@ -19,8 +19,8 @@ const nextConfig = {
     ],
     unoptimized: true,
   },
-  webpack: (config, { isServer, dev }) => {
-    // твой fallback для fs/net/tls — оставляем
+  webpack: (config, { isServer }) => {
+    // фиксим ноды-модули на клиенте
     if (!isServer) {
       config.resolve = config.resolve || {}
       config.resolve.fallback = {
@@ -29,19 +29,19 @@ const nextConfig = {
         net: false,
         tls: false,
       }
-    }
 
-    // Гарантируем наличие MiniCssExtractPlugin в прод-клиенте
-    if (!dev && !isServer) {
-      const hasMiniCss = config.plugins?.some(
+      // ГАРАНТИРУЕМ наличие MiniCssExtractPlugin,
+      // чтобы не было ошибки "You forgot to add 'mini-css-extract-plugin'..."
+      config.plugins = config.plugins || []
+      const hasMiniCss = config.plugins.some(
         (plugin) => plugin?.constructor?.name === "MiniCssExtractPlugin",
       )
 
       if (!hasMiniCss) {
         config.plugins.push(
           new MiniCssExtractPlugin({
-            filename: "static/css/[contenthash].css",
-            chunkFilename: "static/css/[contenthash].css",
+            filename: "static/css/[name].[contenthash].css",
+            chunkFilename: "static/css/[id].[contenthash].css",
           }),
         )
       }
