@@ -4,18 +4,21 @@ import { openai } from "@ai-sdk/openai"
 
 export async function POST(request: Request) {
   try {
-    const { text } = await request.json()
+    const body = await request.json()
+    const text =
+      typeof body?.text === "string" ? body.text.trim() : ""
 
     if (!text) {
-      return NextResponse.json({ error: "Text is required" }, { status: 400 })
+      return NextResponse.json(
+        { error: "Text is required" },
+        { status: 400 },
+      )
     }
 
-    // Проверяем, что ключ вообще существует (для надёжности),
-    // но в сам openai() его НЕ передаём — ai-sdk берёт его из env.
+    // Просто проверяем наличие ключа, сам SDK возьмёт его из env
     const apiKey = process.env.OPENAI_API_KEY?.trim()
-
     if (!apiKey) {
-      console.error("OpenAI API key is missing")
+      console.error("OPENAI_API_KEY is missing")
       return NextResponse.json(
         {
           response:
@@ -25,9 +28,8 @@ export async function POST(request: Request) {
       )
     }
 
-    // Генерация ответа через AI SDK
     const { text: aiResponse } = await generateText({
-      model: openai("gpt-4o"), // или "gpt-4o-mini", если хочешь дешевле
+      model: openai("gpt-4o"),
       system: `You are a friendly and attentive AI Assistant that plays the role of a professional psychologist. Your task is to answer any user's questions, including mundane, personal, emotional, philosophical, or even superficial ones, with respect, empathy, and a deep understanding of psychology.
 
 You can use any available information (including general knowledge, psychological theories, research, behavioral models, real-life examples, analogies, etc.) to provide a detailed, meaningful, and supportive answer whenever needed.
@@ -46,14 +48,18 @@ Always respond as if you were talking to a real person in a psychologist's offic
 
 Be sure to respond in the language of the request message`,
       prompt: text,
-      // НИКАКИХ maxTokens здесь не указываем — именно из-за этого была вторая ошибка
+      // без maxTokens — именно из-за него раньше ругался TypeScript
     })
 
     return NextResponse.json({ response: aiResponse })
   } catch (error) {
     console.error("Error processing speech:", error)
-    return NextResponse.json({
-      response: "I'm here to help. Please feel free to share what's on your mind.",
-    })
+    return NextResponse.json(
+      {
+        response:
+          "I'm here to help. Please feel free to share what's on your mind.",
+      },
+      { status: 500 },
+    )
   }
 }
