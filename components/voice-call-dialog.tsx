@@ -20,26 +20,16 @@ import {
   MicOff,
   Loader2,
   Sparkles,
-  Venus,
-  Mars,
 } from "lucide-react"
 import { useLanguage } from "@/lib/i18n/language-context"
 import { useAuth } from "@/lib/auth/auth-context"
 import { APP_NAME } from "@/lib/app-config"
-
-declare global {
-  interface Window {
-    SpeechRecognition?: any
-    webkitSpeechRecognition?: any
-  }
-}
 
 interface VoiceCallDialogProps {
   isOpen: boolean
   onClose: () => void
   onError?: (error: Error) => void
   userEmail?: string
-  /** Можно передать свой вебхук, но по умолчанию берём из env */
   webhookUrl?: string
 }
 
@@ -117,7 +107,7 @@ export default function VoiceCallDialog({
     "connected" | "disconnected"
   >("disconnected")
 
-  // новый state для выбора голоса
+  // выбор голоса для этой сессии
   const [voiceGender, setVoiceGender] = useState<"female" | "male">("female")
 
   const recognitionRef = useRef<any | null>(null)
@@ -162,7 +152,7 @@ export default function VoiceCallDialog({
       !isMicMutedRef.current &&
       !isAiSpeakingRef.current
 
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
 
     // если слушать НЕ нужно — стопаем, если запущено
     if (!shouldListen) {
@@ -227,7 +217,7 @@ export default function VoiceCallDialog({
       }
 
       recognition.onresult = (event: any) => {
-        // если ассистент говорит — игнорируем всё, чтобы не слушать его озвучку
+        // если ассистент говорит — игнорируем, чтобы не слушать свою озвучку
         if (isAiSpeakingRef.current) return
 
         const last = event.results[event.results.length - 1]
@@ -292,8 +282,8 @@ export default function VoiceCallDialog({
 
     hardStopRecognition()
 
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.cancel()
+    if (typeof window !== "undefined" && (window as any).speechSynthesis) {
+      ;(window as any).speechSynthesis.cancel()
     }
     if (audioRef.current) {
       audioRef.current.pause()
@@ -316,33 +306,46 @@ export default function VoiceCallDialog({
   }, [])
 
   // ---------- озвучка ответа (Google Cloud TTS + fallback) ----------
-
   function speakText(text: string) {
     if (typeof window === "undefined") return
 
     const cleanText = text?.trim()
     if (!cleanText) return
 
-    const langCode = computeLangCode()
+    const langCode = computeLangCode() // "uk-UA" | "ru-RU" | "en-US"
+
+    console.log("[TTS] speakText()", {
+      langCode,
+      gender: voiceGender,
+      textSample: cleanText.slice(0, 80),
+    })
 
     const startSpeaking = () => {
       setIsAiSpeaking(true)
       isAiSpeakingRef.current = true
+      // во время озвучки микрофон должен быть выключен
       ensureRecognitionRunning()
     }
 
     const stopSpeaking = () => {
       setIsAiSpeaking(false)
       isAiSpeakingRef.current = false
+      // после озвучки — снова слушаем
       ensureRecognitionRunning()
     }
 
-    // fallback — браузерный TTS (на случай, если Google TTS не ответил)
+    // fallback — браузерный TTS (если Google TTS не сработал)
     const speakWithBrowserTTS = () => {
-      if (!window.speechSynthesis) {
+      const synth = (typeof window !== "undefined" &&
+        (window as any).speechSynthesis) as SpeechSynthesis | undefined
+
+      if (!synth) {
+        console.warn("[TTS] Browser speechSynthesis is not available")
         stopSpeaking()
         return
       }
+
+      console.log("[TTS] Using browser speechSynthesis fallback")
 
       const utterance = new SpeechSynthesisUtterance(cleanText)
       utterance.lang = langCode
@@ -357,43 +360,69 @@ export default function VoiceCallDialog({
         stopSpeaking()
       }
 
-      utterance.onerror = () => {
+      utterance.onerror = (e) => {
+        console.error("[TTS] Browser TTS error", e)
         stopSpeaking()
       }
 
-      window.speechSynthesis.cancel()
-      window.speechSynthesis.speak(utterance)
+      synth.cancel()
+      synth.speak(utterance)
     }
 
     // Основная ветка — Google Cloud TTS через /api/tts
     ;(async () => {
       try {
+        console.log("[TTS] Requesting /api/tts…")
+
         const res = await fetch("/api/tts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             text: cleanText,
-            languageCode: langCode,
-            gender: voiceGender, // "female" | "male"
+            // важно: сервер ждёт поле language, а не languageCode
+            language: langCode,
+            // сервер нормализует в FEMALE/MALE, но сразу даём в верхнем регистре
+            gender: voiceGender.toUpperCase(), // "FEMALE" | "MALE"
           }),
         })
 
-        if (!res.ok) {
-          console.error("TTS API error:", res.status)
+        // сначала читаем как текст, потом пробуем распарсить JSON —
+        // так не будет ошибки "Unexpected token '<'"
+        const raw = await res.text()
+        let data: any = null
+
+        try {
+          data = raw ? JSON.parse(raw) : null
+        } catch (e) {
+          console.error("[TTS] /api/tts returned non-JSON response:", raw.slice(0, 200))
+        }
+
+        console.log("[TTS] /api/tts status:", res.status, "data:", data)
+
+        if (!res.ok || !data || data.success === false) {
+          console.error(
+            "[TTS] API error",
+            data?.error || res.statusText,
+            data?.details || "",
+          )
           speakWithBrowserTTS()
           return
         }
 
-        const data = await res.json()
-        const audioUrl = data?.audioUrl as string | undefined
+        // поддерживаем оба формата: audioUrl ИЛИ audioContent (base64)
+        let audioUrl: string | undefined = data.audioUrl
+
+        if (!audioUrl && data.audioContent) {
+          audioUrl = `data:audio/mp3;base64,${data.audioContent}`
+        }
 
         if (!audioUrl) {
-          console.error("TTS API: no audioUrl in response")
+          console.error("[TTS] No audioUrl/audioContent in response")
           speakWithBrowserTTS()
           return
         }
 
-        // останавливаем предыдущий аудио-поток, если был
+        // останавливаем предыдущий аудио-поток, если есть
         if (audioRef.current) {
           audioRef.current.pause()
           audioRef.current = null
@@ -412,14 +441,19 @@ export default function VoiceCallDialog({
         }
 
         audio.onerror = (e) => {
-          console.error("TTS audio playback error:", e)
+          console.error("[TTS] audio playback error:", e)
           stopSpeaking()
           audioRef.current = null
         }
 
-        await audio.play()
+        try {
+          await audio.play()
+        } catch (e) {
+          console.error("[TTS] play() rejected", e)
+          speakWithBrowserTTS()
+        }
       } catch (error) {
-        console.error("TTS fetch error:", error)
+        console.error("[TTS] fetch error:", error)
         speakWithBrowserTTS()
       }
     })()
@@ -703,7 +737,7 @@ export default function VoiceCallDialog({
                         </>
                       ) : (
                         <>
-                          <Venus className="h-3 w-3" />
+                          <Sparkles className="h-3 w-3" />
                           {t("Start with female voice")}
                         </>
                       )}
@@ -726,7 +760,7 @@ export default function VoiceCallDialog({
                         </>
                       ) : (
                         <>
-                          <Mars className="h-3 w-3" />
+                          <Brain className="h-3 w-3" />
                           {t("Start with male voice")}
                         </>
                       )}
