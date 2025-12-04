@@ -1,9 +1,10 @@
+// next.config.mjs
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  experimental: {
-    appDir: true,
-  },
+  // appDir включён по умолчанию в Next.js 13+,
+  // поэтому здесь его указывать не нужно.
   images: {
     remotePatterns: [
       {
