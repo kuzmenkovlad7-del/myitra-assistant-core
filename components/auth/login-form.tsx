@@ -2,20 +2,36 @@
 
 import type React from "react"
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useLanguage } from "@/lib/i18n/language-context"
-import { useAuth } from "@/lib/auth/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Eye, EyeOff, AlertCircle, Mail, Lock, ArrowRight, Brain } from "lucide-react"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
+  Eye,
+  EyeOff,
+  AlertCircle,
+  Mail,
+  Lock,
+  ArrowRight,
+  Brain,
+} from "lucide-react"
 
 export default function LoginForm() {
   const { t } = useLanguage()
-  const { signIn, authDisabled } = useAuth()
-  const router = useRouter()
+
+  // Определяем, включена ли авторизация, напрямую по env (без useAuth)
+  const authDisabled =
+    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
@@ -36,11 +52,17 @@ export default function LoginForm() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-center text-gray-600">
-              {t("Это демо-окружение. Для работы с реальной авторизацией добавьте ключи Supabase в файл .env.local:")}
+              {t(
+                "Это демо-окружение. Для работы с реальной авторизацией добавьте ключи Supabase в файл .env.local:",
+              )}
             </p>
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 font-mono text-xs space-y-2">
-              <div className="text-gray-700">NEXT_PUBLIC_SUPABASE_URL=...</div>
-              <div className="text-gray-700">NEXT_PUBLIC_SUPABASE_ANON_KEY=...</div>
+              <div className="text-gray-700">
+                NEXT_PUBLIC_SUPABASE_URL=...
+              </div>
+              <div className="text-gray-700">
+                NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+              </div>
             </div>
             <div className="pt-4 border-t border-gray-100">
               <Link href="/">
@@ -55,21 +77,23 @@ export default function LoginForm() {
     )
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setIsLoading(true)
 
     try {
-      const { error } = await signIn(email, password)
-
-      if (error) {
-        setError(error.message)
-        return
-      }
-
-      router.push("/profile")
-    } catch (err) {
+      // ВАЖНО:
+      // Здесь РАНЬШЕ был вызов signIn(email, password),
+      // но в текущем проекте никакого signIn в контексте нет.
+      // Поэтому просто показываем аккуратное сообщение,
+      // чтобы билд проходил и страница выглядела нормально.
+      setError(
+        t(
+          "Email & password sign-in is not configured in this beta. Please use the AI assistant on the main page or the contact form.",
+        ),
+      )
+    } catch {
       setError(t("An unexpected error occurred. Please try again."))
     } finally {
       setIsLoading(false)
@@ -84,14 +108,20 @@ export default function LoginForm() {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-primary to-accent rounded-full mb-4 shadow-lg">
             <Brain className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">{t("Welcome Back")}</h1>
-          <p className="text-gray-600">{t("Sign in to continue your journey with AI Psychology")}</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            {t("Welcome Back")}
+          </h1>
+          <p className="text-gray-600">
+            {t("Sign in to continue your journey with AI Psychology")}
+          </p>
         </div>
 
         {/* Form Container */}
         <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
           <CardHeader className="space-y-1 pb-6">
-            <CardTitle className="text-2xl font-semibold text-center text-gray-900">{t("Sign In")}</CardTitle>
+            <CardTitle className="text-2xl font-semibold text-center text-gray-900">
+              {t("Sign In")}
+            </CardTitle>
             <CardDescription className="text-center text-gray-600">
               {t("Enter your credentials to access your account")}
             </CardDescription>
@@ -106,7 +136,10 @@ export default function LoginForm() {
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-medium text-gray-700">
+                <Label
+                  htmlFor="email"
+                  className="text-sm font-medium text-gray-700"
+                >
                   {t("Email Address")}
                 </Label>
                 <div className="relative">
@@ -127,7 +160,10 @@ export default function LoginForm() {
 
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <Label htmlFor="password" className="text-sm font-medium text-gray-700">
+                  <Label
+                    htmlFor="password"
+                    className="text-sm font-medium text-gray-700"
+                  >
                     {t("Password")}
                   </Label>
                   <Link
@@ -152,9 +188,17 @@ export default function LoginForm() {
                     type="button"
                     className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center"
                     onClick={() => setShowPassword(!showPassword)}
-                    aria-label={showPassword ? t("Hide password") : t("Show password")}
+                    aria-label={
+                      showPassword
+                        ? t("Hide password")
+                        : t("Show password")
+                    }
                   >
-                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    {showPassword ? (
+                      <EyeOff className="h-5 w-5" />
+                    ) : (
+                      <Eye className="h-5 w-5" />
+                    )}
                   </button>
                 </div>
               </div>
@@ -166,7 +210,7 @@ export default function LoginForm() {
               >
                 {isLoading ? (
                   <div className="flex items-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2" />
                     {t("Signing in...")}
                   </div>
                 ) : (
@@ -201,7 +245,10 @@ export default function LoginForm() {
               {t("Terms of Service")}
             </Link>{" "}
             {t("and")}{" "}
-            <Link href="/privacy-policy" className="text-primary hover:underline">
+            <Link
+              href="/privacy-policy"
+              className="text-primary hover:underline"
+            >
               {t("Privacy Policy")}
             </Link>
           </p>
