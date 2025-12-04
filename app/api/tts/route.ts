@@ -10,7 +10,7 @@ type VoiceConfig = {
   name: string
 }
 
-// Базовые голоса для трёх языков (можно потом расширить)
+// Карта голосов: 3 языка × 2 пола
 const VOICE_MAP: Record<string, Record<Gender, VoiceConfig>> = {
   uk: {
     female: { languageCode: "uk-UA", name: "uk-UA-Standard-A" },
@@ -26,17 +26,20 @@ const VOICE_MAP: Record<string, Record<Gender, VoiceConfig>> = {
   },
 }
 
+// Клиент создаём один раз
 let ttsClient: textToSpeech.TextToSpeechClient | null = null
 
 function getTtsClient() {
   if (ttsClient) return ttsClient
 
   const credentialsJson = process.env.GOOGLE_TTS_CREDENTIALS
-  const options: textToSpeech.ClientOptions = {}
+  let options: any = {}
 
   if (credentialsJson) {
     try {
-      options.credentials = JSON.parse(credentialsJson)
+      options = {
+        credentials: JSON.parse(credentialsJson),
+      }
     } catch (error) {
       console.error("Invalid GOOGLE_TTS_CREDENTIALS JSON:", error)
     }
@@ -52,21 +55,22 @@ export async function POST(request: NextRequest) {
 
     const text =
       typeof body?.text === "string" ? body.text.trim() : ""
+
     let language =
       typeof body?.language === "string"
         ? body.language.toLowerCase()
         : "uk"
-    const genderRaw =
+
+    const gender: Gender =
       body?.gender === "male" || body?.gender === "female"
         ? body.gender
         : "female"
-
-    const gender: Gender = genderRaw
 
     const speakingRate =
       typeof body?.speakingRate === "number"
         ? body.speakingRate
         : 1.0
+
     const pitch =
       typeof body?.pitch === "number" ? body.pitch : 0
 
@@ -77,7 +81,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // поддерживаем только ключи из VOICE_MAP, остальное — fallback на uk
+    // Фоллбек языка
     if (!Object.prototype.hasOwnProperty.call(VOICE_MAP, language)) {
       language = "uk"
     }
