@@ -1,36 +1,46 @@
+// app/api/ai/process-speech/route.ts
+
 import { NextResponse } from "next/server"
 import { generateText } from "ai"
 import { openai } from "@ai-sdk/openai"
 
 export async function POST(request: Request) {
   try {
-    const { text } = await request.json()
+    const body = await request.json()
+    const text: string | undefined = body?.text
 
-    if (!text) {
-      return NextResponse.json({ error: "Text is required" }, { status: 400 })
+    // 1. Проверяем входной текст
+    if (!text || typeof text !== "string" || !text.trim()) {
+      return NextResponse.json(
+        { error: "Text is required" },
+        { status: 400 },
+      )
     }
 
-    // Clean up the OpenAI API key (remove any spaces)
-    const apiKey = process.env.OPENAI_API_KEY?.replace(/\s+/g, "")
+    // 2. Чистим и проверяем OPENAI_API_KEY из env
+    const rawKey = process.env.OPENAI_API_KEY
+    const cleanedKey = rawKey?.replace(/\s+/g, "")
 
-    if (!apiKey) {
+    if (!cleanedKey) {
       console.error("OpenAI API key is missing")
-      return NextResponse.json({
-        response: "I'm sorry, I'm having trouble connecting to my knowledge base. Please try again later.",
-      })
+      return NextResponse.json(
+        {
+          response:
+            "I'm sorry, I'm having trouble connecting to my knowledge base. Please try again later.",
+        },
+        { status: 500 },
+      )
     }
 
-    try {
-      // Create OpenAI client with API key
-      const openaiClient = openai({
-        apiKey: apiKey,
-      })
+    // На всякий случай записываем очищенный ключ обратно в env,
+    // чтобы openai(...) под капотом использовал уже нормальное значение.
+    process.env.OPENAI_API_KEY = cleanedKey
 
-      // Generate response using AI SDK
-      const { text: aiResponse } = await generateText({
-        model: openaiClient("gpt-4o"),
-        prompt: text,
-        system: `You are a friendly and attentive AI Assistant that plays the role of a professional psychologist. Your task is to answer any user's questions, including mundane, personal, emotional, philosophical, or even superficial ones, with respect, empathy, and a deep understanding of psychology.
+    // 3. Запрос к модели через Vercel AI SDK
+    const { text: aiResponse } = await generateText({
+      model: openai("gpt-4o"),
+      prompt: text,
+      system: `You are a friendly and attentive AI Assistant that plays the role of a professional psychologist. Your task is to answer any user's questions, including mundane, personal, emotional, philosophical, or even superficial ones, with respect, empathy, and a deep understanding of psychology.
 
 You can use any available information (including general knowledge, psychological theories, research, behavioral models, real-life examples, analogies, etc.) to provide a detailed, meaningful, and supportive answer whenever needed.
 
@@ -46,21 +56,18 @@ Friendly and open to dialog: encourage the user to ask additional questions or s
 
 Always respond as if you were talking to a real person in a psychologist's office.
 
-Be sure to respond in the language of the request message`,
-        maxTokens: 150,
-      })
+Be sure to respond in the language of the request message.`,
+      maxTokens: 150,
+    })
 
-      return NextResponse.json({ response: aiResponse })
-    } catch (aiError) {
-      console.error("Error generating AI response:", aiError)
-      return NextResponse.json({
-        response: "I'm here to listen and support you. Could you please share more about what's on your mind?",
-      })
-    }
+    return NextResponse.json({ response: aiResponse })
   } catch (error) {
     console.error("Error processing speech:", error)
+
+    // fallback-ответ, чтобы пользователь не остался в тишине
     return NextResponse.json({
-      response: "I'm here to help. Please feel free to share what's on your mind.",
+      response:
+        "I'm here to help. Please feel free to share what's on your mind.",
     })
   }
 }
