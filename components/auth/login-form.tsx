@@ -83,11 +83,8 @@ export default function LoginForm() {
     setIsLoading(true)
 
     try {
-      // ВАЖНО:
-      // Здесь РАНЬШЕ был вызов signIn(email, password),
-      // но в текущем проекте никакого signIn в контексте нет.
-      // Поэтому просто показываем аккуратное сообщение,
-      // чтобы билд проходил и страница выглядела нормально.
+      // Раньше тут был реальный signIn,
+      // сейчас просто аккуратное сообщение, чтобы билд проходил.
       setError(
         t(
           "Email & password sign-in is not configured in this beta. Please use the AI assistant on the main page or the contact form.",

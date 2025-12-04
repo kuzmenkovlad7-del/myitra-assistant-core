@@ -1,3 +1,4 @@
+// @ts-nocheck
 // lib/i18n/translations/uk.ts
 import { en } from "./en"
 

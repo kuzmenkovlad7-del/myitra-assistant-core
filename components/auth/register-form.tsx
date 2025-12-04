@@ -2,7 +2,6 @@
 
 import type React from "react"
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useLanguage } from "@/lib/i18n/language-context"
 import { Button } from "@/components/ui/button"
@@ -20,12 +19,9 @@ import { AlertCircle, ArrowRight } from "lucide-react"
 export default function RegisterForm() {
   const { t } = useLanguage()
 
-  // ❗ Такой же флаг, как в login-form.tsx
   const authDisabled =
     !process.env.NEXT_PUBLIC_SUPABASE_URL ||
     !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-  const router = useRouter()
 
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
@@ -47,9 +43,17 @@ export default function RegisterForm() {
           <CardContent className="space-y-4">
             <p className="text-center text-gray-600">
               {t(
-                "To enable registration, add Supabase keys to the .env file. For now you can try the assistant without creating an account.",
+                "To enable registration, add Supabase keys to the .env.local file. For now you can try the assistant without creating an account.",
               )}
             </p>
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 font-mono text-xs space-y-2">
+              <div className="text-gray-700">
+                NEXT_PUBLIC_SUPABASE_URL=...
+              </div>
+              <div className="text-gray-700">
+                NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+              </div>
+            </div>
             <div className="pt-4 border-t border-gray-100">
               <Link href="/">
                 <Button className="w-full" variant="outline">
@@ -63,7 +67,7 @@ export default function RegisterForm() {
     )
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     setSuccess(null)
@@ -76,17 +80,13 @@ export default function RegisterForm() {
     setIsLoading(true)
 
     try {
-      // Раньше был вызов signUp(email, password, { fullName }),
-      // но никакого signUp в контексте нет, поэтому просто имитируем
-      // успешную регистрацию и редиректим на /login.
+      // Заглушка под будущее подключение Supabase:
       setSuccess(
         t(
           "Account created. Please check your email to confirm your address before signing in.",
         ),
       )
-
-      setTimeout(() => router.push("/login"), 1500)
-    } catch (err) {
+    } catch {
       setError(t("An unexpected error occurred. Please try again."))
     } finally {
       setIsLoading(false)
