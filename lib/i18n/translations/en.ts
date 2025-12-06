@@ -698,4 +698,10 @@ export const en: Record<string, string> = {
 
   "If you have any questions about this Privacy Policy or how we process your data, please contact us via the \"Contact\" page or the e-mail address provided there.":
     "If you have any questions about this Privacy Policy or how we process your data, please contact us via the \"Contact\" page or the e-mail address provided there.",
+
+  // Voice UI labels (as in Ukrainian version)
+  "Female voice": "FEMALE VOICE",
+  "Male voice": "MALE VOICE",
+  "Listening… you can speak.":
+    "Assistant is listening, you can speak.",
 }

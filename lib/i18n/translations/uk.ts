@@ -525,13 +525,16 @@ export const uk: Record<string, string> = {
   Selected: "Обрано",
   "Start Video Call": "Почати відеодзвінок",
   "Video session in Ukrainian": "Відеосесія українською",
-    "AI will understand and respond in this language with native accent":"ШІ зрозуміє і відповість на обраній мові",
+  "AI will understand and respond in this language with native accent":
+    "ШІ зрозуміє і відповість на обраній мові",
   "Video session in Russian": "Відеосесія російською",
-  "Video session in English": "Відеосесія на англійською",
-    // ─────────────────────
+  "Video session in English": "Відеосесія англійською",
+
+  // ─────────────────────
   // Terms of Use – полные абзацы
   // ─────────────────────
-  "Last Updated: November 2025": "Оновлено: листопад 2025 року",
+  "Last Updated: November 2025":
+    "Оновлено: листопад 2025 року",
 
   "By accessing or using TurbotaAI's AI psychology services (the \"Service\"), you agree to be bound by these Terms of Use and all applicable laws and regulations. If you do not agree with any part of these Terms, you must not use the Service.":
     "Користуючись сервісами AI-психології TurbotaAI (далі — «Сервіс»), ви підтверджуєте, що погоджуєтеся з цими Умовами користування та всіма чинними законами й нормативними актами. Якщо ви не згодні з будь-якою частиною цих Умов, будь ласка, не використовуйте Сервіс.",
@@ -744,4 +747,52 @@ export const uk: Record<string, string> = {
 
   "If you have any questions about this Privacy Policy or how we process your data, please contact us via the \"Contact\" page or the e-mail address provided there.":
     "Якщо у вас є запитання щодо цієї Політики конфіденційності або способів обробки ваших даних, зв'яжіться з нами через сторінку «Контакти» або за електронною адресою, вказаною там.",
+
+  // ─────────────────────
+  // Додаткові переклади для аватарів, статусів і кнопок
+  // ─────────────────────
+  "Senior psychologist specializing in cognitive behavioral therapy with 15+ years of experience":
+    "Старший психолог, що спеціалізується на когнітивно-поведінковій терапії, з досвідом понад 15 років.",
+  "Psychotherapist specializing in emotional regulation, trauma recovery, and relationship counseling":
+    "Психотерапевт, що спеціалізується на емоційній регуляції, відновленні після травм та роботі зі стосунками.",
+  Select: "Обрати",
+
+  // Voice modal – тексти на першому екрані
+  "Choose a voice and start the session. The assistant will listen to you and answer like a real psychologist.":
+    "Оберіть голос і розпочніть сесію. Асистент слухатиме вас і відповідатиме, як справжній психолог.",
+  "You can switch between female and male voice by ending the call and starting again with a different option.":
+    "Ви можете перемикатися між жіночим і чоловічим голосом, завершивши дзвінок і розпочавши новий з іншим варіантом.",
+  "CHOOSE VOICE FOR THIS SESSION":
+    "ОБЕРІТЬ ГОЛОС ДЛЯ ЦІЄЇ СЕСІЇ",
+  "Choose voice for this session":
+    "Оберіть голос для цієї сесії",
+  "Start with female voice": "Почати з жіночим голосом",
+  "Start with male voice": "Почати з чоловічим голосом",
+
+  // Плашки та статуси в голосовому/чат/відео асистентах
+  "AI Psychologist": "AI-психолог",
+  "Female voice": "ЖІНОЧИЙ ГОЛОС",
+  "Male voice": "ЧОЛОВІЧИЙ ГОЛОС",
+  "Assistant online": "Асистент онлайн",
+  Disconnected: "Відключено",
+  Connected: "Підключено",
+  "Video assistant online": "Відеоасистент онлайн",
+
+  "Assistant is speaking...": "Асистент говорить...",
+  "Assistant is listening...": "Асистент слухає...",
+  "Assistant is thinking...": "Асистент обмірковує відповідь...",
+  "Listening… you can speak.":
+    "Асистент слухає, можна говорити.",
+  "Paused. Turn on microphone to continue.":
+    "Пауза. Увімкніть мікрофон, щоб продовжити.",
+  "Choose an AI psychologist and press “Start video call” to begin.":
+    "Оберіть AI-психолога та натисніть «Почати відеодзвінок», щоб розпочати.",
+  "Assistant is speaking. Please wait a moment.":
+    "Асистент говорить. Будь ласка, зачекайте трохи.",
+  "Listening...": "Слухаю...",
+  "Thinking...": "Обмірковую...",
+  "Speaking...": "Говорю...",
+
+  // Кнопка відправки в чат-асистенті
+  Send: "Надіслати",
 }
