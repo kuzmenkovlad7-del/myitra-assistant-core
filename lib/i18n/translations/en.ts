@@ -800,7 +800,6 @@ export const en: Record<string, string> = {
   "privacy.contact.title": "Contact Information",
   "privacy.contact.p1": "If you have any questions about this Privacy Policy or how we process your data, please contact us via the Contact page or the e-mail address provided there.",
   "By accessing or using TurbotaAI AI psychology services (the \"Service\"), you agree to be bound by these Terms of Use and all applicable laws and regulations. If you do not agree with any part of these Terms, you must not use the Service.": "By accessing or using TurbotaAI AI psychology services (the \"Service\"), you agree to be bound by these Terms of Use and all applicable laws and regulations. If you do not agree with any part of these Terms, you must not use the Service.",
-  "Waiting... you can start speaking at any moment.": "Waiting... you can start speaking at any moment.",
   "You can start speaking when you're ready. The assistant will answer with voice and text here.": "You can start speaking when you're ready. The assistant will answer with voice and text here.",
   "The assistant is listening. You can start speaking.": "The assistant is listening. You can start speaking.",
   "Paused. Turn on microphone to continue.": "Paused. Turn on microphone to continue.",
