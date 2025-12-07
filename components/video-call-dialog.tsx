@@ -278,6 +278,70 @@ export default function VideoCallDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
+  // ----- явный запрос доступа к микрофону (особенно важен на мобилках) -----
+  async function requestMicrophoneAccess(): Promise<boolean> {
+    if (typeof navigator === "undefined") {
+      setSpeechError(
+        t(
+          "Microphone access is not available in this environment. Please open the assistant in a regular browser window.",
+        ),
+      )
+      return false
+    }
+
+    const hasMediaDevices =
+      typeof navigator.mediaDevices !== "undefined" &&
+      typeof navigator.mediaDevices.getUserMedia === "function"
+
+    if (!hasMediaDevices) {
+      setSpeechError(
+        t(
+          "Microphone access is not supported in this browser. Please use the latest version of Chrome, Edge or Safari.",
+        ),
+      )
+      return false
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      })
+
+      // мы только просим разрешение — треки можно сразу остановить
+      stream.getTracks().forEach((track) => {
+        try {
+          track.stop()
+        } catch {}
+      })
+
+      setSpeechError(null)
+      return true
+    } catch (error: any) {
+      console.log("[Video] getUserMedia error:", error)
+      const name = error?.name
+
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        setSpeechError(
+          t(
+            "Microphone is blocked in the browser. Please allow access in the site permissions and reload the page.",
+          ),
+        )
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        setSpeechError(
+          t("No microphone was found on this device. Please check your hardware."),
+        )
+      } else {
+        setSpeechError(
+          t(
+            "Could not start microphone. Check permissions in the browser and system settings, then try again.",
+          ),
+        )
+      }
+
+      return false
+    }
+  }
+
   function cleanResponseText(text: string): string {
     if (!text) return ""
 
@@ -646,6 +710,11 @@ export default function VideoCallDialog({
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SpeechRecognition) {
+      setSpeechError(
+        t(
+          "Your browser does not support voice recognition. Please use Chrome or another modern browser.",
+        ),
+      )
       return
     }
 
@@ -721,6 +790,14 @@ export default function VideoCallDialog({
         )
         setIsMicMuted(true)
         isMicMutedRef.current = true
+      } else if (event.error === "service-not-allowed") {
+        setSpeechError(
+          t(
+            "Speech recognition is disabled or not available on this device. Please enable speech recognition in the system settings or use another browser.",
+          ),
+        )
+        setIsMicMuted(true)
+        isMicMutedRef.current = true
       }
     }
 
@@ -780,6 +857,12 @@ export default function VideoCallDialog({
     setSpeechError(null)
 
     try {
+      const micOk = await requestMicrophoneAccess()
+      if (!micOk) {
+        setIsConnecting(false)
+        return
+      }
+
       setIsCallActive(true)
       isCallActiveRef.current = true
 
@@ -1253,7 +1336,7 @@ export default function VideoCallDialog({
               </div>
             </div>
 
-            <div className="flex justify-center space-x-3 sm:space-x-4">
+          <div className="flex justify-center space-x-3 sm:space-x-4">
               <Button
                 variant="outline"
                 size="icon"
