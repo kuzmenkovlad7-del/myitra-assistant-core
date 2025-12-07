@@ -777,12 +777,11 @@ export default function VideoCallDialog({
       }
     }
 
-    recognition.onerror = (event: any) => {
+        recognition.onerror = (event: any) => {
       console.log("Speech recognition error:", event)
-      if (
-        event.error === "not-allowed" ||
-        event.error === "audio-capture"
-      ) {
+
+      // 1) Пользователь явно заблокировал микрофон для сайта
+      if (event.error === "not-allowed") {
         setSpeechError(
           t(
             "Microphone access was blocked. Please allow it in your browser settings and restart the call.",
@@ -790,16 +789,41 @@ export default function VideoCallDialog({
         )
         setIsMicMuted(true)
         isMicMutedRef.current = true
-      } else if (event.error === "service-not-allowed") {
+        setActivityStatus("listening")
+        return
+      }
+
+      // 2) Браузер / ОС не разрешает сервис распознавания речи
+      if (event.error === "service-not-allowed") {
         setSpeechError(
           t(
-            "Speech recognition is disabled or not available on this device. Please enable speech recognition in the system settings or use another browser.",
+            "Your browser does not support voice recognition. Please use Chrome or another modern browser.",
           ),
         )
         setIsMicMuted(true)
         isMicMutedRef.current = true
+        setActivityStatus("listening")
+        return
       }
+
+      // 3) Временная проблема с аудиоканалом (audio-capture)
+      if (event.error === "audio-capture") {
+        setSpeechError(t("Error while listening. Please try again."))
+        // Не глушим микрофон навсегда — даём шанс попробовать ещё раз
+        setActivityStatus("listening")
+        return
+      }
+
+      // 4) Не услышали речи — просто молча игнорим, onend перезапустит
+      if (event.error === "no-speech") {
+        return
+      }
+
+      // 5) Запасной вариант на всё остальное
+      setSpeechError(t("Error while listening. Please try again."))
+      setActivityStatus("listening")
     }
+
 
     recognition.onend = () => {
       recognitionRef.current = null
@@ -946,6 +970,7 @@ export default function VideoCallDialog({
       isMicMutedRef.current = false
       lastSpeechActivityRef.current = Date.now()
       recognitionStopReasonRef.current = "none"
+      setSpeechError(null)
       startSpeechRecognition()
     } else {
       setIsMicMuted(true)
@@ -954,6 +979,7 @@ export default function VideoCallDialog({
       setInterimTranscript("")
     }
   }
+
 
   function toggleCamera() {
     if (isCameraOff) {
