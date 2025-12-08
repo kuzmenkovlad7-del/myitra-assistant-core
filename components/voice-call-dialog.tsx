@@ -289,26 +289,29 @@ export default function VoiceCallDialog({
           }`,
         )
 
+        // 1) реальный бан микрофона/распознавания для сайта
         if (event?.error === "not-allowed") {
           setNetworkError(
             t(
-              "Browser blocked speech recognition on this device. Please check microphone permissions or try another browser.",
+              "Microphone is blocked for this site in the browser. Please allow access in the address bar and reload the page.",
             ),
           )
           setConnectionStatus("disconnected")
           return
         }
 
+        // 2) сервис распознавания речи отключён/недоступен
         if (event?.error === "service-not-allowed") {
           setNetworkError(
             t(
-              "Speech recognition service is not available on this device. Please try from another browser or device.",
+              "Speech recognition is disabled or not available on this device. Please enable speech recognition in the system settings or use another browser.",
             ),
           )
           setConnectionStatus("disconnected")
           return
         }
 
+        // остальные ошибки (кроме no-speech) — мягко показываем
         if (event?.error !== "no-speech") {
           setNetworkError(t("Error while listening. Please try again."))
         }
@@ -359,7 +362,7 @@ export default function VoiceCallDialog({
         if (e?.name === "NotAllowedError") {
           setNetworkError(
             t(
-              "Browser blocked speech recognition. Please check microphone permissions for this site.",
+              "Microphone is blocked for this site in the browser. Please allow access in the address bar and reload the page.",
             ),
           )
           setConnectionStatus("disconnected")
@@ -499,11 +502,7 @@ export default function VoiceCallDialog({
             data?.error || res.statusText,
             data?.details || "",
           )
-          setNetworkError(
-            t(
-              "Audio playback is temporarily unavailable. The answer is shown as text.",
-            ),
-          )
+          setNetworkError(t("Connection error. Please try again."))
           return
         }
 
@@ -515,11 +514,7 @@ export default function VoiceCallDialog({
 
         if (!audioUrl) {
           console.error("[TTS] No audioUrl/audioContent in response")
-          setNetworkError(
-            t(
-              "Audio playback is temporarily unavailable. The answer is shown as text.",
-            ),
-          )
+          setNetworkError(t("Connection error. Please try again."))
           return
         }
 
@@ -538,11 +533,7 @@ export default function VoiceCallDialog({
 
         audio.onerror = (e) => {
           console.error("[TTS] audio playback error:", e)
-          setNetworkError(
-            t(
-              "Audio playback is temporarily unavailable. The answer is shown as text.",
-            ),
-          )
+          setNetworkError(t("Connection error. Please try again."))
           stopSpeaking()
           audioRef.current = null
         }
@@ -551,19 +542,11 @@ export default function VoiceCallDialog({
           await audio.play()
         } catch (e) {
           console.error("[TTS] play() rejected", e)
-          setNetworkError(
-            t(
-              "Audio playback is temporarily unavailable. The answer is shown as text.",
-            ),
-          )
+          setNetworkError(t("Connection error. Please try again."))
         }
       } catch (error) {
         console.error("[TTS] fetch error:", error)
-        setNetworkError(
-          t(
-            "Audio playback is temporarily unavailable. The answer is shown as text.",
-          ),
-        )
+        setNetworkError(t("Connection error. Please try again."))
       } finally {
         if (isAiSpeakingRef.current) {
           stopSpeaking()
@@ -901,11 +884,11 @@ export default function VoiceCallDialog({
                 </div>
               )}
 
-              {process.env.NODE_ENV !== "production" && (
+              {debugInfo && (
                 <div className="mt-3 rounded-md bg-slate-900 px-2 py-1 text-[10px] text-slate-100">
-                  <div className="font-semibold">Debug (only visible in dev):</div>
+                  <div className="font-semibold">Debug:</div>
                   <div className="whitespace-pre-wrap break-words">
-                    {debugInfo || "no debug info yet"}
+                    {debugInfo}
                   </div>
                 </div>
               )}
