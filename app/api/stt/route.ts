@@ -9,15 +9,20 @@ const OPENAI_API_KEY =
   ""
 
 /**
- * Простой мост к OpenAI STT:
- * - принимает файл из MediaRecorder (обычно audio/webm)
- * - НЕ делает никаких лишних проверок "повреждён / неподдерживаемый"
- * - отправляет как есть в /v1/audio/transcriptions
- * - возвращает { success: true, text } или { success: false, error }
+ * /api/stt
+ *
+ * Принимает:
+ *  - formData "file"  (Blob от MediaRecorder, обычно audio/webm)
+ *  - formData "language" (uk-UA / ru-RU / en-US и т.п.)
+ *
+ * Делает:
+ *  - маленькие куски (тишина) -> success: true, text: ""
+ *  - все остальные куски -> прокидывает как есть в OpenAI STT
  */
 export async function POST(req: Request) {
   try {
     if (!OPENAI_API_KEY) {
+      console.error("[STT] Missing OPENAI_API_KEY")
       return NextResponse.json(
         {
           success: false,
@@ -32,6 +37,7 @@ export async function POST(req: Request) {
     const languageRaw = (formData.get("language") || "uk").toString()
 
     if (!(file instanceof Blob)) {
+      console.error("[STT] No audio file in request")
       return NextResponse.json(
         {
           success: false,
@@ -41,27 +47,40 @@ export async function POST(req: Request) {
       )
     }
 
+    // если это совсем крошечный кусок (обычно тишина) — просто возвращаем "пустую" расшифровку,
+    // а не 500, чтобы не ломать логику на фронте
+    if (file.size < 1500) {
+      return NextResponse.json(
+        {
+          success: true,
+          text: "",
+        },
+        { status: 200 },
+      )
+    }
+
     const mime = file.type || "audio/webm"
 
-    // Делаем File, чтобы у OpenAI точно было имя и расширение
+    // подберём расширение для имени файла
     const ext = mime.includes("webm")
       ? "webm"
       : mime.includes("wav")
         ? "wav"
-        : mime.includes("mp3")
+        : mime.includes("mp3") || mime.includes("mpeg")
           ? "mp3"
           : "webm"
 
     const audioFile =
       file instanceof File
         ? file
-        : new File([file], `speech.${ext}`, { type: mime })
+        : new File([file], `chunk.${ext}`, { type: mime })
 
+    // "uk-UA" -> "uk", "ru-RU" -> "ru", и т.д.
     const lang = languageRaw.split("-")[0] || "uk"
 
     const fd = new FormData()
     fd.append("file", audioFile)
-    // модель можно поменять при необходимости
+    // можно поменять модель, если захочешь, на whisper-1
     fd.append("model", "gpt-4o-mini-transcribe")
     fd.append("language", lang)
     fd.append("response_format", "json")
@@ -87,9 +106,13 @@ export async function POST(req: Request) {
     }
 
     if (!openaiRes.ok || !data) {
-      console.error("STT OpenAI error:", openaiRes.status, raw)
+      console.error(
+        "[STT] OpenAI error:",
+        openaiRes.status,
+        openaiRes.statusText,
+        raw.slice(0, 500),
+      )
 
-      // ВАЖНО: не роняем всё, а аккуратно возвращаем ошибку наверх
       return NextResponse.json(
         {
           success: false,
@@ -103,12 +126,17 @@ export async function POST(req: Request) {
 
     const text = (data.text || "").toString().trim()
 
-    return NextResponse.json({
-      success: true,
-      text,
-    })
+    console.log("[STT] success, text:", text.slice(0, 80))
+
+    return NextResponse.json(
+      {
+        success: true,
+        text,
+      },
+      { status: 200 },
+    )
   } catch (error: any) {
-    console.error("STT route fatal error:", error)
+    console.error("[STT] route fatal error:", error)
     return NextResponse.json(
       {
         success: false,
