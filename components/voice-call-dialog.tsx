@@ -382,9 +382,6 @@ export default function VoiceCallDialog({
 
     hardStopRecognition()
 
-    if (typeof window !== "undefined" && (window as any).speechSynthesis) {
-      ;(window as any).speechSynthesis.cancel()
-    }
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current = null
@@ -417,7 +414,7 @@ export default function VoiceCallDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ---------- озвучка ответа (ТОЛЬКО OpenAI TTS через /api/tts) ----------
+  // ---------- озвучка ответа (ТОЛЬКО /api/tts, без browser TTS) ----------
   function speakText(text: string) {
     if (typeof window === "undefined") return
 
