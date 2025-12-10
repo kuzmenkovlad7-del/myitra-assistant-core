@@ -105,6 +105,7 @@ export default function VoiceCallDialog({
   const [connectionStatus, setConnectionStatus] = useState<
     "connected" | "disconnected"
   >("disconnected")
+  const [debugLines, setDebugLines] = useState<string[]>([])
 
   // реальный пол сессии, который всегда летит в /api/tts
   const voiceGenderRef = useRef<"female" | "male">("female")
@@ -124,7 +125,19 @@ export default function VoiceCallDialog({
   // media stream для явного запроса доступа к микрофону (особенно на мобилках)
   const micStreamRef = useRef<MediaStream | null>(null)
 
+  // внутренний буфер debug-логов
+  const debugRef = useRef<string[]>([])
+
   const effectiveEmail = userEmail || user?.email || "guest@example.com"
+
+  function logDebug(line: string) {
+    const ts = new Date().toISOString()
+    const full = `${ts} ${line}`
+    debugRef.current = [...debugRef.current, full].slice(-200)
+    setDebugLines(debugRef.current)
+    // дублируем в консоль
+    console.log(full)
+  }
 
   // Скролл вниз при новых сообщениях
   useEffect(() => {
@@ -132,6 +145,10 @@ export default function VoiceCallDialog({
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [messages])
+
+  useEffect(() => {
+    logDebug("ready; no events yet (debug log enabled временно)")
+  }, [])
 
   function computeLangCode(): string {
     const lang =
@@ -157,6 +174,7 @@ export default function VoiceCallDialog({
           "Microphone access is not available in this environment. Please open the assistant in a regular browser window.",
         ),
       )
+      logDebug("[CALL] navigator is undefined, cannot access mic")
       return false
     }
 
@@ -170,20 +188,27 @@ export default function VoiceCallDialog({
           "Microphone access is not supported in this browser. Please use the latest version of Chrome, Edge or Safari.",
         ),
       )
+      logDebug("[CALL] navigator.mediaDevices/getUserMedia not available")
       return false
     }
 
     try {
+      logDebug("[getUserMedia] requesting audio access")
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
       })
 
-      // если всё ок — сохраняем стрим и не трогаем треки до завершения звонка
       micStreamRef.current = stream
       setNetworkError(null)
+      logDebug("[getUserMedia] access granted")
       return true
     } catch (error: any) {
       console.error("[Voice] getUserMedia error:", error)
+      logDebug(
+        `[getUserMedia] error name=${error?.name || ""} message=${
+          error?.message || ""
+        }`,
+      )
 
       const name = error?.name
 
@@ -223,6 +248,10 @@ export default function VoiceCallDialog({
       (window as any).SpeechRecognition ||
       (window as any).webkitSpeechRecognition
 
+    logDebug(
+      `[CALL] ensureRecognitionRunning shouldListen=${shouldListen ? "yes" : "no"}`,
+    )
+
     // если слушать НЕ нужно — стопаем, если запущено
     if (!shouldListen) {
       if (recognitionRef.current && isRecognitionActiveRef.current) {
@@ -243,6 +272,7 @@ export default function VoiceCallDialog({
           "Your browser does not support voice recognition. Please use Chrome or another modern browser.",
         ),
       )
+      logDebug("[SR] SpeechRecognition not supported in this browser")
       return
     }
 
@@ -254,15 +284,25 @@ export default function VoiceCallDialog({
       recognition.interimResults = false
       recognitionRef.current = recognition
 
+      logDebug(
+        `[SR] instance created; ua=${navigator.userAgent}; lang=${computeLangCode()}`,
+      )
+
       recognition.onstart = () => {
         isRecognitionActiveRef.current = true
         setIsListening(true)
         setConnectionStatus("connected")
         setNetworkError(null)
+        logDebug("[SR] onstart")
       }
 
       recognition.onerror = (event: any) => {
         console.error("Speech recognition error", event)
+        logDebug(
+          `[SR] error type=${event?.error || ""} message=${
+            event?.message || ""
+          }`,
+        )
 
         // 1) реальный бан микрофона для сайта
         if (event?.error === "not-allowed") {
@@ -295,6 +335,7 @@ export default function VoiceCallDialog({
       recognition.onend = () => {
         isRecognitionActiveRef.current = false
         setIsListening(false)
+        logDebug("[SR] onend")
 
         // если всё ещё нужно слушать (звонок идёт, мик не мут и ассистент не говорит) — перезапускаем
         setTimeout(() => {
@@ -304,6 +345,7 @@ export default function VoiceCallDialog({
             !isAiSpeakingRef.current
 
           if (stillShouldListen) {
+            logDebug("[SR] restarted after onend")
             ensureRecognitionRunning()
           }
         }, 300)
@@ -311,13 +353,18 @@ export default function VoiceCallDialog({
 
       recognition.onresult = (event: any) => {
         // если ассистент говорит — игнорируем, чтобы не слушать свою озвучку
-        if (isAiSpeakingRef.current) return
+        if (isAiSpeakingRef.current) {
+          logDebug("[SR] result ignored (AI speaking)")
+          return
+        }
 
         const last = event.results[event.results.length - 1]
         if (!last || !last.isFinal) return
 
         const text = last[0]?.transcript?.trim()
         if (!text) return
+
+        logDebug(`[SR] final transcript: ${text}`)
 
         const userMsg: VoiceMessage = {
           id: `${Date.now()}-user`,
@@ -344,10 +391,14 @@ export default function VoiceCallDialog({
             ),
           )
           setConnectionStatus("disconnected")
+          logDebug("[SR] start() -> NotAllowedError")
         } else if (e?.name !== "InvalidStateError") {
           console.error("Cannot start recognition", e)
           setNetworkError(
             t("Could not start microphone. Check permissions and try again."),
+          )
+          logDebug(
+            `[SR] start() error name=${e?.name || ""} message=${e?.message || ""}`,
           )
         }
       }
@@ -368,6 +419,8 @@ export default function VoiceCallDialog({
   }
 
   function stopEverything() {
+    logDebug("[CALL] stopEverything()")
+
     isCallActiveRef.current = false
     isMicMutedRef.current = false
     isAiSpeakingRef.current = false
@@ -382,6 +435,9 @@ export default function VoiceCallDialog({
 
     hardStopRecognition()
 
+    if (typeof window !== "undefined" && (window as any).speechSynthesis) {
+      ;(window as any).speechSynthesis.cancel()
+    }
     if (audioRef.current) {
       audioRef.current.pause()
       audioRef.current = null
@@ -414,7 +470,7 @@ export default function VoiceCallDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ---------- озвучка ответа (ТОЛЬКО /api/tts, без browser TTS) ----------
+  // ---------- озвучка ответа (Только OpenAI TTS через /api/tts, без браузерного TTS) ----------
   function speakText(text: string) {
     if (typeof window === "undefined") return
 
@@ -424,11 +480,12 @@ export default function VoiceCallDialog({
     const langCode = computeLangCode() // "uk-UA" | "ru-RU" | "en-US"
     const gender = getCurrentGender() // "MALE" | "FEMALE"
 
-    console.log("[TTS] speakText()", {
-      langCode,
-      gender,
-      textSample: cleanText.slice(0, 80),
-    })
+    logDebug(
+      `[TTS] speakText lang=${langCode} gender=${gender} sample=${cleanText.slice(
+        0,
+        80,
+      )}`,
+    )
 
     const startSpeaking = () => {
       setIsAiSpeaking(true)
@@ -452,7 +509,7 @@ export default function VoiceCallDialog({
           gender, // "MALE" | "FEMALE"
         }
 
-        console.log("[TTS] Requesting /api/tts…", payload)
+        logDebug("[TTS] Requesting /api/tts…")
 
         const res = await fetch("/api/tts", {
           method: "POST",
@@ -470,9 +527,14 @@ export default function VoiceCallDialog({
             "[TTS] /api/tts returned non-JSON response:",
             raw.slice(0, 200),
           )
+          logDebug("[TTS] non-JSON response from /api/tts")
         }
 
-        console.log("[TTS] /api/tts status:", res.status, "data:", data)
+        logDebug(
+          `[TTS] /api/tts status=${res.status} ok=${res.ok} success=${
+            data?.success ?? "n/a"
+          }`,
+        )
 
         if (!res.ok || !data || data.success === false) {
           console.error(
@@ -492,6 +554,7 @@ export default function VoiceCallDialog({
 
         if (!audioUrl) {
           console.error("[TTS] No audioUrl/audioContent in response")
+          logDebug("[TTS] missing audioUrl/audioContent")
           stopSpeaking()
           return
         }
@@ -505,16 +568,19 @@ export default function VoiceCallDialog({
         audioRef.current = audio
 
         audio.onplay = () => {
+          logDebug("[TTS] audio.onplay")
           startSpeaking()
         }
 
         audio.onended = () => {
+          logDebug("[TTS] audio.onended")
           stopSpeaking()
           audioRef.current = null
         }
 
         audio.onerror = (e) => {
           console.error("[TTS] audio playback error:", e)
+          logDebug("[TTS] audio.onerror")
           stopSpeaking()
           audioRef.current = null
         }
@@ -523,10 +589,12 @@ export default function VoiceCallDialog({
           await audio.play()
         } catch (e) {
           console.error("[TTS] play() rejected", e)
+          logDebug("[TTS] play() rejected")
           stopSpeaking()
         }
       } catch (error) {
         console.error("[TTS] fetch error:", error)
+        logDebug("[TTS] fetch error")
         stopSpeaking()
       }
     })()
@@ -546,6 +614,10 @@ export default function VoiceCallDialog({
       FALLBACK_CHAT_API
 
     try {
+      logDebug(
+        `[CHAT] sending to ${resolvedWebhook} lang=${langCode} gender=${voiceGenderRef.current}`,
+      )
+
       const res = await fetch(resolvedWebhook, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -558,6 +630,8 @@ export default function VoiceCallDialog({
           voiceLanguage: computeLangCode(),
         }),
       })
+
+      logDebug(`[CHAT] response status=${res.status} ok=${res.ok}`)
 
       if (!res.ok) {
         throw new Error(`Chat API error: ${res.status}`)
@@ -592,6 +666,7 @@ export default function VoiceCallDialog({
       speakText(answer)
     } catch (error: any) {
       console.error("Voice call error:", error)
+      logDebug("[CHAT] error while sending to backend")
       setNetworkError(t("Connection error. Please try again."))
       if (onError && error instanceof Error) onError(error)
     }
@@ -602,6 +677,8 @@ export default function VoiceCallDialog({
   const startCall = async (gender: "female" | "male") => {
     // ЖЁСТКО фиксируем пол сессии
     voiceGenderRef.current = gender
+
+    logDebug(`[CALL] startCall gender=${gender}`)
 
     setIsConnecting(true)
     setNetworkError(null)
@@ -616,6 +693,7 @@ export default function VoiceCallDialog({
       setIsCallActive(false)
       isCallActiveRef.current = false
       setConnectionStatus("disconnected")
+      logDebug("[CALL] startCall aborted: mic access failed")
       return
     }
 
@@ -627,6 +705,7 @@ export default function VoiceCallDialog({
   }
 
   const endCall = () => {
+    logDebug("[CALL] endCall() pressed")
     stopEverything()
   }
 
@@ -634,6 +713,7 @@ export default function VoiceCallDialog({
     const next = !isMicMuted
     setIsMicMuted(next)
     isMicMutedRef.current = next
+    logDebug(`[CALL] toggleMic -> ${next ? "muted" : "unmuted"}`)
     ensureRecognitionRunning()
   }
 
@@ -698,7 +778,20 @@ export default function VoiceCallDialog({
             </div>
           </DialogHeader>
 
-          <div className="flex h-[500px] flex-col md:h-[540px]">
+          <div className="flex h-[520px] flex-col md:h-[540px]">
+            {debugLines.length > 0 && (
+              <div className="px-5 pt-3">
+                <div className="max-h-40 overflow-y-auto rounded-2xl bg-slate-900 px-3 py-2 text-[10px] font-mono text-slate-50">
+                  <div className="mb-1 font-semibold">Debug:</div>
+                  {debugLines.map((line, idx) => (
+                    <div key={idx} className="whitespace-pre-wrap">
+                      {line}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <ScrollArea className="flex-1 px-5 pt-4 pb-2">
               <div
                 ref={scrollRef}
@@ -760,7 +853,7 @@ export default function VoiceCallDialog({
               </div>
             </ScrollArea>
 
-            <div className="border-t border-slate-100 px-5 py-3 flex flex-col gap-2">
+            <div className="flex flex-col gap-2 border-t border-slate-100 px-5 py-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-[11px] text-slate-500">
                   <Sparkles className="h-3 w-3" />
@@ -798,18 +891,18 @@ export default function VoiceCallDialog({
               </div>
 
               {!isCallActive && (
-                <div className="flex flex-col items-center gap-3 pt-1">
-                  <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                <div className="flex flex-col items-stretch gap-3 pt-1">
+                  <div className="text-center text-[11px] font-medium uppercase tracking-wide text-slate-500">
                     {t("Choose voice for this session")}
                   </div>
-                  <div className="flex items-center justify-center gap-3">
+                  <div className="flex w-full flex-col gap-2">
                     <Button
                       type="button"
                       onClick={() => {
                         void startCall("female")
                       }}
                       disabled={isConnecting}
-                      className={`h-10 rounded-full px-5 text-xs font-semibold shadow-sm flex items-center gap-2 ${
+                      className={`h-10 w-full rounded-full px-5 text-xs font-semibold shadow-sm flex items-center justify-center gap-2 ${
                         voiceGenderRef.current === "female"
                           ? "bg-pink-600 text-white hover:bg-pink-700"
                           : "bg-pink-50 text-pink-700 hover:bg-pink-100"
@@ -834,7 +927,7 @@ export default function VoiceCallDialog({
                         void startCall("male")
                       }}
                       disabled={isConnecting}
-                      className={`h-10 rounded-full px-5 text-xs font-semibold shadow-sm flex items-center gap-2 ${
+                      className={`h-10 w-full rounded-full px-5 text-xs font-semibold shadow-sm flex items-center justify-center gap-2 ${
                         voiceGenderRef.current === "male"
                           ? "bg-sky-600 text-white hover:bg-sky-700"
                           : "bg-sky-50 text-sky-700 hover:bg-sky-100"

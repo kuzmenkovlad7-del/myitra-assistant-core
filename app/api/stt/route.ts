@@ -1,144 +1,42 @@
 import { NextRequest, NextResponse } from "next/server"
+import OpenAI from "openai"
 
-export const runtime = "nodejs"
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+})
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY
-
-// Минимальный размер полезного аудио (в байтах), меньше — считаем шумом/тишиной
-const MIN_AUDIO_BYTES = 800
-
-export async function POST(req: NextRequest): Promise<NextResponse> {
+// роут для приёма FormData c полем "file" (Blob/WebM) и отправки в OpenAI STT
+export async function POST(req: NextRequest) {
   try {
-    if (!OPENAI_API_KEY) {
-      console.error("[STT] OPENAI_API_KEY is not set")
+    const formData = await req.formData()
+    const file = formData.get("file")
+
+    if (!file || !(file instanceof Blob)) {
+      console.error("[STT] no file in formData")
       return NextResponse.json(
-        {
-          success: false,
-          error: "Speech-to-text service is temporarily unavailable.",
-        },
-        { status: 500 },
+        { success: false, error: "No audio file provided" },
+        { status: 400 },
       )
     }
 
-    const contentType = req.headers.get("content-type") || ""
-    let audioBlob: Blob | null = null
-    let language = "uk" // дефолт — укр
+    console.log("[STT] got file from client:", {
+      size: (file as any).size,
+      type: (file as any).type,
+    })
 
-    if (contentType.includes("multipart/form-data")) {
-      // Вариант, когда фронт шлёт FormData с полем file
-      const formData = await req.formData()
-      const file = formData.get("file")
-      const langField = formData.get("language")
+    const transcription = await openai.audio.transcriptions.create({
+      // модель можешь поменять при желании
+      model: "gpt-4o-mini-transcribe",
+      file: file as any,
+      // можно зафиксировать язык, если нужно:
+      // language: "uk",
+      response_format: "json",
+      temperature: 0,
+    })
 
-      if (file instanceof Blob) {
-        audioBlob = file
-      }
+    const text = (transcription.text || "").toString().trim()
 
-      if (typeof langField === "string" && langField.trim().length > 0) {
-        language = langField.trim()
-      }
-    } else {
-      // Вариант, когда шлём сырой бинарный поток
-      const arrayBuffer = await req.arrayBuffer()
-
-      if (arrayBuffer.byteLength === 0) {
-        console.log("[STT] empty audio chunk, returning empty text")
-        return NextResponse.json(
-          {
-            success: true,
-            text: "",
-          },
-          { status: 200 },
-        )
-      }
-
-      audioBlob = new Blob([arrayBuffer], { type: "audio/webm" })
-    }
-
-    if (!audioBlob) {
-      console.log("[STT] no audio file in request")
-      return NextResponse.json(
-        {
-          success: true,
-          text: "",
-        },
-        { status: 200 },
-      )
-    }
-
-    if (audioBlob.size < MIN_AUDIO_BYTES) {
-      console.log("[STT] audio chunk is too small, size =", audioBlob.size)
-      return NextResponse.json(
-        {
-          success: true,
-          text: "",
-        },
-        { status: 200 },
-      )
-    }
-
-    // Готовим запрос в OpenAI Whisper
-    const openaiForm = new FormData()
-    openaiForm.append("file", audioBlob, "audio.webm")
-    openaiForm.append("model", "whisper-1")
-    openaiForm.append("response_format", "json")
-    openaiForm.append("language", language)
-
-    const openaiRes = await fetch(
-      "https://api.openai.com/v1/audio/transcriptions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${OPENAI_API_KEY}`,
-        },
-        body: openaiForm,
-      },
-    )
-
-    const raw = await openaiRes.text()
-    let data: any = null
-
-    try {
-      data = raw ? JSON.parse(raw) : null
-    } catch (err) {
-      console.error(
-        "[STT] cannot parse OpenAI response JSON, raw:",
-        raw.slice(0, 500),
-      )
-      data = null
-    }
-
-    if (!openaiRes.ok || !data) {
-      console.error(
-        "[STT] OpenAI error:",
-        openaiRes.status,
-        openaiRes.statusText,
-        raw.slice(0, 500),
-      )
-
-      const msg =
-        (data &&
-          data.error &&
-          typeof data.error.message === "string" &&
-          data.error.message) ||
-        `OpenAI STT error: ${openaiRes.status} ${openaiRes.statusText}`
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: msg,
-        },
-        { status: 500 },
-      )
-    }
-
-    const text = (data.text ?? "").toString().trim()
-
-    if (!text) {
-      console.log("[STT] success but empty text")
-    } else {
-      console.log("[STT] success, text:", text.slice(0, 80))
-    }
+    console.log("[STT] success, text:", text.slice(0, 80))
 
     return NextResponse.json(
       {
@@ -150,14 +48,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   } catch (error: any) {
     console.error("[STT] route fatal error:", error)
 
-    const msg =
-      (error && typeof error.message === "string" && error.message) ||
-      "Unexpected error while processing speech-to-text request"
-
     return NextResponse.json(
       {
         success: false,
-        error: msg,
+        error:
+          error?.message ||
+          "Unexpected error while processing speech-to-text request",
       },
       { status: 500 },
     )
