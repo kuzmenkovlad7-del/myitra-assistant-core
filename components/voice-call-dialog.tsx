@@ -22,7 +22,6 @@ import {
 } from "lucide-react"
 import { useLanguage } from "@/lib/i18n/language-context"
 import { useAuth } from "@/lib/auth/auth-context"
-import { APP_NAME } from "@/lib/app-config"
 
 interface VoiceCallDialogProps {
   isOpen: boolean
@@ -106,7 +105,7 @@ export default function VoiceCallDialog({
     "connected" | "disconnected"
   >("disconnected")
 
-  // лог в модалке (можно будет потом вырубить)
+  // лог в модалке (оставляем только для консоли, без панели в UI)
   const [debugLines, setDebugLines] = useState<string[]>([])
 
   const voiceGenderRef = useRef<"female" | "male">("female")
@@ -522,7 +521,9 @@ export default function VoiceCallDialog({
         )
       } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
         setNetworkError(
-          t("No microphone was found on this device. Please check your hardware."),
+          t(
+            "No microphone was found on this device. Please check your hardware.",
+          ),
         )
       } else {
         setNetworkError(
@@ -589,7 +590,6 @@ export default function VoiceCallDialog({
     if (!rec) return
 
     if (next) {
-      // выключаем мик
       if (rec.state === "recording") {
         try {
           rec.pause()
@@ -599,7 +599,6 @@ export default function VoiceCallDialog({
         }
       }
     } else {
-      // включаем мик
       if (rec.state === "paused" && isCallActiveRef.current) {
         try {
           rec.resume()
@@ -666,19 +665,16 @@ export default function VoiceCallDialog({
                 </DialogDescription>
               </div>
 
-              <div className="flex flex-col items-end gap-1">
-                <div className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-medium text-indigo-50">
-                  {APP_NAME} · {t("Assistant online")}
-                </div>
-                <div className="flex items-center gap-1 text-[11px] text-indigo-100">
+              <div className="flex flex-col items-end gap-1 text-[11px] text-indigo-100">
+                <div className="flex items-center gap-1">
                   {connectionStatus === "connected" ? (
                     <>
-                      <Wifi className="h-3 w-3 text-emerald-200" />{" "}
+                      <Wifi className="h-3 w-3 text-emerald-200" />
                       {t("Connected")}
                     </>
                   ) : (
                     <>
-                      <WifiOff className="h-3 w-3 text-rose-200" />{" "}
+                      <WifiOff className="h-3 w-3 text-rose-200" />
                       {t("Disconnected")}
                     </>
                   )}
@@ -693,19 +689,6 @@ export default function VoiceCallDialog({
                 ref={scrollRef}
                 className="max-h-full space-y-3 pr-1 text-xs md:text-sm"
               >
-                {debugLines.length > 0 && (
-                  <div className="max-h-40 overflow-y-auto rounded-2xl bg-slate-900 px-3 py-2 font-mono text-[10px] leading-relaxed text-slate-100">
-                    {debugLines.map((line, idx) => (
-                      <div
-                        key={idx}
-                        className="whitespace-pre-wrap break-words"
-                      >
-                        {line}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
                 {!isCallActive && messages.length === 0 && (
                   <div className="rounded-2xl bg-indigo-50/70 px-3 py-3 text-slate-700">
                     <p className="mb-1 font-medium text-slate-900">
@@ -800,18 +783,18 @@ export default function VoiceCallDialog({
               </div>
 
               {!isCallActive && (
-                <div className="flex flex-col items-center gap-3 pt-1">
-                  <div className="text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                <div className="flex flex-col gap-3 pt-1">
+                  <div className="text-center text-[11px] font-medium uppercase tracking-wide text-slate-500">
                     {t("Choose voice for this session")}
                   </div>
-                  <div className="flex items-center justify-center gap-3">
+                  <div className="flex w-full flex-col gap-2">
                     <Button
                       type="button"
                       onClick={() => {
                         void startCall("female")
                       }}
                       disabled={isConnecting}
-                      className={`flex h-10 w-full max-w-[180px] items-center justify-center gap-2 rounded-full px-5 text-xs font-semibold shadow-sm ${
+                      className={`flex h-11 w-full items-center justify-center gap-2 rounded-full px-5 text-xs font-semibold shadow-sm ${
                         voiceGenderRef.current === "female"
                           ? "bg-pink-600 text-white hover:bg-pink-700"
                           : "bg-pink-50 text-pink-700 hover:bg-pink-100"
@@ -837,7 +820,7 @@ export default function VoiceCallDialog({
                         void startCall("male")
                       }}
                       disabled={isConnecting}
-                      className={`flex h-10 w-full max-w-[180px] items-center justify-center gap-2 rounded-full px-5 text-xs font-semibold shadow-sm ${
+                      className={`flex h-11 w-full items-center justify-center gap-2 rounded-full px-5 text-xs font-semibold shadow-sm ${
                         voiceGenderRef.current === "male"
                           ? "bg-sky-600 text-white hover:bg-sky-700"
                           : "bg-sky-50 text-sky-700 hover:bg-sky-100"

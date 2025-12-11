@@ -15,12 +15,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useLanguage } from "@/lib/i18n/language-context"
 import { useAuth } from "@/lib/auth/auth-context"
-import { APP_NAME } from "@/lib/app-config"
 
 type Props = {
   isOpen: boolean
   onClose: () => void
-  /** Можно передать свой вебхук, но по умолчанию берём из env */
   webhookUrl?: string
 }
 
@@ -55,7 +53,9 @@ function extractAnswer(data: any): string {
       first.content ||
       first.result ||
       JSON.stringify(first)
-    )?.toString().trim()
+    )
+      ?.toString()
+      .trim()
   }
 
   if (typeof data === "object") {
@@ -67,7 +67,9 @@ function extractAnswer(data: any): string {
       data.content ||
       data.result ||
       JSON.stringify(data)
-    )?.toString().trim()
+    )
+      ?.toString()
+      .trim()
   }
 
   return ""
@@ -103,7 +105,6 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
     const text = input.trim()
     if (!text || isSending) return
 
-    // 1) prop → 2) env → 3) /api/chat
     const resolvedWebhook =
       (webhookUrl && webhookUrl.trim()) ||
       TURBOTA_AGENT_WEBHOOK_URL.trim() ||
@@ -144,7 +145,6 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
         throw new Error(`Request failed with status ${res.status}`)
       }
 
-      // читаем как текст, потом пытаемся JSON-распарсить — на случай, если придёт строка
       const raw = await res.text()
       let data: any = raw
 
@@ -207,10 +207,6 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
                   )}
                 </DialogDescription>
               </div>
-
-              <div className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-medium text-indigo-50">
-                {APP_NAME} · {t("Assistant online")}
-              </div>
             </div>
           </DialogHeader>
 
@@ -238,10 +234,10 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
                     }`}
                   >
                     <div
-                      className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-xs md:text-sm ${
+                      className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-xs md:text-sm shadow-sm ${
                         msg.role === "user"
-                          ? "rounded-br-sm bg-slate-900 text-white shadow-sm"
-                          : "rounded-bl-sm bg-slate-50 text-slate-900 shadow-sm"
+                          ? "rounded-br-sm bg-slate-900 text-white"
+                          : "rounded-bl-sm bg-slate-50 text-slate-900"
                       }`}
                     >
                       {msg.text}
@@ -262,7 +258,7 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   placeholder={t("Write here what is happening to you...")}
-                  className="resize-none text-sm"
+                  className="resize-none text-sm bg-slate-50 focus-visible:ring-indigo-500"
                 />
 
                 <div className="flex items-center justify-between gap-2">
