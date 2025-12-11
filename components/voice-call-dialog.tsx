@@ -31,20 +31,19 @@ interface VoiceCallDialogProps {
   webhookUrl?: string
 }
 
-type VoiceGender = "female" | "male"
-
 type VoiceMessage = {
   id: string
   role: "user" | "assistant"
   text: string
-  gender?: VoiceGender
+  /** каким голосом был сказан именно ЭТОТ ответ */
+  gender?: "female" | "male"
 }
 
-// PRIMARY: фронт → TurbotaAI агент вебхук из env
+// основной вебхук TurbotaAI агента
 const TURBOTA_AGENT_WEBHOOK_URL =
   process.env.NEXT_PUBLIC_TURBOTA_AGENT_WEBHOOK_URL || ""
 
-// запасной бэкенд-проксирующий роут
+// запасной бекенд-прокси
 const FALLBACK_CHAT_API = "/api/chat"
 
 // аккуратно вытаскиваем текст из любого формата ответа n8n
@@ -108,32 +107,32 @@ export default function VoiceCallDialog({
     "connected" | "disconnected"
   >("disconnected")
 
-  // пол текущей голосовой сессии (летит в tts и webhook)
-  const voiceGenderRef = useRef<VoiceGender>("female")
-
-  const recognitionRef = useRef<any | null>(null)
-  const isRecognitionActiveRef = useRef(false)
-
-  const isCallActiveRef = useRef(false)
-  const isMicMutedRef = useRef(false)
-  const isAiSpeakingRef = useRef(false)
-
-  const scrollRef = useRef<HTMLDivElement | null>(null)
-
-  // audio-плеер для TTS
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-
-  // media stream для явного запроса доступа к микрофону (особенно на мобилках)
-  const micStreamRef = useRef<MediaStream | null>(null)
-
+  const voiceGenderRef = useRef<"female" | "male">("female")
   const effectiveEmail = userEmail || user?.email || "guest@example.com"
 
-  // автоскролл вниз при новых сообщениях
+  // MediaRecorder + поток
+  const mediaStreamRef = useRef<MediaStream | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const isSttBusyRef = useRef(false)
+  const lastTranscriptRef = useRef("")
+
+  const isCallActiveRef = useRef(false)
+
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  // автоскролл
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [messages])
+
+  function logDebug(message: string) {
+    const ts = new Date().toISOString()
+    console.log(`${ts} ${message}`)
+  }
 
   function computeLangCode(): string {
     const lang =
@@ -151,47 +150,370 @@ export default function VoiceCallDialog({
     return g === "male" ? "MALE" : "FEMALE"
   }
 
-  // ----- запрашиваем доступ к микрофону (особенно критично на мобильных) -----
-  async function requestMicrophoneAccess(): Promise<boolean> {
-    if (typeof navigator === "undefined") {
-      setNetworkError(
-        t(
-          "Microphone access is not available in this environment. Please open the assistant in a regular browser window.",
-        ),
-      )
-      return false
+  // --------- STT: послать накопленный webm в /api/stt ---------
+
+  async function maybeSendStt() {
+    if (!isCallActiveRef.current) return
+    if (isSttBusyRef.current) {
+      logDebug("[STT] skip, request already in progress")
+      return
     }
 
-    const hasMediaDevices =
-      typeof navigator.mediaDevices !== "undefined" &&
-      typeof navigator.mediaDevices.getUserMedia === "function"
-
-    if (!hasMediaDevices) {
-      setNetworkError(
-        t(
-          "Microphone access is not supported in this browser. Please use the latest version of Chrome, Edge or Safari.",
-        ),
-      )
-      return false
-    }
+    const chunks = audioChunksRef.current
+    if (!chunks || chunks.length === 0) return
 
     try {
+      isSttBusyRef.current = true
+
+      const blob = new Blob(chunks, { type: "audio/webm" })
+      logDebug(`[STT] sending audio blob size=${blob.size}`)
+
+      const res = await fetch("/api/stt", {
+        method: "POST",
+        headers: {
+          "Content-Type": "audio/webm",
+        },
+        body: blob,
+      })
+
+      const raw = await res.text()
+      let data: any = null
+
+      try {
+        data = raw ? JSON.parse(raw) : null
+      } catch {
+        data = null
+      }
+
+      if (!res.ok || !data || data.success === false) {
+        console.error("[STT] error response:", res.status, raw)
+        logDebug(
+          `[STT] error status=${res.status} msg=${
+            data?.error || "Unknown STT error"
+          }`,
+        )
+        return
+      }
+
+      const fullText = (data.text || "").toString().trim()
+      logDebug(`[STT] transcript full="${fullText}"`)
+
+      if (!fullText) return
+
+      const prev = lastTranscriptRef.current
+      let delta = fullText
+
+      if (prev && fullText.startsWith(prev)) {
+        delta = fullText.slice(prev.length)
+      }
+
+      delta = delta.trim()
+      lastTranscriptRef.current = fullText
+
+      if (!delta) {
+        logDebug("[STT] no new delta after diff")
+        return
+      }
+
+      const userMsg: VoiceMessage = {
+        id: `${Date.now()}-user`,
+        role: "user",
+        text: delta,
+      }
+
+      setMessages((prevMsgs) => [...prevMsgs, userMsg])
+      await handleUserText(delta)
+    } catch (error: any) {
+      console.error("[STT] fatal error", error)
+      logDebug(`[STT] fatal error: ${error?.message || "Unknown error"}`)
+    } finally {
+      isSttBusyRef.current = false
+      audioChunksRef.current = [] // очищаем отправленные чанки
+    }
+  }
+
+  // --------- TTS через /api/tts ---------
+
+  function speakText(text: string) {
+    if (typeof window === "undefined") return
+
+    const cleanText = text?.trim()
+    if (!cleanText) return
+
+    const langCode = computeLangCode()
+    const gender = getCurrentGender()
+
+    logDebug(
+      `[TTS] speakText lang=${langCode} gender=${gender} sample=${cleanText.slice(
+        0,
+        80,
+      )}`,
+    )
+
+    const beginSpeaking = () => {
+      setIsAiSpeaking(true)
+
+      const rec = mediaRecorderRef.current
+      if (rec && rec.state === "recording") {
+        try {
+          rec.pause()
+          logDebug("[Recorder] pause() while TTS audio is playing")
+        } catch (e) {
+          console.error("Recorder pause error", e)
+        }
+      }
+    }
+
+    const finishSpeaking = () => {
+      setIsAiSpeaking(false)
+
+      const rec = mediaRecorderRef.current
+      if (rec && rec.state === "paused" && isCallActiveRef.current) {
+        try {
+          rec.resume()
+          logDebug("[Recorder] resume() after TTS")
+        } catch (e) {
+          console.error("Recorder resume error", e)
+        }
+      }
+    }
+
+    ;(async () => {
+      try {
+        const res = await fetch("/api/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: cleanText,
+            language: langCode,
+            gender,
+          }),
+        })
+
+        const raw = await res.text()
+        let data: any = null
+
+        try {
+          data = raw ? JSON.parse(raw) : null
+        } catch {
+          data = null
+        }
+
+        logDebug(
+          `[TTS] /api/tts status=${res.status} success=${data?.success}`,
+        )
+
+        if (!res.ok || !data || data.success === false || !data.audioContent) {
+          console.error("[TTS] API error", data || raw)
+          finishSpeaking()
+          return
+        }
+
+        const audioUrl = `data:audio/mp3;base64,${data.audioContent}`
+
+        if (audioRef.current) {
+          audioRef.current.pause()
+          audioRef.current = null
+        }
+
+        const audio = new Audio(audioUrl)
+        audioRef.current = audio
+
+        audio.onplay = () => {
+          beginSpeaking()
+        }
+
+        audio.onended = () => {
+          finishSpeaking()
+          audioRef.current = null
+        }
+
+        audio.onerror = (e) => {
+          console.error("[TTS] audio playback error", e)
+          finishSpeaking()
+          audioRef.current = null
+        }
+
+        try {
+          await audio.play()
+        } catch (e) {
+          console.error("[TTS] play() rejected", e)
+          finishSpeaking()
+        }
+      } catch (error) {
+        console.error("[TTS] fetch error:", error)
+        finishSpeaking()
+      }
+    })()
+  }
+
+  // --------- отправка текста в n8n / OpenAI ---------
+
+  async function handleUserText(text: string) {
+    const langCode =
+      typeof (currentLanguage as any) === "string"
+        ? ((currentLanguage as any) as string)
+        : (currentLanguage as any)?.code || "uk"
+
+    const resolvedWebhook =
+      (webhookUrl && webhookUrl.trim()) ||
+      TURBOTA_AGENT_WEBHOOK_URL.trim() ||
+      FALLBACK_CHAT_API
+
+    logDebug(
+      `[CHAT] send to ${resolvedWebhook} lang=${langCode} gender=${voiceGenderRef.current}`,
+    )
+
+    try {
+      const res = await fetch(resolvedWebhook, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: text,
+          language: langCode, // "uk" | "ru" | "en" — как было в старой версии
+          email: effectiveEmail,
+          mode: "voice",
+          gender: voiceGenderRef.current, // "female" | "male"
+          voiceLanguage: computeLangCode(), // "uk-UA" | "ru-RU" | "en-US"
+        }),
+      })
+
+      if (!res.ok) {
+        throw new Error(`Chat API error: ${res.status}`)
+      }
+
+      const raw = await res.text()
+      let data: any = raw
+
+      try {
+        data = JSON.parse(raw)
+      } catch {
+        // не JSON — значит строка
+      }
+
+      logDebug("[CHAT] raw response received")
+
+      let answer = extractAnswer(data)
+
+      if (!answer) {
+        answer = t(
+          "I'm sorry, I couldn't process your message. Please try again.",
+        )
+      }
+
+      const assistantMsg: VoiceMessage = {
+        id: `${Date.now()}-assistant`,
+        role: "assistant",
+        text: answer,
+        gender: voiceGenderRef.current, // фиксируем пол для КОНКРЕТНОГО ответа
+      }
+
+      setMessages((prev) => [...prev, assistantMsg])
+      speakText(answer)
+    } catch (error: any) {
+      console.error("Voice call error:", error)
+      setNetworkError(t("Connection error. Please try again."))
+      if (onError && error instanceof Error) onError(error)
+    }
+  }
+
+  // --------- управление звонком / микрофоном ---------
+
+  const startCall = async (gender: "female" | "male") => {
+    voiceGenderRef.current = gender
+    logDebug(`gender=${gender}`)
+    logDebug("[CALL] startCall")
+
+    setIsConnecting(true)
+    setNetworkError(null)
+
+    try {
+      if (
+        typeof navigator === "undefined" ||
+        !navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia
+      ) {
+        setNetworkError(
+          t(
+            "Microphone access is not supported in this browser. Please use the latest version of Chrome, Edge or Safari.",
+          ),
+        )
+        setIsConnecting(false)
+        return
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
       })
+      logDebug("[Recorder] getUserMedia access granted")
 
-      micStreamRef.current = stream
-      setNetworkError(null)
-      return true
+      mediaStreamRef.current = stream
+
+      const options: MediaRecorderOptions = {}
+      if (typeof MediaRecorder !== "undefined") {
+        if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+          options.mimeType = "audio/webm;codecs=opus"
+        } else if (MediaRecorder.isTypeSupported("audio/webm")) {
+          options.mimeType = "audio/webm"
+        }
+      }
+
+      const recorder = new MediaRecorder(stream, options)
+      mediaRecorderRef.current = recorder
+      audioChunksRef.current = []
+      isSttBusyRef.current = false
+      lastTranscriptRef.current = ""
+
+      recorder.onstart = () => {
+        logDebug("[Recorder] onstart")
+        setIsListening(true)
+      }
+
+      recorder.ondataavailable = (event: BlobEvent) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+          logDebug(
+            `[Recorder] dataavailable size=${event.data.size} totalChunks=${audioChunksRef.current.length}`,
+          )
+          void maybeSendStt()
+        }
+      }
+
+      recorder.onstop = () => {
+        logDebug("[Recorder] onstop")
+        setIsListening(false)
+      }
+
+      recorder.onerror = (event: any) => {
+        console.error("[Recorder] error", event)
+        logDebug(
+          `[Recorder] error name=${event?.name || ""} msg=${
+            event?.message || ""
+          }`,
+        )
+      }
+
+      recorder.start(4000)
+      logDebug("[Recorder] start(4000) called — chunk every 4s")
+
+      isCallActiveRef.current = true
+      setIsCallActive(true)
+      setIsConnecting(false)
+      setConnectionStatus("connected")
     } catch (error: any) {
-      console.error("[Voice] getUserMedia error:", error)
+      console.error("[Recorder] getUserMedia error:", error)
+      logDebug(
+        `[Recorder] getUserMedia error name=${error?.name || ""} msg=${
+          error?.message || ""
+        }`,
+      )
 
       const name = error?.name
 
       if (name === "NotAllowedError" || name === "PermissionDeniedError") {
         setNetworkError(
           t(
-            "Microphone is blocked in the browser. Please allow access in the site permissions and reload the page.",
+            "Microphone is blocked for this site in the browser. Please allow access in the address bar and reload the page.",
           ),
         )
       } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
@@ -206,179 +528,42 @@ export default function VoiceCallDialog({
         )
       }
 
-      return false
+      setIsConnecting(false)
+      isCallActiveRef.current = false
+      setIsCallActive(false)
+      setConnectionStatus("disconnected")
     }
   }
 
-  // ---------- управление SpeechRecognition (единая точка) ----------
-  function ensureRecognitionRunning() {
-    if (typeof window === "undefined") return
+  const endCall = () => {
+    logDebug("[CALL] endCall")
 
-    const shouldListen =
-      isCallActiveRef.current &&
-      !isMicMutedRef.current &&
-      !isAiSpeakingRef.current
-
-    const SR =
-      (window as any).SpeechRecognition ||
-      (window as any).webkitSpeechRecognition
-
-    // если слушать НЕ нужно — стопаем, если запущено
-    if (!shouldListen) {
-      if (recognitionRef.current && isRecognitionActiveRef.current) {
-        try {
-          recognitionRef.current.stop()
-        } catch (e) {
-          console.error(e)
-        }
-      }
-      isRecognitionActiveRef.current = false
-      setIsListening(false)
-      return
-    }
-
-    if (!SR) {
-      setNetworkError(
-        t(
-          "Your browser does not support voice recognition. Please use Chrome or another modern browser.",
-        ),
-      )
-      return
-    }
-
-    let recognition = recognitionRef.current
-
-    if (!recognition) {
-      recognition = new SR()
-      recognition.continuous = true
-      recognition.interimResults = false
-      recognitionRef.current = recognition
-
-      recognition.onstart = () => {
-        isRecognitionActiveRef.current = true
-        setIsListening(true)
-        setConnectionStatus("connected")
-        setNetworkError(null)
-      }
-
-      recognition.onerror = (event: any) => {
-        console.error("Speech recognition error", event)
-
-        if (event?.error === "not-allowed") {
-          setNetworkError(
-            t(
-              "Microphone is blocked for this site in the browser. Please allow access in the address bar and reload the page.",
-            ),
-          )
-          setConnectionStatus("disconnected")
-          return
-        }
-
-        if (event?.error === "service-not-allowed") {
-          setNetworkError(
-            t(
-              "Speech recognition is disabled or not available on this device. Please enable speech recognition in the system settings or use another browser.",
-            ),
-          )
-          setConnectionStatus("disconnected")
-          return
-        }
-
-        if (event?.error !== "no-speech") {
-          setNetworkError(t("Error while listening. Please try again."))
-        }
-      }
-
-      recognition.onend = () => {
-        isRecognitionActiveRef.current = false
-        setIsListening(false)
-
-        setTimeout(() => {
-          const stillShouldListen =
-            isCallActiveRef.current &&
-            !isMicMutedRef.current &&
-            !isAiSpeakingRef.current
-
-          if (stillShouldListen) {
-            ensureRecognitionRunning()
-          }
-        }, 300)
-      }
-
-      recognition.onresult = (event: any) => {
-        if (isAiSpeakingRef.current) return
-
-        const last = event.results[event.results.length - 1]
-        if (!last || !last.isFinal) return
-
-        const text = last[0]?.transcript?.trim()
-        if (!text) return
-
-        const userMsg: VoiceMessage = {
-          id: `${Date.now()}-user`,
-          role: "user",
-          text,
-          gender: voiceGenderRef.current,
-        }
-
-        setMessages((prev) => [...prev, userMsg])
-        void handleUserText(text)
-      }
-    }
-
-    recognition.lang = computeLangCode()
-
-    if (!isRecognitionActiveRef.current) {
-      try {
-        recognition.start()
-      } catch (e: any) {
-        if (e?.name === "NotAllowedError") {
-          setNetworkError(
-            t(
-              "Microphone is blocked for this site in the browser. Please allow access in the address bar and reload the page.",
-            ),
-          )
-          setConnectionStatus("disconnected")
-        } else if (e?.name !== "InvalidStateError") {
-          console.error("Cannot start recognition", e)
-          setNetworkError(
-            t("Could not start microphone. Check permissions and try again."),
-          )
-        }
-      }
-    }
-  }
-
-  function hardStopRecognition() {
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.onend = null
-        recognitionRef.current.stop()
-      } catch (e) {
-        console.error(e)
-      }
-    }
-    isRecognitionActiveRef.current = false
-    setIsListening(false)
-  }
-
-  function stopEverything() {
     isCallActiveRef.current = false
-    isMicMutedRef.current = false
-    isAiSpeakingRef.current = false
-
     setIsCallActive(false)
+    setIsListening(false)
     setIsMicMuted(false)
     setIsAiSpeaking(false)
-    setIsListening(false)
     setConnectionStatus("disconnected")
-    setNetworkError(null)
-    // историю сообщений НЕ чистим — оставляем как лог
 
-    hardStopRecognition()
+    const rec = mediaRecorderRef.current
+    if (rec && rec.state !== "inactive") {
+      try {
+        rec.stop()
+      } catch (e) {
+        console.error("Recorder stop error", e)
+      }
+    }
+    mediaRecorderRef.current = null
 
-    if (typeof window !== "undefined" && (window as any).speechSynthesis) {
-      ;(window as any).speechSynthesis.cancel()
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop()
+        } catch (e) {
+          console.error("Track stop error", e)
+        }
+      })
+      mediaStreamRef.current = null
     }
 
     if (audioRef.current) {
@@ -386,269 +571,55 @@ export default function VoiceCallDialog({
       audioRef.current = null
     }
 
-    if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach((track) => {
+    if (typeof window !== "undefined" && (window as any).speechSynthesis) {
+      ;(window as any).speechSynthesis.cancel()
+    }
+  }
+
+  const toggleMic = () => {
+    const next = !isMicMuted
+    setIsMicMuted(next)
+
+    const rec = mediaRecorderRef.current
+
+    if (!rec) return
+
+    if (next) {
+      // выключаем мик
+      if (rec.state === "recording") {
         try {
-          track.stop()
+          rec.pause()
+          logDebug("[CALL] mic muted -> recorder.pause()")
         } catch (e) {
-          console.error("Error stopping mic track", e)
+          console.error("Recorder pause error", e)
         }
-      })
-      micStreamRef.current = null
+      }
+    } else {
+      // включаем мик
+      if (rec.state === "paused" && isCallActiveRef.current) {
+        try {
+          rec.resume()
+          logDebug("[CALL] mic unmuted -> recorder.resume()")
+        } catch (e) {
+          console.error("Recorder resume error", e)
+        }
+      }
     }
   }
 
   useEffect(() => {
     if (!isOpen) {
-      stopEverything()
+      endCall()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
   useEffect(() => {
     return () => {
-      stopEverything()
+      endCall()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // ---------- озвучка ответа (OpenAI TTS + fallback) ----------
-  function speakText(text: string) {
-    if (typeof window === "undefined") return
-
-    const cleanText = text?.trim()
-    if (!cleanText) return
-
-    const langCode = computeLangCode()
-    const gender = getCurrentGender()
-
-    const startSpeaking = () => {
-      setIsAiSpeaking(true)
-      isAiSpeakingRef.current = true
-      ensureRecognitionRunning()
-    }
-
-    const stopSpeaking = () => {
-      setIsAiSpeaking(false)
-      isAiSpeakingRef.current = false
-      ensureRecognitionRunning()
-    }
-
-    const speakWithBrowserTTS = () => {
-      const synth = (typeof window !== "undefined" &&
-        (window as any).speechSynthesis) as SpeechSynthesis | undefined
-
-      if (!synth) {
-        console.warn("[TTS] Browser speechSynthesis is not available")
-        stopSpeaking()
-        return
-      }
-
-      const utterance = new SpeechSynthesisUtterance(cleanText)
-      utterance.lang = langCode
-      utterance.rate = 1
-      utterance.pitch = gender === "MALE" ? 0.9 : 1.1
-
-      utterance.onstart = () => {
-        startSpeaking()
-      }
-
-      utterance.onend = () => {
-        stopSpeaking()
-      }
-
-      utterance.onerror = (e) => {
-        console.error("[TTS] Browser TTS error", e)
-        stopSpeaking()
-      }
-
-      synth.cancel()
-      synth.speak(utterance)
-    }
-
-    ;(async () => {
-      try {
-        const payload = {
-          text: cleanText,
-          language: langCode,
-          gender,
-        }
-
-        const res = await fetch("/api/tts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        })
-
-        const raw = await res.text()
-        let data: any = null
-
-        try {
-          data = raw ? JSON.parse(raw) : null
-        } catch (e) {
-          console.error(
-            "[TTS] /api/tts returned non-JSON response:",
-            raw.slice(0, 200),
-          )
-        }
-
-        if (!res.ok || !data || data.success === false) {
-          console.error(
-            "[TTS] API error",
-            data?.error || res.statusText,
-            data?.details || "",
-          )
-          speakWithBrowserTTS()
-          return
-        }
-
-        let audioUrl: string | undefined = data.audioUrl
-
-        if (!audioUrl && data.audioContent) {
-          audioUrl = `data:audio/mp3;base64,${data.audioContent}`
-        }
-
-        if (!audioUrl) {
-          console.error("[TTS] No audioUrl/audioContent in response")
-          speakWithBrowserTTS()
-          return
-        }
-
-        if (audioRef.current) {
-          audioRef.current.pause()
-          audioRef.current = null
-        }
-
-        const audio = new Audio(audioUrl)
-        audioRef.current = audio
-
-        audio.onplay = () => {
-          startSpeaking()
-        }
-
-        audio.onended = () => {
-          stopSpeaking()
-          audioRef.current = null
-        }
-
-        audio.onerror = (e) => {
-          console.error("[TTS] audio playback error:", e)
-          stopSpeaking()
-          audioRef.current = null
-        }
-
-        try {
-          await audio.play()
-        } catch (e) {
-          console.error("[TTS] play() rejected", e)
-          speakWithBrowserTTS()
-        }
-      } catch (error) {
-        console.error("[TTS] fetch error:", error)
-        speakWithBrowserTTS()
-      }
-    })()
-  }
-
-  // ---------- отправка текста в n8n / OpenAI ----------
-  async function handleUserText(text: string) {
-    const langCode =
-      typeof (currentLanguage as any) === "string"
-        ? ((currentLanguage as any) as string)
-        : (currentLanguage as any)?.code || "uk"
-
-    const resolvedWebhook =
-      (webhookUrl && webhookUrl.trim()) ||
-      TURBOTA_AGENT_WEBHOOK_URL.trim() ||
-      FALLBACK_CHAT_API
-
-    try {
-      const res = await fetch(resolvedWebhook, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: text,
-          language: langCode,
-          email: effectiveEmail,
-          mode: "voice",
-          gender: voiceGenderRef.current,
-          voiceLanguage: computeLangCode(),
-        }),
-      })
-
-      if (!res.ok) {
-        throw new Error(`Chat API error: ${res.status}`)
-      }
-
-      const raw = await res.text()
-      let data: any = raw
-
-      try {
-        data = JSON.parse(raw)
-      } catch {
-        // не JSON — строка
-      }
-
-      let answer = extractAnswer(data)
-
-      if (!answer) {
-        answer = t(
-          "I'm sorry, I couldn't process your message. Please try again.",
-        )
-      }
-
-      const assistantMsg: VoiceMessage = {
-        id: `${Date.now()}-assistant`,
-        role: "assistant",
-        text: answer,
-        gender: voiceGenderRef.current,
-      }
-
-      setMessages((prev) => [...prev, assistantMsg])
-      speakText(answer)
-    } catch (error: any) {
-      console.error("Voice call error:", error)
-      setNetworkError(t("Connection error. Please try again."))
-      if (onError && error instanceof Error) onError(error)
-    }
-  }
-
-  // ---------- управление звонком / микрофоном ----------
-  const startCall = async (gender: VoiceGender) => {
-    voiceGenderRef.current = gender
-
-    setIsConnecting(true)
-    setNetworkError(null)
-
-    isMicMutedRef.current = false
-    setIsMicMuted(false)
-
-    const micOk = await requestMicrophoneAccess()
-    if (!micOk) {
-      setIsConnecting(false)
-      setIsCallActive(false)
-      isCallActiveRef.current = false
-      setConnectionStatus("disconnected")
-      return
-    }
-
-    isCallActiveRef.current = true
-    setIsCallActive(true)
-    setIsConnecting(false)
-    setConnectionStatus("connected")
-    ensureRecognitionRunning()
-  }
-
-  const endCall = () => {
-    stopEverything()
-  }
-
-  const toggleMic = () => {
-    const next = !isMicMuted
-    setIsMicMuted(next)
-    isMicMutedRef.current = next
-    ensureRecognitionRunning()
-  }
 
   const statusText = !isCallActive
     ? t(
@@ -678,7 +649,7 @@ export default function VoiceCallDialog({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10">
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg:white/10 bg-white/10">
                     <Phone className="h-4 w-4" />
                   </span>
                   {t("Voice session with AI-psychologist")}
@@ -733,8 +704,8 @@ export default function VoiceCallDialog({
                 )}
 
                 {messages.map((msg) => {
-                  const badgeGender =
-                    msg.gender ?? voiceGenderRef.current ?? "female"
+                  const messageGender =
+                    msg.gender || voiceGenderRef.current || "female"
 
                   return (
                     <div
@@ -755,7 +726,7 @@ export default function VoiceCallDialog({
                             <Brain className="h-3 w-3" />
                             {t("AI Psychologist")}
                             <span className="ml-1 rounded-full bg-emerald-100 px-2 py-[1px] text-[9px] font-semibold uppercase tracking-wide text-emerald-700">
-                              {badgeGender === "female"
+                              {messageGender === "female"
                                 ? t("Female voice")
                                 : t("Male voice")}
                             </span>
@@ -817,7 +788,7 @@ export default function VoiceCallDialog({
                   <div className="text-center text-[11px] font-medium uppercase tracking-wide text-slate-500">
                     {t("Choose voice for this session")}
                   </div>
-                  <div className="flex w-full flex-col gap-2">
+                  <div className="flex flex-col gap-2">
                     <Button
                       type="button"
                       onClick={() => {
