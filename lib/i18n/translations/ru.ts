@@ -476,6 +476,7 @@ export const ru: Record<string, string> = {
   "Something went wrong while sending the message. Please try again a bit later.":
     "Что-то пошло не так при отправке сообщения. Пожалуйста, попробуйте чуть позже.",
   "Your name": "Ваше имя",
+  "Your message": "Ваше сообщение",
   "How can we address you?": "Как к вам обращаться?",
   "Your email": "Ваш email",
   "Briefly describe your request or idea.":
