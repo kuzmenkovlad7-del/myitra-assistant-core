@@ -154,14 +154,7 @@ type ChatMessage = {
   text: string
 }
 
-// ---------- вспомогательные утилиты ----------
-
-function logDebug(...args: any[]) {
-  // eslint-disable-next-line no-console
-  console.log(...args)
-}
-
-// вычленяем только "новую" часть распознанного текста
+// вычленяем только «новую» часть из полного транскрипта
 function diffTranscript(prev: string, full: string): string {
   const normalize = (s: string) =>
     s
@@ -189,9 +182,7 @@ function diffTranscript(prev: string, full: string): string {
     common++
   }
 
-  if (common === 0) {
-    return full
-  }
+  if (common === 0) return full
 
   const rawTokens = full.split(/\s+/)
   if (common >= rawTokens.length) return ""
@@ -257,74 +248,6 @@ function extractAnswer(data: any): string {
   return ""
 }
 
-const nativeVoicePreferences = getNativeVoicePreferences()
-
-function getRefinedVoiceForLanguage(
-  langCode: string,
-  preferredGender: "female" | "male" = "female",
-  selectedCharacterId?: string,
-  cache?: Map<string, SpeechSynthesisVoice>,
-): SpeechSynthesisVoice | null {
-  if (typeof window === "undefined" || !window.speechSynthesis) return null
-  if (!cache) cache = new Map()
-
-  const cacheKey = `${langCode}-${preferredGender}-${selectedCharacterId || "default"}`
-  if (cache.has(cacheKey)) {
-    return cache.get(cacheKey)!
-  }
-
-  const voices = window.speechSynthesis.getVoices()
-  if (!voices.length) return null
-
-  const nativeList = nativeVoicePreferences[langCode]?.[preferredGender] || []
-
-  for (const name of nativeList) {
-    const v = voices.find((voice) => voice.name === name)
-    if (v) {
-      cache.set(cacheKey, v)
-      return v
-    }
-  }
-
-  const langVoices = voices.filter((v) =>
-    v.lang.toLowerCase().startsWith(langCode.toLowerCase()),
-  )
-  if (langVoices.length) {
-    cache.set(cacheKey, langVoices[0]!)
-    return langVoices[0]!
-  }
-
-  if (langCode !== "en") {
-    const en = getRefinedVoiceForLanguage("en", preferredGender, selectedCharacterId, cache)
-    if (en) {
-      cache.set(cacheKey, en)
-      return en
-    }
-  }
-
-  cache.set(cacheKey, voices[0]!)
-  return voices[0]!
-}
-
-function stopCurrentSpeech(
-  currentAudioRef: React.MutableRefObject<HTMLAudioElement | null>,
-  currentUtteranceRef: React.MutableRefObject<SpeechSynthesisUtterance | null>,
-) {
-  if (currentAudioRef.current) {
-    try {
-      currentAudioRef.current.pause()
-      currentAudioRef.current.currentTime = 0
-    } catch {}
-    currentAudioRef.current = null
-  }
-  if (typeof window !== "undefined" && window.speechSynthesis) {
-    try {
-      window.speechSynthesis.cancel()
-    } catch {}
-  }
-  currentUtteranceRef.current = null
-}
-
 export default function VideoCallDialog({
   isOpen,
   onClose,
@@ -346,6 +269,7 @@ export default function VideoCallDialog({
       : "English")
 
   const currentLocale = getLocaleForLanguage(activeLanguage.code)
+  const nativeVoicePreferences = getNativeVoicePreferences()
 
   const [selectedCharacter, setSelectedCharacter] = useState<AICharacter>(
     AI_CHARACTERS[1] || AI_CHARACTERS[0],
@@ -366,31 +290,32 @@ export default function VideoCallDialog({
 
   const [isAiSpeaking, setIsAiSpeaking] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [interimTranscript, setInterimTranscript] = useState("")
 
-  // видео
   const userVideoRef = useRef<HTMLVideoElement | null>(null)
   const idleVideoRef = useRef<HTMLVideoElement | null>(null)
   const speakingVideoRef = useRef<HTMLVideoElement | null>(null)
 
-  // аудио TTS
   const currentAudioRef = useRef<HTMLAudioElement | null>(null)
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
   const voiceCacheRef = useRef<Map<string, SpeechSynthesisVoice>>(new Map())
 
-  // состояние звонка
-  const isCallActiveRef = useRef(false)
-  const isMicMutedRef = useRef(false)
-
-  // NEW: MediaRecorder + STT
+  // STT через MediaRecorder + /api/stt (как в голосовом ассистенте)
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const isSttBusyRef = useRef(false)
   const lastTranscriptRef = useRef("")
 
+  const isCallActiveRef = useRef(false)
+  const isMicMutedRef = useRef(false)
+
   const hasEnhancedVideo =
     !!selectedCharacter?.idleVideo && !!selectedCharacter?.speakingVideo
+
+  function logDebug(...args: any[]) {
+    // eslint-disable-next-line no-console
+    console.log(...args)
+  }
 
   useEffect(() => {
     isCallActiveRef.current = isCallActive
@@ -406,18 +331,8 @@ export default function VideoCallDialog({
     const load = () => {
       const voices = window.speechSynthesis!.getVoices()
       if (voices.length) {
-        getRefinedVoiceForLanguage(
-          activeLanguage.code,
-          "female",
-          selectedCharacter.id,
-          voiceCacheRef.current,
-        )
-        getRefinedVoiceForLanguage(
-          activeLanguage.code,
-          "male",
-          selectedCharacter.id,
-          voiceCacheRef.current,
-        )
+        getRefinedVoiceForLanguage(activeLanguage.code, "female")
+        getRefinedVoiceForLanguage(activeLanguage.code, "male")
       }
     }
     load()
@@ -425,7 +340,8 @@ export default function VideoCallDialog({
     return () => {
       window.speechSynthesis?.removeEventListener("voiceschanged", load)
     }
-  })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // камера (PIP)
   useEffect(() => {
@@ -460,88 +376,67 @@ export default function VideoCallDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
-  // ---------- STT: отправка webm в /api/stt ----------
+  function getRefinedVoiceForLanguage(
+    langCode: string,
+    preferredGender: "female" | "male" = "female",
+  ): SpeechSynthesisVoice | null {
+    if (typeof window === "undefined" || !window.speechSynthesis) return null
 
-  async function maybeSendStt() {
-    if (!isCallActiveRef.current) return
-    if (isSttBusyRef.current) {
-      logDebug("[STT] skip, request already in progress")
-      return
+    const cacheKey = `${langCode}-${preferredGender}-${selectedCharacter.id}`
+    const cache = voiceCacheRef.current
+    if (cache.has(cacheKey)) {
+      return cache.get(cacheKey)!
     }
 
-    if (!audioChunksRef.current.length) return
+    const voices = window.speechSynthesis.getVoices()
+    if (!voices.length) return null
 
-    const blob = new Blob(audioChunksRef.current, { type: "audio/webm" })
+    const nativeList =
+      nativeVoicePreferences[langCode]?.[preferredGender] || []
 
-    if (blob.size < 8000) {
-      return
+    for (const name of nativeList) {
+      const v = voices.find((voice) => voice.name === name)
+      if (v) {
+        cache.set(cacheKey, v)
+        return v
+      }
     }
 
-    try {
-      isSttBusyRef.current = true
-      logDebug("[STT] sending audio blob size=", blob.size)
-
-      const res = await fetch("/api/stt", {
-        method: "POST",
-        headers: {
-          "Content-Type": "audio/webm",
-        },
-        body: blob,
-      })
-
-      const raw = await res.text()
-      let data: any = null
-
-      try {
-        data = raw ? JSON.parse(raw) : null
-      } catch {
-        data = null
-      }
-
-      if (!res.ok || !data || data.success === false) {
-        console.error("[STT] error response:", res.status, raw)
-        logDebug(
-          "[STT] error status=",
-          res.status,
-          "msg=",
-          data?.error || "Unknown STT error",
-        )
-        return
-      }
-
-      const fullText = (data.text || "").toString().trim()
-      logDebug('[STT] transcript full="' + fullText + '"')
-
-      if (!fullText) return
-
-      const prev = lastTranscriptRef.current
-      const delta = diffTranscript(prev, fullText)
-
-      lastTranscriptRef.current = fullText
-
-      if (!delta) {
-        logDebug("[STT] no new delta after diff")
-        return
-      }
-
-      const userMsg: ChatMessage = {
-        id: Date.now(),
-        role: "user",
-        text: delta,
-      }
-
-      setMessages((prevMsgs) => [...prevMsgs, userMsg])
-      setActivityStatus("thinking")
-      await handleUserText(delta)
-    } catch (error: any) {
-      console.error("[STT] fatal error", error)
-      logDebug("[STT] fatal error:", error?.message || "Unknown error")
-    } finally {
-      isSttBusyRef.current = false
+    const langVoices = voices.filter((v) =>
+      v.lang.toLowerCase().startsWith(langCode.toLowerCase()),
+    )
+    if (langVoices.length) {
+      cache.set(cacheKey, langVoices[0]!)
+      return langVoices[0]!
     }
+
+    if (langCode !== "en") {
+      const en = getRefinedVoiceForLanguage("en", preferredGender)
+      if (en) {
+        cache.set(cacheKey, en)
+        return en
+      }
+    }
+
+    cache.set(cacheKey, voices[0]!)
+    return voices[0]!
   }
 
-  // ---------- TTS (Google / браузер) + пауза рекордера ----------
+  function stopCurrentSpeech() {
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause()
+        currentAudioRef.current.currentTime = 0
+      } catch {}
+      currentAudioRef.current = null
+    }
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel()
+      } catch {}
+    }
+    currentUtteranceRef.current = null
+  }
 
   function browserSpeak(
     text: string,
@@ -560,12 +455,7 @@ export default function VideoCallDialog({
     const utterance = new SpeechSynthesisUtterance(text)
     utterance.lang = currentLocale
 
-    const voice = getRefinedVoiceForLanguage(
-      activeLanguage.code,
-      gender,
-      selectedCharacter.id,
-      voiceCacheRef.current,
-    )
+    const voice = getRefinedVoiceForLanguage(activeLanguage.code, gender)
     if (voice) {
       utterance.voice = voice
     }
@@ -594,6 +484,80 @@ export default function VideoCallDialog({
     }
   }
 
+  // ---------- STT: шлём webm-blob в /api/stt и берём только дельту ----------
+  async function maybeSendStt() {
+    if (!isCallActiveRef.current) return
+    if (isSttBusyRef.current) {
+      logDebug("[STT] skip, request already in progress")
+      return
+    }
+
+    if (!audioChunksRef.current.length) return
+
+    const blob = new Blob(audioChunksRef.current, { type: "audio/webm" })
+
+    // слишком маленькие кусочки не шлём
+    if (blob.size < 8000) return
+
+    try {
+      isSttBusyRef.current = true
+      logDebug("[STT] sending audio blob size=", blob.size)
+
+      const res = await fetch("/api/stt", {
+        method: "POST",
+        headers: {
+          "Content-Type": "audio/webm",
+        },
+        body: blob,
+      })
+
+      const raw = await res.text()
+      let data: any = null
+
+      try {
+        data = raw ? JSON.parse(raw) : null
+      } catch {
+        data = null
+      }
+
+      if (!res.ok || !data || data.success === false) {
+        console.error("[STT] error response:", res.status, raw)
+        logDebug(
+          "[STT] error status=",
+          res.status,
+          "msg=",
+          data?.error || "Audio file might be corrupted or unsupported",
+        )
+        return
+      }
+
+      const fullText = (data.text || "").toString().trim()
+      logDebug('[STT] transcript full="' + fullText + '"')
+
+      if (!fullText) return
+
+      const prev = lastTranscriptRef.current
+      const delta = diffTranscript(prev, fullText)
+      lastTranscriptRef.current = fullText
+
+      if (!delta) {
+        logDebug("[STT] no new delta after diff")
+        return
+      }
+
+      await handleUserText(delta)
+    } catch (error: any) {
+      console.error("[STT] fatal error", error)
+      logDebug(
+        "[STT] fatal error:",
+        error?.message || "Audio file might be corrupted or unsupported",
+      )
+    } finally {
+      isSttBusyRef.current = false
+    }
+  }
+
+  // ---------- Озвучка ответа (Google TTS / браузер) + пауза рекордера ----------
   async function speakText(text: string): Promise<void> {
     if (!isCallActiveRef.current) return
     if (!isSoundEnabled) return
@@ -601,35 +565,22 @@ export default function VideoCallDialog({
     const cleaned = cleanResponseText(text)
     if (!cleaned) return
 
-    stopCurrentSpeech(currentAudioRef, currentUtteranceRef)
-
-    // пауза MediaRecorder во время озвучки
-    const pauseRecorder = () => {
-      const rec = mediaRecorderRef.current
-      if (rec && rec.state === "recording") {
-        try {
-          rec.pause()
-          logDebug("[Recorder] pause() while TTS audio is playing")
-        } catch (e) {
-          console.error("Recorder pause error", e)
-        }
-      }
-    }
-
-    const resumeRecorder = () => {
-      const rec = mediaRecorderRef.current
-      if (rec && rec.state === "paused" && isCallActiveRef.current && !isMicMutedRef.current) {
-        try {
-          rec.resume()
-          logDebug("[Recorder] resume() after TTS")
-        } catch (e) {
-          console.error("Recorder resume error", e)
-        }
-      }
-    }
+    stopCurrentSpeech()
 
     setIsAiSpeaking(true)
     setActivityStatus("speaking")
+
+    // пауза записи микрофона, пока говорит ассистент
+    const rec = mediaRecorderRef.current
+    if (rec && rec.state === "recording") {
+      try {
+        rec.pause()
+        setIsListening(false)
+        logDebug("[Recorder] pause() while TTS audio is playing")
+      } catch (e) {
+        console.error("Recorder pause error", e)
+      }
+    }
 
     if (
       hasEnhancedVideo &&
@@ -641,8 +592,6 @@ export default function VideoCallDialog({
         await speakingVideoRef.current.play()
       } catch {}
     }
-
-    pauseRecorder()
 
     const gender: "male" | "female" = selectedCharacter.gender || "female"
 
@@ -667,11 +616,26 @@ export default function VideoCallDialog({
         } catch {}
       }
 
+      // возвращаем запись микрофона
+      const rec2 = mediaRecorderRef.current
+      if (
+        rec2 &&
+        rec2.state === "paused" &&
+        isCallActiveRef.current &&
+        !isMicMutedRef.current
+      ) {
+        try {
+          rec2.resume()
+          setIsListening(true)
+          logDebug("[Recorder] resume() after TTS")
+        } catch (e) {
+          console.error("Recorder resume error", e)
+        }
+      }
+
       if (isCallActiveRef.current && !isMicMutedRef.current) {
         setActivityStatus("listening")
       }
-
-      resumeRecorder()
     }
 
     try {
@@ -697,12 +661,8 @@ export default function VideoCallDialog({
             audio.playsInline = true
             audio.crossOrigin = "anonymous"
             audio.src = audioDataUrl
-            audio.onended = () => {
-              resolve()
-            }
-            audio.onerror = () => {
-              resolve()
-            }
+            audio.onended = () => resolve()
+            audio.onerror = () => resolve()
             audio
               .play()
               .then(() => {})
@@ -723,8 +683,7 @@ export default function VideoCallDialog({
     }
   }
 
-  // ---------- отправка текста в backend ----------
-
+  // ---------- Отправка текста в n8n / OpenAI ----------
   async function handleUserText(text: string) {
     const trimmed = text.trim()
     if (!trimmed) return
@@ -823,15 +782,10 @@ export default function VideoCallDialog({
       if (onError && error instanceof Error) {
         onError(error)
       }
-    } finally {
-      if (isCallActiveRef.current && !isMicMutedRef.current) {
-        setActivityStatus("listening")
-      }
     }
   }
 
-  // ---------- управление звонком / микрофоном ----------
-
+  // ---------- Старт звонка: запускаем MediaRecorder как в голосовом ----------
   async function startCall() {
     setIsConnecting(true)
     setSpeechError(null)
@@ -899,12 +853,7 @@ export default function VideoCallDialog({
 
       recorder.onerror = (event: any) => {
         console.error("[Recorder] error", event)
-        logDebug(
-          "[Recorder] error name=" +
-            (event?.name || "") +
-            " msg=" +
-            (event?.message || ""),
-        )
+        setSpeechError(t("Error while listening. Please try again."))
       }
 
       recorder.start(4000)
@@ -914,9 +863,9 @@ export default function VideoCallDialog({
       isCallActiveRef.current = true
 
       setMessages([])
-      setInterimTranscript("")
       setIsMicMuted(false)
       isMicMutedRef.current = false
+      setActivityStatus("listening")
 
       if (
         hasEnhancedVideo &&
@@ -929,8 +878,8 @@ export default function VideoCallDialog({
       }
     } catch (error: any) {
       console.error("Failed to start call:", error)
-
       const name = error?.name
+
       if (name === "NotAllowedError" || name === "PermissionDeniedError") {
         setSpeechError(
           t(
@@ -968,14 +917,15 @@ export default function VideoCallDialog({
     isMicMutedRef.current = false
     setIsAiSpeaking(false)
     setActivityStatus("listening")
-    setInterimTranscript("")
+    setMessages([])
     setSpeechError(null)
 
     audioChunksRef.current = []
     lastTranscriptRef.current = ""
     isSttBusyRef.current = false
 
-    // стоп рекордер
+    stopCurrentSpeech()
+
     const rec = mediaRecorderRef.current
     if (rec && rec.state !== "inactive") {
       try {
@@ -986,22 +936,15 @@ export default function VideoCallDialog({
     }
     mediaRecorderRef.current = null
 
-    // стоп аудио-стрим
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => {
         try {
           track.stop()
-        } catch (e) {
-          console.error("Track stop error", e)
-        }
+        } catch {}
       })
       mediaStreamRef.current = null
     }
 
-    // стоп TTS
-    stopCurrentSpeech(currentAudioRef, currentUtteranceRef)
-
-    // стоп видео ассистента
     if (idleVideoRef.current) {
       try {
         idleVideoRef.current.pause()
@@ -1015,7 +958,6 @@ export default function VideoCallDialog({
       } catch {}
     }
 
-    // стоп видео пользователя
     if (userVideoRef.current?.srcObject) {
       const stream = userVideoRef.current.srcObject as MediaStream
       stream.getTracks().forEach((track) => {
@@ -1031,30 +973,31 @@ export default function VideoCallDialog({
     if (!isCallActiveRef.current) return
 
     const rec = mediaRecorderRef.current
-    if (!rec) {
-      setIsMicMuted((prev) => !prev)
-      isMicMutedRef.current = !isMicMutedRef.current
-      return
-    }
+    if (!rec) return
 
     if (isMicMuted) {
       setIsMicMuted(false)
       isMicMutedRef.current = false
-      if (rec.state === "paused") {
+
+      if (rec.state === "paused" && isCallActiveRef.current) {
         try {
           rec.resume()
+          setIsListening(true)
           logDebug("[CALL] mic unmuted -> recorder.resume()")
         } catch (e) {
           console.error("Recorder resume error", e)
         }
       }
+      setSpeechError(null)
       setActivityStatus("listening")
     } else {
       setIsMicMuted(true)
       isMicMutedRef.current = true
+
       if (rec.state === "recording") {
         try {
           rec.pause()
+          setIsListening(false)
           logDebug("[CALL] mic muted -> recorder.pause()")
         } catch (e) {
           console.error("Recorder pause error", e)
@@ -1081,8 +1024,14 @@ export default function VideoCallDialog({
     setIsSoundEnabled(next)
 
     if (!next) {
-      stopCurrentSpeech(currentAudioRef, currentUtteranceRef)
+      stopCurrentSpeech()
       setIsAiSpeaking(false)
+      if (hasEnhancedVideo && speakingVideoRef.current) {
+        try {
+          speakingVideoRef.current.pause()
+          speakingVideoRef.current.currentTime = 0
+        } catch {}
+      }
     }
   }
 
@@ -1177,7 +1126,7 @@ export default function VideoCallDialog({
                       onClick={() => setSelectedCharacter(character)}
                       className={`relative bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border-2 ${
                         selectedCharacter.id === character.id
-                          ? "border-indigo-600"
+                          ? "border-primary-600"
                           : "border-transparent"
                       }`}
                     >
@@ -1218,7 +1167,7 @@ export default function VideoCallDialog({
                           <span
                             className={`inline-flex px-3 py-1 rounded-full text-[11px] font-medium ${
                               selectedCharacter.id === character.id
-                                ? "bg-indigo-600 text-white"
+                                ? "bg-primary-600 text-white"
                                 : "bg-gray-100 text-gray-700"
                             }`}
                           >
@@ -1235,7 +1184,7 @@ export default function VideoCallDialog({
 
               <div className="mt-6 sm:mt-8 w-full max-w-md px-2">
                 <Button
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-base sm:text-lg py-4 sm:py-6 min-h-[56px]"
+                  className="w-full bg-primary-600 hover:bg-primary-700 text-white text-base sm:text-lg py-4 sm:py-6 min-h-[56px]"
                   onClick={startCall}
                   disabled={isConnecting}
                 >
@@ -1253,7 +1202,7 @@ export default function VideoCallDialog({
             <div className="flex-1 flex flex-col sm:flex-row gap-3 sm:gap-4">
               {/* LEFT: VIDEO */}
               <div className="w-full sm:w-2/3 flex flex-col">
-                <div className="relative w-full aspect-video sm:flex-1 bg-white rounded-lg overflow-hidden">
+                <div className="relative w-full aspect-video bg-white rounded-lg overflow-hidden">
                   <div className="absolute inset-0 bg-white overflow-hidden">
                     {hasEnhancedVideo ? (
                       <>
@@ -1382,7 +1331,7 @@ export default function VideoCallDialog({
 
                 <div className="flex-1 px-3 py-3 sm:px-4 sm:py-4 space-y-3 sm:space-y-4 overflow-y-auto">
                   {messages.length === 0 && (
-                    <div className="bg-indigo-50 rounded-2xl p-3 sm:p-4 text-xs sm:text-sm text-slate-800">
+                    <div className="bg-primary-50 rounded-2xl p-3 sm:p-4 text-xs sm:text-sm text-slate-800">
                       {t(
                         "You can start speaking when you're ready. The assistant will answer with voice and text here.",
                       )}
@@ -1409,12 +1358,6 @@ export default function VideoCallDialog({
                         <p>{msg.text}</p>
                       </div>
                     ),
-                  )}
-
-                  {interimTranscript && (
-                    <div className="bg-gray-50 rounded-lg p-3 italic text-xs sm:text-sm text-gray-500 break-words">
-                      {interimTranscript}...
-                    </div>
                   )}
 
                   {speechError && (
