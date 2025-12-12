@@ -4,7 +4,7 @@
 import type React from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { ArrowRight } from "lucide-react"
+import { ArrowRight, MessageCircle } from "lucide-react"
 import { RainbowButton } from "@/components/ui/rainbow-button"
 import { useLanguage } from "@/lib/i18n/language-context"
 
@@ -125,7 +125,7 @@ export function HomeHero() {
           >
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-500 to-indigo-500 text-white shadow-lg">
-                💬
+                <MessageCircle className="h-4 w-4" aria-hidden="true" />
               </div>
               <div className="space-y-0.5">
                 <p className="text-xs font-semibold text-slate-900">
