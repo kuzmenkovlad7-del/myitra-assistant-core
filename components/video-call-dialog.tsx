@@ -234,7 +234,9 @@ export default function VideoCallDialog({
   const isSttBusyRef = useRef(false)
   const lastTranscriptRef = useRef("")
 
-  const isCallActiveRef = useRef(false)
+  
+  const ignoreSttUntilRef = useRef(0)
+const isCallActiveRef = useRef(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -291,6 +293,9 @@ export default function VideoCallDialog({
     stopCurrentSpeech()
     pauseRecorderForTts()
 
+    // iOS/Safari: глушим STT во время озвучки и немного после
+    ignoreSttUntilRef.current = Date.now() + 2500
+
     setIsAiSpeaking(true)
 
     if (selectedCharacter?.speakingVideo && speakingVideoRef.current) {
@@ -313,27 +318,22 @@ export default function VideoCallDialog({
           idleVideoRef.current.play().catch(() => {})
         } catch {}
       }
+      ignoreSttUntilRef.current = Date.now() + 1500
       resumeRecorderAfterTts()
     }
 
     try {
       let usedGoogle = false
       try {
-        const audioDataUrl = await generateGoogleTTS(
-          cleaned,
-          locale,
-          selectedCharacter.gender,
-          VIDEO_CALL_GOOGLE_TTS_CREDENTIALS,
-          VIDEO_CALL_VOICE_CONFIGS,
-        )
+        const audioDataUrl = await generateGoogleTTS(cleaned, locale, selectedCharacter.gender)
 
         if (audioDataUrl) {
           usedGoogle = true
           await new Promise<void>((resolve) => {
             const a = new Audio(audioDataUrl)
             audioRef.current = a
-            a.playsInline = true
-            a.onended = () => resolve()
+            a.setAttribute("playsinline","true");
+            a.setAttribute("webkit-playsinline","true");a.onended = () => resolve()
             a.onerror = () => resolve()
             a.play().catch(() => resolve())
           })
@@ -411,7 +411,12 @@ export default function VideoCallDialog({
     if (isSttBusyRef.current) return
     if (!audioChunksRef.current.length) return
 
-    const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.mimeType || "audio/webm" })
+    
+    // анти-эхо (особенно iOS Safari)
+    if (Date.now() < ignoreSttUntilRef.current) return
+    if (isAiSpeaking) return
+    if (isMicMuted) return
+const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.mimeType || "audio/webm" })
     if (blob.size < 8000) return
 
     try {
@@ -421,6 +426,7 @@ export default function VideoCallDialog({
         method: "POST",
         headers: {
           "Content-Type": blob.type || "application/octet-stream",
+          "x-lang": langCode,
         },
         body: blob,
       })
