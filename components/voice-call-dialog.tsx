@@ -12,8 +12,6 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Phone,
-  Wifi,
-  WifiOff,
   Brain,
   Mic,
   MicOff,
@@ -38,14 +36,11 @@ type VoiceMessage = {
   gender?: "female" | "male"
 }
 
-// основной вебхук TurbotaAI агента
 const TURBOTA_AGENT_WEBHOOK_URL =
   process.env.NEXT_PUBLIC_TURBOTA_AGENT_WEBHOOK_URL || ""
 
-// запасной бекенд-прокси
 const FALLBACK_CHAT_API = "/api/chat"
 
-// аккуратно вытаскиваем текст из любого формата ответа n8n
 function extractAnswer(data: any): string {
   if (!data) return ""
 
@@ -140,9 +135,6 @@ export default function VoiceCallDialog({
   const [isAiSpeaking, setIsAiSpeaking] = useState(false)
   const [messages, setMessages] = useState<VoiceMessage[]>([])
   const [networkError, setNetworkError] = useState<string | null>(null)
-  const [connectionStatus, setConnectionStatus] = useState<
-    "connected" | "disconnected"
-  >("disconnected")
 
   const voiceGenderRef = useRef<"female" | "male">("female")
   const effectiveEmail = userEmail || user?.email || "guest@example.com"
@@ -158,7 +150,6 @@ export default function VoiceCallDialog({
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  // автоскролл
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -187,8 +178,6 @@ export default function VoiceCallDialog({
   }
 
   // --------- STT: послать накопленный webm в /api/stt ---------
-  // ВАЖНО: НЕ чистим audioChunksRef, всегда шлём ВЕСЬ звук с начала сессии,
-  // чтобы backend видел полноценный webm c заголовком, а не обрезанный кусок.
 
   async function maybeSendStt() {
     if (!isCallActiveRef.current) return
@@ -196,18 +185,18 @@ export default function VoiceCallDialog({
       logDebug("[STT] skip, request already in progress")
       return
     }
-
     if (!audioChunksRef.current.length) return
-
-    const blob = new Blob(audioChunksRef.current, { type: "audio/webm" })
-
-    // слишком маленькие кусочки (0–1 сек) игнорируем — от них мало пользы
-    if (blob.size < 8000) {
-      return
-    }
 
     try {
       isSttBusyRef.current = true
+
+      const blob = new Blob(audioChunksRef.current, { type: "audio/webm" })
+
+      // слишком маленькие кусочки (0–1 сек) игнорируем
+      if (blob.size < 8000) {
+        return
+      }
+
       logDebug("[STT] sending audio blob size=", blob.size)
 
       const res = await fetch("/api/stt", {
@@ -538,7 +527,6 @@ export default function VoiceCallDialog({
       isCallActiveRef.current = true
       setIsCallActive(true)
       setIsConnecting(false)
-      setConnectionStatus("connected")
     } catch (error: any) {
       console.error("[Recorder] getUserMedia error:", error)
       logDebug(
@@ -571,7 +559,6 @@ export default function VoiceCallDialog({
       setIsConnecting(false)
       isCallActiveRef.current = false
       setIsCallActive(false)
-      setConnectionStatus("disconnected")
     }
   }
 
@@ -583,7 +570,6 @@ export default function VoiceCallDialog({
     setIsListening(false)
     setIsMicMuted(false)
     setIsAiSpeaking(false)
-    setConnectionStatus("disconnected")
     setNetworkError(null)
     audioChunksRef.current = []
     lastTranscriptRef.current = ""
@@ -702,22 +688,6 @@ export default function VoiceCallDialog({
                     "You can talk out loud, the assistant will listen, answer and voice the reply.",
                   )}
                 </DialogDescription>
-              </div>
-
-              <div className="flex flex-col items-end gap-1 text-[11px] text-indigo-100">
-                <div className="flex items-center gap-1">
-                  {connectionStatus === "connected" ? (
-                    <>
-                      <Wifi className="h-3 w-3 text-emerald-200" />
-                      {t("Connected")}
-                    </>
-                  ) : (
-                    <>
-                      <WifiOff className="h-3 w-3 text-rose-200" />
-                      {t("Disconnected")}
-                    </>
-                  )}
-                </div>
               </div>
             </div>
           </DialogHeader>
