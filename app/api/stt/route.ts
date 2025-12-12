@@ -1,61 +1,53 @@
-import type { NextRequest } from "next/server"
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+import OpenAI from "openai"
 
-export const runtime = "edge"
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
+})
+
+// важно: обычный node-runtime, не edge
+export const runtime = "nodejs"
 
 export async function POST(req: NextRequest) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY
-    if (!apiKey) {
-      return NextResponse.json(
-        { success: false, error: "OPENAI_API_KEY is not configured" },
-        { status: 500 },
-      )
-    }
+    const contentType = req.headers.get("content-type") || "audio/webm"
 
-    const audioBuffer = await req.arrayBuffer()
-    if (!audioBuffer || audioBuffer.byteLength < 8000) {
-      // слишком короткий / пустой звук — просто возвращаем пустой текст
+    // читаем сырые байты аудио
+    const arrayBuffer = await req.arrayBuffer()
+    const byteLength = arrayBuffer?.byteLength ?? 0
+
+    // если фрагмент совсем крошечный — считаем, что это тишина, просто ничего не распознаём
+    if (!arrayBuffer || byteLength < 2000) {
       return NextResponse.json(
-        { success: true, text: "" },
+        {
+          success: true,
+          text: "",
+        },
         { status: 200 },
       )
     }
 
-    const blob = new Blob([audioBuffer], { type: "audio/webm" })
+    const buffer = Buffer.from(arrayBuffer)
 
-    const formData = new FormData()
-    formData.append("file", blob, "audio.webm")
-    formData.append("model", "whisper-1")
-    // язык можно не указывать — Whisper сам определит;
-    // при желании можно добавить: formData.append("language", "uk");
+    // File доступен в node 18+ / next 13+ как глобальный класс
+    const file = new File([buffer], "speech.webm", { type: contentType })
 
-    const openaiRes = await fetch(
-      "https://api.openai.com/v1/audio/transcriptions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: formData,
-      },
-    )
+    // язык можем пробрасывать заголовком x-lang, но он не обязателен
+    const rawLang = (req.headers.get("x-lang") || "").toLowerCase()
+    let language: string | undefined
 
-    if (!openaiRes.ok) {
-      const errorText = await openaiRes.text()
-      console.error("OpenAI STT error:", openaiRes.status, errorText)
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Speech recognition error",
-          details: errorText,
-        },
-        { status: 500 },
-      )
-    }
+    if (rawLang.startsWith("uk")) language = "uk"
+    else if (rawLang.startsWith("ru")) language = "ru"
+    else if (rawLang.startsWith("en")) language = "en"
+    // если ничего не передано — Whisper сам детектит язык
 
-    const data: any = await openaiRes.json()
-    const text = (data.text || "").toString().trim()
+    const transcription = await openai.audio.transcriptions.create({
+      file,
+      model: "whisper-1",
+      ...(language ? { language } : {}),
+    })
+
+    const text = (transcription.text ?? "").trim()
 
     return NextResponse.json(
       {
@@ -65,11 +57,12 @@ export async function POST(req: NextRequest) {
       { status: 200 },
     )
   } catch (error) {
-    console.error("STT route fatal error:", error)
+    console.error("[/api/stt] error:", error)
+
     return NextResponse.json(
       {
         success: false,
-        error: "Unexpected server error while processing audio",
+        error: "Audio file might be corrupted or unsupported",
       },
       { status: 500 },
     )
