@@ -254,7 +254,7 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
                   className="resize-none text-sm"
                 />
 
-                <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center justify-between gap-3">
                   <p className="text-[10px] text-slate-400">
                     {t(
                       "In crisis situations, please contact local emergency services immediately.",
@@ -262,20 +262,17 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
                   </p>
                   <Button
                     type="submit"
-                    size="sm"
+                    size="icon"
                     disabled={isSending || !input.trim()}
-                    className="h-8 rounded-full bg-indigo-600 px-4 text-xs font-medium text-white shadow-sm hover:bg-indigo-700 disabled:opacity-70"
+                    className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 disabled:opacity-70"
+                    aria-label={
+                      isSending ? t("Sending") : t("Send")
+                    }
                   >
                     {isSending ? (
-                      <>
-                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                        {t("Sending")}
-                      </>
+                      <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <>
-                        {t("Send")}
-                        <Send className="ml-1 h-3 w-3" />
-                      </>
+                      <Send className="h-4 w-4" />
                     )}
                   </Button>
                 </div>
