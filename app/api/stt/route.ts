@@ -1,45 +1,57 @@
-import { NextRequest, NextResponse } from "next/server"
 import OpenAI from "openai"
+import { NextResponse } from "next/server"
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-})
-
-// важно: обычный node-runtime, не edge
 export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
 
-export async function POST(req: NextRequest) {
+function getOpenAIClient(): OpenAI | null {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) {
+    console.error("[STT] Missing OPENAI_API_KEY")
+    return null
+  }
+  return new OpenAI({ apiKey })
+}
+
+function pickFilenameByContentType(ct: string): string {
+  const v = (ct || "").toLowerCase()
+  if (v.includes("webm")) return "speech.webm"
+  if (v.includes("mp4")) return "speech.mp4"
+  if (v.includes("mpeg") || v.includes("mp3")) return "speech.mp3"
+  if (v.includes("wav")) return "speech.wav"
+  if (v.includes("ogg")) return "speech.ogg"
+  return "speech.audio"
+}
+
+function pickLanguageFromHeader(raw: string | null): "uk" | "ru" | "en" | undefined {
+  const v = (raw || "").toLowerCase()
+  if (v.startsWith("uk")) return "uk"
+  if (v.startsWith("ru")) return "ru"
+  if (v.startsWith("en")) return "en"
+  return undefined
+}
+
+export async function POST(req: Request) {
   try {
-    const contentType = req.headers.get("content-type") || "audio/webm"
+    const openai = getOpenAIClient()
+    if (!openai) {
+      return NextResponse.json({ success: false, error: "Missing OPENAI_API_KEY" }, { status: 500 })
+    }
 
-    // читаем сырые байты аудио
+    const contentType = req.headers.get("content-type") || "application/octet-stream"
     const arrayBuffer = await req.arrayBuffer()
     const byteLength = arrayBuffer?.byteLength ?? 0
 
-    // если фрагмент совсем крошечный — считаем, что это тишина, просто ничего не распознаём
+    // маленькие чанки считаем тишиной
     if (!arrayBuffer || byteLength < 2000) {
-      return NextResponse.json(
-        {
-          success: true,
-          text: "",
-        },
-        { status: 200 },
-      )
+      return NextResponse.json({ success: true, text: "" }, { status: 200 })
     }
 
     const buffer = Buffer.from(arrayBuffer)
+    const filename = pickFilenameByContentType(contentType)
+    const file = new File([buffer], filename, { type: contentType })
 
-    // File доступен в node 18+ / next 13+ как глобальный класс
-    const file = new File([buffer], "speech.webm", { type: contentType })
-
-    // язык можем пробрасывать заголовком x-lang, но он не обязателен
-    const rawLang = (req.headers.get("x-lang") || "").toLowerCase()
-    let language: string | undefined
-
-    if (rawLang.startsWith("uk")) language = "uk"
-    else if (rawLang.startsWith("ru")) language = "ru"
-    else if (rawLang.startsWith("en")) language = "en"
-    // если ничего не передано — Whisper сам детектит язык
+    const language = pickLanguageFromHeader(req.headers.get("x-lang"))
 
     const transcription = await openai.audio.transcriptions.create({
       file,
@@ -48,22 +60,11 @@ export async function POST(req: NextRequest) {
     })
 
     const text = (transcription.text ?? "").trim()
-
-    return NextResponse.json(
-      {
-        success: true,
-        text,
-      },
-      { status: 200 },
-    )
+    return NextResponse.json({ success: true, text }, { status: 200 })
   } catch (error) {
     console.error("[/api/stt] error:", error)
-
     return NextResponse.json(
-      {
-        success: false,
-        error: "Audio file might be corrupted or unsupported",
-      },
+      { success: false, error: "Audio file might be corrupted or unsupported" },
       { status: 500 },
     )
   }

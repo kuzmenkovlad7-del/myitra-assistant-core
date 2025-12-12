@@ -57,23 +57,6 @@ const VIDEO_ASSISTANT_WEBHOOK_URL =
   process.env.NEXT_PUBLIC_TURBOTA_AGENT_WEBHOOK_URL ||
   "/api/turbotaai-agent"
 
-const VIDEO_CALL_GOOGLE_TTS_CREDENTIALS: any = {}
-
-const VIDEO_CALL_VOICE_CONFIGS: any = {
-  uk: {
-    female: { languageCode: "uk-UA", name: "uk-UA-Standard-A", ssmlGender: "FEMALE" },
-    male: { languageCode: "uk-UA", name: "uk-UA-Chirp3-HD-Schedar", ssmlGender: "MALE" },
-  },
-  ru: {
-    female: { languageCode: "ru-RU", name: "ru-RU-Standard-A", ssmlGender: "FEMALE" },
-    male: { languageCode: "ru-RU", name: "ru-RU-Standard-B", ssmlGender: "MALE" },
-  },
-  en: {
-    female: { languageCode: "en-US", name: "en-US-Neural2-F", ssmlGender: "FEMALE" },
-    male: { languageCode: "en-US", name: "en-US-Neural2-D", ssmlGender: "MALE" },
-  },
-}
-
 const AI_CHARACTERS: AICharacter[] = [
   {
     id: "dr-alexander",
@@ -192,11 +175,7 @@ function diffTranscript(prev: string, full: string): string {
   return rawTokens.slice(common).join(" ").trim()
 }
 
-export default function VideoCallDialog({
-  isOpen,
-  onClose,
-  onError,
-}: VideoCallDialogProps) {
+export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallDialogProps) {
   const { t, currentLanguage } = useLanguage()
   const { user } = useAuth()
 
@@ -234,10 +213,29 @@ export default function VideoCallDialog({
   const isSttBusyRef = useRef(false)
   const lastTranscriptRef = useRef("")
 
-  
-  const ignoreSttUntilRef = useRef(0)
-const isCallActiveRef = useRef(false)
+  const isCallActiveRef = useRef(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  // анти-эхо окно (особенно для iOS Safari)
+  const ignoreSttUntilRef = useRef(0)
+  const isAiSpeakingRef = useRef(false)
+  const isMicMutedRef = useRef(false)
+
+  const setIgnoreSttWindow = (ms: number) => {
+    ignoreSttUntilRef.current = Date.now() + ms
+  }
+
+  useEffect(() => {
+    isCallActiveRef.current = isCallActive
+  }, [isCallActive])
+
+  useEffect(() => {
+    isAiSpeakingRef.current = isAiSpeaking
+  }, [isAiSpeaking])
+
+  useEffect(() => {
+    isMicMutedRef.current = isMicMuted
+  }, [isMicMuted])
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
@@ -245,10 +243,6 @@ const isCallActiveRef = useRef(false)
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [messages])
-
-  useEffect(() => {
-    isCallActiveRef.current = isCallActive
-  }, [isCallActive])
 
   const stopCurrentSpeech = () => {
     if (audioRef.current) {
@@ -277,7 +271,7 @@ const isCallActiveRef = useRef(false)
   const resumeRecorderAfterTts = () => {
     const rec = mediaRecorderRef.current
     if (!rec) return
-    if (rec.state === "paused" && isCallActiveRef.current && !isMicMuted) {
+    if (rec.state === "paused" && isCallActiveRef.current && !isMicMutedRef.current) {
       try {
         rec.resume()
       } catch {}
@@ -293,9 +287,8 @@ const isCallActiveRef = useRef(false)
     stopCurrentSpeech()
     pauseRecorderForTts()
 
-    // iOS/Safari: глушим STT во время озвучки и немного после
-    ignoreSttUntilRef.current = Date.now() + 2500
-
+    // iOS: глушим STT во время озвучки
+    setIgnoreSttWindow(2500)
     setIsAiSpeaking(true)
 
     if (selectedCharacter?.speakingVideo && speakingVideoRef.current) {
@@ -318,30 +311,31 @@ const isCallActiveRef = useRef(false)
           idleVideoRef.current.play().catch(() => {})
         } catch {}
       }
-      ignoreSttUntilRef.current = Date.now() + 1500
+
+      // чтобы не ловить хвост озвучки в STT
+      setIgnoreSttWindow(1500)
       resumeRecorderAfterTts()
     }
 
     try {
-      let usedGoogle = false
+      let played = false
+
+      // ВАЖНО: generateGoogleTTS по типам у тебя принимает 2-3 аргумента
       try {
         const audioDataUrl = await generateGoogleTTS(cleaned, locale, selectedCharacter.gender)
-
         if (audioDataUrl) {
-          usedGoogle = true
+          played = true
           await new Promise<void>((resolve) => {
             const a = new Audio(audioDataUrl)
             audioRef.current = a
-            a.setAttribute("playsinline","true");
-            a.setAttribute("webkit-playsinline","true");a.onended = () => resolve()
+            a.onended = () => resolve()
             a.onerror = () => resolve()
             a.play().catch(() => resolve())
           })
         }
       } catch {}
 
-      if (!usedGoogle) {
-        // fallback: web speech synthesis
+      if (!played) {
         if (typeof window !== "undefined" && (window as any).speechSynthesis) {
           await new Promise<void>((resolve) => {
             try {
@@ -367,7 +361,6 @@ const isCallActiveRef = useRef(false)
 
     const userMsg: ChatMessage = { id: `${Date.now()}-user`, role: "user", text: trimmed }
     setMessages((p) => [...p, userMsg])
-
     setErrorText(null)
 
     try {
@@ -411,12 +404,12 @@ const isCallActiveRef = useRef(false)
     if (isSttBusyRef.current) return
     if (!audioChunksRef.current.length) return
 
-    
-    // анти-эхо (особенно iOS Safari)
+    // анти-эхо гейт
     if (Date.now() < ignoreSttUntilRef.current) return
-    if (isAiSpeaking) return
-    if (isMicMuted) return
-const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.mimeType || "audio/webm" })
+    if (isAiSpeakingRef.current) return
+    if (isMicMutedRef.current) return
+
+    const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.mimeType || "audio/webm" })
     if (blob.size < 8000) return
 
     try {
@@ -452,11 +445,6 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
       lastTranscriptRef.current = fullText
 
       if (!delta) return
-
-      // если ассистент сейчас говорит — не отправляем (чтобы не ловить эхо)
-      if (isAiSpeaking) return
-      if (isMicMuted) return
-
       await handleUserText(delta)
     } catch (e) {
       console.error("[STT] fatal", e)
@@ -467,13 +455,10 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
 
   const startRecording = (stream: MediaStream) => {
     if (typeof MediaRecorder === "undefined") {
-      setErrorText(
-        t("Microphone recording is not supported in this browser. Please use the latest Chrome/Edge/Safari."),
-      )
+      setErrorText(t("Microphone recording is not supported in this browser. Please use the latest Chrome/Edge/Safari."))
       return false
     }
 
-    // берём только audio track (чтобы управлять записью независимо от видео)
     const audioTrack = stream.getAudioTracks()[0]
     if (!audioTrack) {
       setErrorText(t("No microphone was found on this device. Please check your hardware."))
@@ -488,11 +473,10 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
       "audio/webm",
       "audio/mp4;codecs=mp4a.40.2",
       "audio/mp4",
-      "audio/mpeg",
     ]
 
     const options: MediaRecorderOptions = {}
-    if (typeof MediaRecorder !== "undefined" && (MediaRecorder as any).isTypeSupported) {
+    if (typeof (MediaRecorder as any).isTypeSupported === "function") {
       for (const c of candidates) {
         try {
           if ((MediaRecorder as any).isTypeSupported(c)) {
@@ -521,7 +505,7 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
     }
 
     try {
-      rec.start(4000) // каждые 4 сек
+      rec.start(4000)
       return true
     } catch (e) {
       console.error(e)
@@ -535,27 +519,19 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
     setErrorText(null)
 
     try {
-      if (
-        typeof navigator === "undefined" ||
-        !navigator.mediaDevices ||
-        !navigator.mediaDevices.getUserMedia
-      ) {
-        setErrorText(
-          t("Microphone access is not supported in this browser. Please use the latest version of Chrome, Edge or Safari."),
-        )
-        setIsConnecting(false)
+      if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+        setErrorText(t("Microphone access is not supported in this browser. Please use the latest version of Chrome, Edge or Safari."))
         return
       }
 
       stopCurrentSpeech()
 
-      // запрос разрешений — строго по клику
-      const constraints: any = {
+      const constraints: MediaStreamConstraints = {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-        },
+        } as any,
         video: isCameraOff ? false : { facingMode: "user" },
       }
 
@@ -567,11 +543,7 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
       }
 
       const ok = startRecording(stream)
-      if (!ok) {
-        // если запись не стартанула — не падаем приложением
-        setIsConnecting(false)
-        return
-      }
+      if (!ok) return
 
       setIsCallActive(true)
       isCallActiveRef.current = true
@@ -588,13 +560,9 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
       const name = error?.name
 
       if (name === "NotAllowedError" || name === "PermissionDeniedError") {
-        setErrorText(
-          t("Microphone is blocked for this site in the browser. Please allow access in the address bar and reload the page."),
-        )
+        setErrorText(t("Microphone is blocked for this site in the browser. Please allow access in the address bar and reload the page."))
       } else {
-        setErrorText(
-          t("Could not start microphone/camera. Check permissions in the browser and system settings, then try again."),
-        )
+        setErrorText(t("Could not start microphone/camera. Check permissions in the browser and system settings, then try again."))
       }
 
       setIsCallActive(false)
@@ -661,13 +629,13 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
         try { rec.pause() } catch {}
       }
     } else {
-      if (rec.state === "paused" && isCallActiveRef.current && !isAiSpeaking) {
+      if (rec.state === "paused" && isCallActiveRef.current && !isAiSpeakingRef.current) {
         try { rec.resume() } catch {}
       }
     }
   }
 
-  const toggleCamera = async () => {
+  const toggleCamera = () => {
     const next = !isCameraOff
     setIsCameraOff(next)
 
@@ -675,15 +643,11 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
     if (!stream) return
 
     const videoTrack = stream.getVideoTracks()[0]
-    if (videoTrack) {
-      videoTrack.enabled = !next
-    }
+    if (videoTrack) videoTrack.enabled = !next
 
     if (next) {
-      // выключаем превью
       if (userVideoRef.current) userVideoRef.current.srcObject = null
     } else {
-      // включаем превью
       if (userVideoRef.current) userVideoRef.current.srcObject = stream
     }
   }
@@ -698,9 +662,7 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
   }
 
   useEffect(() => {
-    if (!isOpen) {
-      endCall()
-    }
+    if (!isOpen) endCall()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
@@ -722,9 +684,12 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
         }
       }}
     >
-      <DialogContent className="max-w-4xl border-none bg-transparent p-0">
-        <div className="overflow-hidden rounded-3xl bg-white shadow-xl shadow-slate-900/10">
-          <DialogHeader className="border-b border-indigo-100 bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 px-6 pt-5 pb-4 text-white">
+      <DialogContent
+        hideClose
+        className="w-[calc(100vw-1rem)] max-w-5xl border-none bg-transparent p-0"
+      >
+        <div className="flex max-h-[90dvh] flex-col overflow-hidden rounded-3xl bg-white shadow-xl shadow-slate-900/10">
+          <DialogHeader className="shrink-0 border-b border-indigo-100 bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 px-6 pt-5 pb-4 text-white">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
@@ -752,10 +717,11 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
             </div>
           </DialogHeader>
 
-          <div className="flex h-[560px] flex-col md:h-[620px]">
+          {/* BODY */}
+          <div className="flex min-h-0 flex-1 flex-col">
             {!isCallActive ? (
               <>
-                <div className="px-6 pt-5 pb-3">
+                <div className="shrink-0 px-6 pt-5 pb-3">
                   <h3 className="text-2xl font-semibold text-slate-900">{t("Choose Your AI Psychologist")}</h3>
                   <p className="mt-1 text-sm text-slate-600">
                     {t("Select the AI psychologist you'd like to speak with during your video call.")}
@@ -770,7 +736,8 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
                   </div>
                 </div>
 
-                <div className="flex-1 px-6 pb-4">
+                {/* SCROLLABLE LIST */}
+                <div className="min-h-0 flex-1 px-6 pb-4">
                   <ScrollArea className="h-full pr-2">
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                       {AI_CHARACTERS.map((c) => {
@@ -828,7 +795,8 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
                   </ScrollArea>
                 </div>
 
-                <div className="border-t border-slate-100 px-6 py-4">
+                {/* FIXED FOOTER BUTTON */}
+                <div className="shrink-0 border-t border-slate-100 px-6 py-4">
                   {errorText && (
                     <div className="mb-3 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
                       {errorText}
@@ -856,8 +824,8 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
               </>
             ) : (
               <>
-                <div className="flex-1 px-6 pt-4 pb-2">
-                  <div className="grid h-full grid-cols-1 gap-3 md:grid-cols-5">
+                <div className="min-h-0 flex-1 px-6 pt-4 pb-2">
+                  <div className="grid h-full min-h-0 grid-cols-1 gap-3 md:grid-cols-5">
                     {/* video */}
                     <div className="relative overflow-hidden rounded-2xl bg-slate-900 md:col-span-3">
                       {selectedCharacter.idleVideo && (
@@ -892,13 +860,7 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
 
                       {!isCameraOff && (
                         <div className="absolute bottom-3 right-3 h-24 w-36 overflow-hidden rounded-xl bg-black shadow-lg">
-                          <video
-                            ref={userVideoRef}
-                            autoPlay
-                            muted
-                            playsInline
-                            className="h-full w-full object-cover"
-                          />
+                          <video ref={userVideoRef} autoPlay muted playsInline className="h-full w-full object-cover" />
                         </div>
                       )}
 
@@ -909,19 +871,19 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
 
                     {/* chat */}
                     <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white md:col-span-2">
-                      <div className="border-b border-slate-100 px-4 py-3">
+                      <div className="shrink-0 border-b border-slate-100 px-4 py-3">
                         <div className="flex items-center gap-2">
                           <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
                             <Brain className="h-4 w-4" />
                           </span>
                           <div className="min-w-0">
-                            <div className="text-sm font-semibold text-slate-900 truncate">{selectedCharacter.name}</div>
-                            <div className="text-xs text-slate-500 truncate">{statusText}</div>
+                            <div className="truncate text-sm font-semibold text-slate-900">{selectedCharacter.name}</div>
+                            <div className="truncate text-xs text-slate-500">{statusText}</div>
                           </div>
                         </div>
                       </div>
 
-                      <ScrollArea className="flex-1 px-4 py-3">
+                      <ScrollArea className="min-h-0 flex-1 px-4 py-3">
                         <div ref={scrollRef} className="space-y-3 pr-2">
                           {messages.length === 0 && (
                             <div className="rounded-2xl bg-indigo-50/70 px-3 py-3 text-sm text-slate-700">
@@ -958,8 +920,8 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
                   </div>
                 </div>
 
-                {/* controls */}
-                <div className="border-t border-slate-100 px-6 py-4">
+                {/* controls (fixed bottom) */}
+                <div className="shrink-0 border-t border-slate-100 px-6 py-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 text-xs text-slate-500">
                       <Sparkles className="h-4 w-4" />
@@ -973,9 +935,7 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
                         onClick={toggleMic}
                         className={[
                           "h-11 w-11 rounded-full border",
-                          isMicMuted
-                            ? "border-rose-200 bg-rose-50 text-rose-600"
-                            : "border-emerald-200 bg-emerald-50 text-emerald-700",
+                          isMicMuted ? "border-rose-200 bg-rose-50 text-rose-600" : "border-emerald-200 bg-emerald-50 text-emerald-700",
                         ].join(" ")}
                       >
                         {isMicMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
@@ -984,12 +944,10 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
                       <Button
                         type="button"
                         size="icon"
-                        onClick={() => void toggleCamera()}
+                        onClick={toggleCamera}
                         className={[
                           "h-11 w-11 rounded-full border",
-                          isCameraOff
-                            ? "border-rose-200 bg-rose-50 text-rose-600"
-                            : "border-slate-200 bg-slate-50 text-slate-700",
+                          isCameraOff ? "border-rose-200 bg-rose-50 text-rose-600" : "border-slate-200 bg-slate-50 text-slate-700",
                         ].join(" ")}
                       >
                         {isCameraOff ? <CameraOff className="h-5 w-5" /> : <Camera className="h-5 w-5" />}
@@ -1001,9 +959,7 @@ const blob = new Blob(audioChunksRef.current, { type: mediaRecorderRef.current?.
                         onClick={toggleSound}
                         className={[
                           "h-11 w-11 rounded-full border",
-                          isSoundEnabled
-                            ? "border-slate-200 bg-slate-50 text-slate-700"
-                            : "border-rose-200 bg-rose-50 text-rose-600",
+                          isSoundEnabled ? "border-slate-200 bg-slate-50 text-slate-700" : "border-rose-200 bg-rose-50 text-rose-600",
                         ].join(" ")}
                       >
                         {isSoundEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
