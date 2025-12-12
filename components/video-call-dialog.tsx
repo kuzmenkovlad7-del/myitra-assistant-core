@@ -24,6 +24,7 @@ import {
   getNativeVoicePreferences,
 } from "@/lib/i18n/translation-utils"
 import { shouldUseGoogleTTS, generateGoogleTTS } from "@/lib/google-tts"
+import { APP_NAME } from "@/lib/app-config"
 
 const VIDEO_ASSISTANT_WEBHOOK_URL =
   process.env.NEXT_PUBLIC_TURBOTA_AI_VIDEO_ASSISTANT_WEBHOOK_URL ||
@@ -779,6 +780,7 @@ export default function VideoCallDialog({
     recognition.onerror = (event: any) => {
       console.log("Speech recognition error:", event)
 
+      // 1) Пользователь явно заблокировал микрофон для сайта
       if (event.error === "not-allowed") {
         setSpeechError(
           t(
@@ -791,6 +793,7 @@ export default function VideoCallDialog({
         return
       }
 
+      // 2) Браузер / ОС не разрешает сервис распознавания речи
       if (event.error === "service-not-allowed") {
         setSpeechError(
           t(
@@ -803,16 +806,20 @@ export default function VideoCallDialog({
         return
       }
 
+      // 3) Временная проблема с аудиоканалом (audio-capture)
       if (event.error === "audio-capture") {
         setSpeechError(t("Error while listening. Please try again."))
+        // Не глушим микрофон навсегда — даём шанс попробовать ещё раз
         setActivityStatus("listening")
         return
       }
 
+      // 4) Не услышали речи — просто молча игнорим, onend перезапустит
       if (event.error === "no-speech") {
         return
       }
 
+      // 5) Запасной вариант на всё остальное
       setSpeechError(t("Error while listening. Please try again."))
       setActivityStatus("listening")
     }
@@ -1013,7 +1020,7 @@ export default function VideoCallDialog({
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl flex flex-col h-[100dvh] sm:h-[90vh] max-h-none sm:max-h-[860px] overflow-hidden">
         {/* HEADER */}
-        <div className="p-3 sm:p-4 border-b flex items-center justify-between rounded-t-xl relative bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 text-white">
+        <div className="p-3 sm:p-4 border-b flex justify-between items-center rounded-t-xl relative bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 text-white">
           <div className="flex flex-col flex-1 min-w-0 pr-2">
             <h3 className="font-semibold text-base sm:text-lg truncate flex items-center gap-2">
               <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10">
