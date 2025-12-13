@@ -19,12 +19,10 @@ async function readAudioFromRequest(req: Request): Promise<{
 }> {
   const ct = (req.headers.get("content-type") || "").toLowerCase()
 
-  // multipart/form-data
   if (ct.includes("multipart/form-data")) {
     const form = await req.formData()
     const file = (form.get("file") || form.get("audio") || form.get("blob")) as File | null
     const lang = normalizeLang(String(form.get("language") || form.get("lang") || "")) || undefined
-
     if (!file) throw new Error("No audio file in form-data (expected field: file)")
 
     const ab = await file.arrayBuffer()
@@ -36,7 +34,6 @@ async function readAudioFromRequest(req: Request): Promise<{
     }
   }
 
-  // JSON base64
   if (ct.includes("application/json")) {
     const j: any = await req.json()
     let b64: string = j?.audioBase64 || j?.audio || j?.data || j?.base64 || ""
@@ -52,20 +49,12 @@ async function readAudioFromRequest(req: Request): Promise<{
     }
   }
 
-  // raw body (audio/*)
   const ab = await req.arrayBuffer()
   const mime = (ct.split(";")[0] || "application/octet-stream").trim()
-
-  return {
-    bytes: new Uint8Array(ab),
-    filename: "speech.wav",
-    mime,
-    lang: undefined,
-  }
+  return { bytes: new Uint8Array(ab), filename: "speech.wav", mime, lang: undefined }
 }
 
 function toArrayBufferStrict(u8: Uint8Array): ArrayBuffer {
-  // TypedArray.slice() делает копию и гарантированно даёт ArrayBuffer (не SharedArrayBuffer)
   const copy = u8.slice()
   return copy.buffer as ArrayBuffer
 }
@@ -74,7 +63,10 @@ export async function POST(req: Request) {
   try {
     const OPENAI_API_KEY = process.env.OPENAI_API_KEY
     if (!OPENAI_API_KEY) {
-      return NextResponse.json({ error: "OPENAI_API_KEY is not set on server" }, { status: 500 })
+      return NextResponse.json(
+        { success: false, error: "OPENAI_API_KEY is not set on server" },
+        { status: 500 },
+      )
     }
 
     const { bytes, filename, mime, lang } = await readAudioFromRequest(req)
@@ -83,7 +75,6 @@ export async function POST(req: Request) {
     fd.append("model", "whisper-1")
     if (lang) fd.append("language", lang)
 
-    // В Blob кладём строго ArrayBuffer (копию), чтобы TS/Next build не ругался на ArrayBufferLike/SharedArrayBuffer
     const ab = toArrayBufferStrict(bytes)
     const blob = new Blob([ab], { type: mime || "audio/wav" })
     fd.append("file", blob, filename || "speech.wav")
@@ -97,15 +88,18 @@ export async function POST(req: Request) {
     if (!r.ok) {
       const errText = await r.text().catch(() => "")
       return NextResponse.json(
-        { error: "STT failed", details: errText || `HTTP ${r.status}` },
+        { success: false, error: "STT failed", details: errText || `HTTP ${r.status}` },
         { status: 500 },
       )
     }
 
     const data: any = await r.json()
     const text = String(data?.text || "").trim()
-    return NextResponse.json({ text })
+    return NextResponse.json({ success: true, text })
   } catch (e: any) {
-    return NextResponse.json({ error: "STT error", details: e?.message || String(e) }, { status: 500 })
+    return NextResponse.json(
+      { success: false, error: "STT error", details: e?.message || String(e) },
+      { status: 500 },
+    )
   }
 }

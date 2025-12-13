@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Send, Loader2, Sparkles } from "lucide-react"
+import { Send, Loader2, Sparkles, X } from "lucide-react"
 
 import {
   Dialog,
@@ -147,14 +147,10 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
         // строка
       }
 
-      console.log("Chat raw response:", data)
-
       let answer = extractAnswer(data)
 
       if (!answer) {
-        answer = t(
-          "I'm sorry, I couldn't process your message. Please try again.",
-        )
+        answer = t("I'm sorry, I couldn't process your message. Please try again.")
       }
 
       const assistantMessage: ChatMessage = {
@@ -166,11 +162,7 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
       setMessages((prev) => [...prev, assistantMessage])
     } catch (err) {
       console.error("Chat error:", err)
-      setError(
-        t(
-          "AI assistant is temporarily unavailable. Please try again a bit later.",
-        ),
-      )
+      setError(t("AI assistant is temporarily unavailable. Please try again a bit later."))
     } finally {
       setIsSending(false)
     }
@@ -183,10 +175,10 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-xl border-none bg-transparent p-0">
+      <DialogContent className="max-w-xl border-none bg-transparent p-0 [&>button]:hidden">
         <div className="overflow-hidden rounded-3xl bg-white shadow-xl shadow-slate-900/10">
           <DialogHeader className="border-b border-indigo-100 bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 px-6 pt-5 pb-4 text-white">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-start justify-between gap-3">
               <div>
                 <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
                   <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10">
@@ -195,11 +187,20 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
                   {t("Chat with AI-psychologist")}
                 </DialogTitle>
                 <DialogDescription className="mt-1 text-xs text-indigo-100">
-                  {t(
-                    "Describe what is happening in your own words. The assistant will answer in a few short, structured messages.",
-                  )}
+                  {t("Describe what is happening in your own words. The assistant will answer in a few short, structured messages.")}
                 </DialogDescription>
               </div>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={onClose}
+                className="h-9 w-9 rounded-full bg-white/10 text-white hover:bg-white/20"
+                aria-label={t("Close")}
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
           </DialogHeader>
 
@@ -208,13 +209,9 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
               <div ref={scrollRef} className="max-h-full space-y-3 pr-1">
                 {messages.length === 0 && (
                   <div className="rounded-2xl bg-indigo-50/70 px-3 py-3 text-xs text-slate-700">
-                    <p className="font-medium text-slate-900">
-                      {t("How to start")}
-                    </p>
+                    <p className="font-medium text-slate-900">{t("How to start")}</p>
                     <p className="mt-1">
-                      {t(
-                        "You can start with one sentence: for example, 'I feel anxious and can't sleep', 'I can't concentrate', or 'I don't know what to do in a relationship'.",
-                      )}
+                      {t("You can start with one sentence: for example, 'I feel anxious and can't sleep', 'I can't concentrate', or 'I don't know what to do in a relationship'.")}
                     </p>
                   </div>
                 )}
@@ -222,9 +219,7 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
                 {messages.map((msg) => (
                   <div
                     key={msg.id}
-                    className={`flex ${
-                      msg.role === "user" ? "justify-end" : "justify-start"
-                    }`}
+                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
                   >
                     <div
                       className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 text-xs md:text-sm ${
@@ -240,9 +235,7 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
               </div>
             </ScrollArea>
 
-            {error && (
-              <div className="px-5 pb-1 text-xs text-red-600">{error}</div>
-            )}
+            {error && <div className="px-5 pb-1 text-xs text-red-600">{error}</div>}
 
             <form onSubmit={handleSubmit} className="border-t border-slate-100">
               <div className="space-y-2 px-5 py-3">
@@ -256,24 +249,16 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
 
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-[10px] text-slate-400">
-                    {t(
-                      "In crisis situations, please contact local emergency services immediately.",
-                    )}
+                    {t("In crisis situations, please contact local emergency services immediately.")}
                   </p>
                   <Button
                     type="submit"
                     size="icon"
                     disabled={isSending || !input.trim()}
                     className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 disabled:opacity-70"
-                    aria-label={
-                      isSending ? t("Sending") : t("Send")
-                    }
+                    aria-label={isSending ? t("Sending") : t("Send")}
                   >
-                    {isSending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
-                    )}
+                    {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   </Button>
                 </div>
               </div>

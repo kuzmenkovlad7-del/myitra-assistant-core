@@ -17,6 +17,7 @@ import {
   MicOff,
   Loader2,
   Sparkles,
+  X,
 } from "lucide-react"
 import { useLanguage } from "@/lib/i18n/language-context"
 import { useAuth } from "@/lib/auth/auth-context"
@@ -672,10 +673,24 @@ export default function VoiceCallDialog({
         }
       }}
     >
-      <DialogContent className="max-w-xl border-none bg-transparent p-0">
+      <DialogContent className="max-w-xl border-none bg-transparent p-0 [&>button]:hidden">
         <div className="overflow-hidden rounded-3xl bg-white shadow-xl shadow-slate-900/10">
           <DialogHeader className="border-b border-indigo-100 bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 px-6 pt-5 pb-4 text-white">
             <div className="flex items-center justify-between gap-3">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  endCall()
+                  onClose()
+                }}
+                className="h-9 w-9 rounded-full bg-white/10 text-white hover:bg-white/20"
+                aria-label={t("Close")}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+
               <div>
                 <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
                   <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10">
@@ -758,6 +773,20 @@ export default function VoiceCallDialog({
 
             <div className="flex flex-col gap-2 border-t border-slate-100 px-5 py-3">
               <div className="flex items-center justify-between gap-3">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  endCall()
+                  onClose()
+                }}
+                className="h-9 w-9 rounded-full bg-white/10 text-white hover:bg-white/20"
+                aria-label={t("Close")}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+
                 <div className="flex items-center gap-2 text-[11px] text-slate-500">
                   <Sparkles className="h-3 w-3" />
                   {statusText}
