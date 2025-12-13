@@ -11,15 +11,15 @@ function normalizeLang(input?: string) {
   return undefined
 }
 
-function filenameForMime(mime: string) {
-  const m = String(mime || "").toLowerCase()
+function pickFilenameByMime(mime: string) {
+  const m = (mime || "").toLowerCase()
   if (m.includes("webm")) return "speech.webm"
   if (m.includes("mp4")) return "speech.mp4"
-  if (m.includes("mpeg") || m.includes("mp3")) return "speech.mp3"
+  if (m.includes("mpeg") || m.includes("mp3") || m.includes("mpga")) return "speech.mp3"
   if (m.includes("wav")) return "speech.wav"
-  if (m.includes("ogg")) return "speech.ogg"
-  if (m.includes("aac")) return "speech.aac"
-  return "speech.bin"
+  if (m.includes("ogg") || m.includes("oga")) return "speech.ogg"
+  if (m.includes("m4a")) return "speech.m4a"
+  return "speech.webm"
 }
 
 async function readAudioFromRequest(req: Request): Promise<{
@@ -28,23 +28,27 @@ async function readAudioFromRequest(req: Request): Promise<{
   mime: string
   lang?: string
 }> {
-  const ct = (req.headers.get("content-type") || "").toLowerCase()
+  const ctRaw = req.headers.get("content-type") || ""
+  const ct = ctRaw.toLowerCase()
 
+  // multipart/form-data
   if (ct.includes("multipart/form-data")) {
     const form = await req.formData()
     const file = (form.get("file") || form.get("audio") || form.get("blob")) as File | null
     const lang = normalizeLang(String(form.get("language") || form.get("lang") || "")) || undefined
-    if (!file) throw new Error("No audio file in form-data (expected field: file)")
+    if (!file) throw new Error("No audio file in form-data (expected field: file/audio/blob)")
 
     const ab = await file.arrayBuffer()
+    const mime = file.type || "application/octet-stream"
     return {
       bytes: new Uint8Array(ab),
-      filename: file.name || filenameForMime(file.type || "audio/webm"),
-      mime: file.type || "application/octet-stream",
+      filename: file.name || pickFilenameByMime(mime),
+      mime,
       lang,
     }
   }
 
+  // JSON base64
   if (ct.includes("application/json")) {
     const j: any = await req.json()
     let b64: string = j?.audioBase64 || j?.audio || j?.data || j?.base64 || ""
@@ -52,19 +56,25 @@ async function readAudioFromRequest(req: Request): Promise<{
 
     b64 = b64.replace(/^data:audio\/[a-z0-9.+-]+;base64,/i, "")
     const buf = Buffer.from(b64, "base64")
-    const mime = j?.mime || "audio/wav"
+
+    const mime = String(j?.mime || "audio/webm")
     return {
       bytes: new Uint8Array(buf),
-      filename: j?.filename || filenameForMime(mime),
+      filename: String(j?.filename || pickFilenameByMime(mime)),
       mime,
       lang: normalizeLang(j?.language || j?.lang) || undefined,
     }
   }
 
-  // raw body (например audio/webm)
+  // raw body
   const ab = await req.arrayBuffer()
-  const mime = (ct.split(";")[0] || "application/octet-stream").trim()
-  return { bytes: new Uint8Array(ab), filename: filenameForMime(mime), mime, lang: undefined }
+  const mime = (ctRaw.split(";")[0] || "application/octet-stream").trim()
+  return {
+    bytes: new Uint8Array(ab),
+    filename: pickFilenameByMime(mime),
+    mime,
+    lang: undefined,
+  }
 }
 
 function toArrayBufferStrict(u8: Uint8Array): ArrayBuffer {
@@ -76,7 +86,10 @@ export async function POST(req: Request) {
   try {
     const OPENAI_API_KEY = process.env.OPENAI_API_KEY
     if (!OPENAI_API_KEY) {
-      return NextResponse.json({ success: false, error: "OPENAI_API_KEY is not set on server" }, { status: 500 })
+      return NextResponse.json(
+        { success: false, error: "OPENAI_API_KEY is not set on server" },
+        { status: 500 },
+      )
     }
 
     const { bytes, filename, mime, lang } = await readAudioFromRequest(req)
@@ -85,13 +98,13 @@ export async function POST(req: Request) {
     fd.append("model", "whisper-1")
     if (lang) fd.append("language", lang)
 
-    // меньше “галлюцинаций”
-    fd.append("temperature", "0")
-    fd.append("prompt", "Transcribe only the spoken human speech. If there is silence, return empty text.")
-
     const ab = toArrayBufferStrict(bytes)
-    const blob = new Blob([ab], { type: mime || "audio/wav" })
-    fd.append("file", blob, filename || filenameForMime(mime || "audio/webm"))
+
+    // важно: указываем базовый тип без codecs параметров
+    const safeMime = (mime || "application/octet-stream").split(";")[0].trim() || "application/octet-stream"
+    const blob = new Blob([ab], { type: safeMime })
+
+    fd.append("file", blob, filename || "speech.webm")
 
     const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
@@ -111,6 +124,9 @@ export async function POST(req: Request) {
     const text = String(data?.text || "").trim()
     return NextResponse.json({ success: true, text })
   } catch (e: any) {
-    return NextResponse.json({ success: false, error: "STT error", details: e?.message || String(e) }, { status: 500 })
+    return NextResponse.json(
+      { success: false, error: "STT error", details: e?.message || String(e) },
+      { status: 500 },
+    )
   }
 }
