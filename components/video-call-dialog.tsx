@@ -207,18 +207,42 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
     isMicMutedRef.current = isMicMuted
   }, [isMicMuted])
 
-  // voices preload
+  // voices preload (Safari: speechSynthesis may not implement addEventListener)
   useEffect(() => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return
+    if (typeof window === "undefined") return
+    const synth: any = (window as any).speechSynthesis
+    if (!synth) return
+
     const load = () => {
       try {
-        window.speechSynthesis.getVoices()
+        // прогрев списка голосов
+        if (typeof synth.getVoices === "function") synth.getVoices()
       } catch {}
     }
+
     load()
-    window.speechSynthesis.addEventListener("voiceschanged", load)
+
+    // Chrome/Android: EventTarget
+    if (typeof synth.addEventListener === "function" && typeof synth.removeEventListener === "function") {
+      try {
+        synth.addEventListener("voiceschanged", load)
+      } catch {}
+      return () => {
+        try {
+          synth.removeEventListener("voiceschanged", load)
+        } catch {}
+      }
+    }
+
+    // Safari fallback: onvoiceschanged
+    const prev = synth.onvoiceschanged
+    try {
+      synth.onvoiceschanged = load
+    } catch {}
     return () => {
-      window.speechSynthesis?.removeEventListener("voiceschanged", load)
+      try {
+        if (synth.onvoiceschanged === load) synth.onvoiceschanged = prev ?? null
+      } catch {}
     }
   }, [])
 
