@@ -185,9 +185,7 @@ export default function Home() {
       <VideoCallDialog
         isOpen={isVideoCallOpen}
         onClose={() => setIsVideoCallOpen(false)}
-        // обязателен по типу, но внутри компонента не используется
-        openAiApiKey=""
-        onError={(error) => {
+onError={(error) => {
           console.error("Video call error:", error)
           alert(
             t("There was an issue with the video call. Please try again."),
