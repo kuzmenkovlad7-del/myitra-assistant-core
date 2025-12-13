@@ -465,10 +465,9 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
     if (sttBusyRef.current) return
     if (!sttQueueRef.current.length) return
 
-    const parts = sttQueueRef.current.slice()
-    sttQueueRef.current = []
-
-    const blob = new Blob(parts, { type: parts[0]?.type || "audio/webm" })
+    // берём ровно ОДИН валидный chunk (не склеиваем несколько файлов в один Blob)
+      const blob = sttQueueRef.current.shift()
+      if (!blob) return
     if (blob.size < 12000) return
 
     try {
@@ -571,20 +570,32 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
     if (!mr) return
     if (mr.state === "recording") {
       try {
-        mr.pause()
-        dlog("[Recorder] pause()")
-      } catch {}
+        sttQueueRef.current = []
+        try {
+          mr.stop()
+          dlog("[Recorder] stop() during TTS")
+        } catch (e) {
+          dlog("[Recorder] stop() failed", (e instanceof Error) ? e.message : String(e))
+        }
+} catch {}
     }
   }
 
   function resumeMicRecorder() {
     const mr = mediaRecorderRef.current
     if (!mr) return
-    if (mr.state === "paused") {
+    if (mr.state === "inactive") {
       try {
-        mr.resume()
-        dlog("[Recorder] resume()")
-      } catch {}
+        sttQueueRef.current = []
+        setTimeout(() => {
+          try {
+            mr.start(3500)
+            dlog("[Recorder] start() after TTS")
+          } catch (e) {
+            dlog("[Recorder] start() failed", (e instanceof Error) ? e.message : String(e))
+          }
+        }, 250)
+} catch {}
     }
   }
 

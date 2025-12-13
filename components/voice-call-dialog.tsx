@@ -215,11 +215,10 @@ export default function VoiceCallDialog({ isOpen, onClose, onError, userEmail, w
     }
     if (!sttQueueRef.current.length) return
 
-    // забираем очередь и очищаем (чтобы не было “накопления с начала звонка”)
-    const parts = sttQueueRef.current.slice()
-    sttQueueRef.current = []
-
-    const blob = new Blob(parts, { type: parts[0]?.type || "audio/webm" })
+    // берём ровно ОДИН валидный chunk (MediaRecorder отдаёт самостоятельный webm/mp4 файл).
+    // Нельзя склеивать несколько чанков в один Blob — получится битый контейнер и Whisper вернёт "Invalid file format".
+    const blob = sttQueueRef.current.shift()
+    if (!blob) return
     if (blob.size < 12000) {
       dlog("[STT] skip: too small", blob.size)
       return
@@ -286,8 +285,9 @@ export default function VoiceCallDialog({ isOpen, onClose, onError, userEmail, w
       const rec = mediaRecorderRef.current
       if (rec && rec.state === "recording") {
         try {
-          rec.pause()
-          dlog("[Recorder] pause() during TTS")
+          sttQueueRef.current = []
+            rec.stop()
+            dlog("[Recorder] stop() during TTS")
         } catch {}
       }
     }
@@ -297,10 +297,17 @@ export default function VoiceCallDialog({ isOpen, onClose, onError, userEmail, w
       setIsAiSpeaking(false)
 
       const rec = mediaRecorderRef.current
-      if (rec && rec.state === "paused" && isCallActiveRef.current && !isMicMuted) {
+      if (rec && rec.state === "inactive" && isCallActiveRef.current && !isMicMuted) {
         try {
-          rec.resume()
-          dlog("[Recorder] resume() after TTS")
+          sttQueueRef.current = []
+            setTimeout(() => {
+              try {
+                rec.start(3500)
+                dlog("[Recorder] start() after TTS")
+              } catch (e) {
+                dlog("[Recorder] start() failed", (e instanceof Error) ? e.message : String(e))
+              }
+            }, 250)
         } catch {}
       }
     }
@@ -459,6 +466,8 @@ export default function VoiceCallDialog({ isOpen, onClose, onError, userEmail, w
         if (!isCallActiveRef.current) return
         if (isAiSpeakingRef.current) return
         if (isMicMuted) return
+        if (Date.now() < suppressUntilRef.current) return
+        if (isSttBusyRef.current) { dlog("[STT] drop: busy"); return }
 
         if (event.data && event.data.size > 0) {
           sttQueueRef.current.push(event.data)
@@ -554,7 +563,7 @@ export default function VoiceCallDialog({ isOpen, onClose, onError, userEmail, w
         } catch {}
       }
     } else {
-      if (rec.state === "paused" && isCallActiveRef.current && !isAiSpeakingRef.current) {
+      if (rec.state === "inactive" && isCallActiveRef.current && !isAiSpeakingRef.current) {
         try {
           rec.resume()
           dlog("[CALL] mic unmuted -> resume()")
