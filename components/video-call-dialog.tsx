@@ -100,7 +100,7 @@ declare global {
 interface VideoCallDialogProps {
   isOpen: boolean
   onClose: () => void
-  openAiApiKey: string
+  openAiApiKey?: string
   onError?: (error: Error) => void
 }
 
@@ -143,7 +143,7 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
 
   const activeLanguage = currentLanguage || ({ code: "en", name: "English", flag: "🇺🇸" } as any)
   const languageDisplayName =
-    activeLanguage.name ||
+    ((activeLanguage as any).name ?? ((activeLanguage as any).label ?? ((activeLanguage as any).nativeName))) ||
     (activeLanguage.code === "uk" ? "Ukrainian" : activeLanguage.code === "ru" ? "Russian" : "English")
 
   const currentLocale = getLocaleForLanguage(activeLanguage.code)
@@ -194,7 +194,7 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
 
   const supportsMediaRecorder = useMemo(() => {
     if (typeof window === "undefined") return false
-    return !!(navigator.mediaDevices?.getUserMedia && (window as any).MediaRecorder)
+    return !!(navigator.mediaDevices && (window as any).MediaRecorder)
   }, [])
 
   const hasEnhancedVideo = !!selectedCharacter?.idleVideo && !!selectedCharacter?.speakingVideo
@@ -291,10 +291,10 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
     currentUtteranceRef.current = null
   }
 
-  function getRefinedVoiceForLanguage(langCode: string, preferredGender: "female" | "male" = "female") {
+  function getRefinedVoiceForLanguage(langCode: string, preferredGender: "female" | "male" = "female"): SpeechSynthesisVoice | null {
     if (typeof window === "undefined" || !window.speechSynthesis) return null
 
-    const cacheKey = `${langCode}-${preferredGender}-${selectedCharacter.id}`
+    const cacheKey = `${langCode}-${preferredGender}-${selectedCharacter?.id ?? "none"}`
     const cache = voiceCacheRef.current
     if (cache.has(cacheKey)) return cache.get(cacheKey) || null
 
