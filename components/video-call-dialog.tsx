@@ -196,6 +196,8 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
   const [debugEnabled, setDebugEnabled] = useState(false)
   const [debugLines, setDebugLines] = useState<string[]>([])
   const debugEnabledRef = useRef(false)
+  const suppressSttRef = useRef(false)
+
 
   // video/audio refs
   const userVideoRef = useRef<HTMLVideoElement | null>(null)
@@ -723,12 +725,15 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
 
     const cleaned = cleanResponseText(text)
     if (!cleaned) return
+try { setIsListening(false) } catch {}
+    try { setInterimTranscript("") } catch {}
 
-    stopCurrentSpeech()
+stopCurrentSpeech()
 
     // ВАЖНО: глушим микрофон пока ассистент говорит (иначе ловим эхо)
     isAiSpeakingRef.current = true
     setIsAiSpeaking(true)
+    suppressSttRef.current = true
     setActivityStatus("speaking")
     suppressUntilRef.current = Date.now() + 900
     pauseMicRecorder()
@@ -744,6 +749,7 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
 
     const finish = () => {
       setIsAiSpeaking(false)
+      suppressSttRef.current = false
       isAiSpeakingRef.current = false
 
       if (hasEnhancedVideo && speakingVideoRef.current) {
@@ -763,7 +769,7 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
         setActivityStatus("listening")
         resumeMicRecorder()
       }
-    }
+}
 
     try {
       if (shouldUseGoogleTTS(activeLanguage.code)) {
@@ -896,6 +902,7 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
     stopCurrentSpeech()
 
     setIsAiSpeaking(false)
+    suppressSttRef.current = false
     isAiSpeakingRef.current = false
     setActivityStatus("listening")
     setInterimTranscript("")
@@ -972,6 +979,7 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
     if (!next) {
       stopCurrentSpeech()
       setIsAiSpeaking(false)
+      suppressSttRef.current = false
       isAiSpeakingRef.current = false
     }
   }

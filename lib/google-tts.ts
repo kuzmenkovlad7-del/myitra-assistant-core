@@ -38,21 +38,21 @@ export function normalizeGender(gender?: string): TTSGender {
 
 /**
  * ОДНА ПАРА ГОЛОСОВ ДЛЯ ВСЕХ ЯЗЫКОВ:
- *   MALE   → onyx  (самый низкий / «мужской»)
- *   FEMALE → shimmer (самый «женский»)
+ *   MALE   → verse
+ *   FEMALE → alloy
  */
 const VOICE_MAP: Record<string, { MALE: string; FEMALE: string }> = {
   "en-US": {
-    MALE: "onyx",
-    FEMALE: "shimmer",
+    MALE: "verse",
+    FEMALE: "alloy",
   },
   "ru-RU": {
-    MALE: "onyx",
-    FEMALE: "shimmer",
+    MALE: "verse",
+    FEMALE: "alloy",
   },
   "uk-UA": {
-    MALE: "onyx",
-    FEMALE: "shimmer",
+    MALE: "verse",
+    FEMALE: "alloy",
   },
 }
 
@@ -72,7 +72,7 @@ export function selectOpenAIVoice(
   }
 
   // запасной вариант — базовая пара
-  return g === "MALE" ? "onyx" : "shimmer"
+  return g === "MALE" ? (process.env.OPENAI_TTS_VOICE_MALE || "verse") : (process.env.OPENAI_TTS_VOICE_FEMALE || "alloy")
 }
 
 /**

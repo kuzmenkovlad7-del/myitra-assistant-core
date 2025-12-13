@@ -1,69 +1,68 @@
+import { NextRequest, NextResponse } from "next/server"
 import OpenAI from "openai"
-import { NextResponse } from "next/server"
+import {
+  OPENAI_TTS_MODEL,
+  normalizeLanguage,
+  normalizeGender,
+  selectOpenAIVoice,
+} from "@/lib/google-tts"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-type TtsBody = {
-  text?: unknown
-  query?: unknown
-  language?: unknown
-  gender?: unknown
-}
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+})
 
-function getOpenAIClient(): OpenAI | null {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) return null
-  return new OpenAI({ apiKey })
-}
-
-function pickModel(): string {
-  return process.env.OPENAI_TTS_MODEL || "gpt-4o-mini-tts"
-}
-
-function pickVoice(genderRaw: unknown): string {
-  const g = String(genderRaw || "").toLowerCase()
-  if (g === "male" || g === "m" || g === "man") {
-    return process.env.OPENAI_TTS_VOICE_MALE || "verse"
-  }
-  return process.env.OPENAI_TTS_VOICE_FEMALE || "alloy"
-}
-
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const body: TtsBody = await req.json().catch(() => ({} as any))
+    const body = await req.json().catch(() => ({} as any))
 
-    const text = String(body.text ?? body.query ?? "").trim()
+    const rawText = (body as any).text ?? (body as any).input ?? (body as any).query ?? ""
+    const text = String(rawText || "").trim()
+
     if (!text) {
-      return NextResponse.json({ success: false, error: "Missing text" }, { status: 400 })
+      return NextResponse.json(
+        { success: false, error: "Missing 'text' for TTS" },
+        { status: 400 },
+      )
     }
 
-    const openai = getOpenAIClient()
-    if (!openai) {
-      // важно: не throw, чтобы next build не падал при импорте роутов
-      return NextResponse.json({ success: false, error: "Missing OPENAI_API_KEY" }, { status: 500 })
+    if (!process.env.OPENAI_API_KEY) {
+      return NextResponse.json(
+        { success: false, error: "Missing OPENAI_API_KEY" },
+        { status: 500 },
+      )
     }
 
-    const model = pickModel()
-    const voice = pickVoice(body.gender)
+    const lang = normalizeLanguage((body as any).language)
+    const gender = normalizeGender((body as any).gender)
 
-    // У разных версий OpenAI SDK поле называется по-разному.
-    // Чтобы не ломать билд типами — передаём как any и используем response_format.
-    const params: any = {
-      model,
-      voice,
+    // ВАЖНО: голоса берём из selectOpenAIVoice (мы ниже вернём дефолты как раньше)
+    const voice = selectOpenAIVoice(lang, gender)
+
+    const response = await openai.audio.speech.create({
+      model: OPENAI_TTS_MODEL,
+      voice: voice as any,
       input: text,
-      response_format: "mp3",
-    }
+    })
 
-    const speech: any = await (openai as any).audio.speech.create(params)
+    const buffer = Buffer.from(await response.arrayBuffer())
+    const audioContent = buffer.toString("base64")
 
-    const arrayBuffer = await speech.arrayBuffer()
-    const audioContent = Buffer.from(arrayBuffer).toString("base64")
-
-    return NextResponse.json({ success: true, audioContent }, { status: 200 })
-  } catch (error) {
-    console.error("[/api/tts] error:", error)
-    return NextResponse.json({ success: false, error: "TTS failed" }, { status: 500 })
+    return NextResponse.json({
+      success: true,
+      audioContent,
+      language: lang,
+      gender,
+      voice,
+      contentType: "audio/mpeg",
+    })
+  } catch (error: any) {
+    console.error("[/api/tts] Error:", error)
+    return NextResponse.json(
+      { success: false, error: "TTS generation failed" },
+      { status: 500 },
+    )
   }
 }
