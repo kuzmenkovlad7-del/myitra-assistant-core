@@ -218,6 +218,7 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
   const micStreamRef = useRef<MediaStream | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const sttQueueRef = useRef<Blob[]>([])
+    const sttInitRef = useRef<Blob | null>(null)
   const sttBusyRef = useRef(false)
   const lastTranscriptRef = useRef<string>("")
   const suppressUntilRef = useRef<number>(0)
@@ -466,8 +467,21 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
     if (!sttQueueRef.current.length) return
 
     // берём ровно ОДИН валидный chunk (не склеиваем несколько файлов в один Blob)
-      const blob = sttQueueRef.current.shift()
-      if (!blob) return
+      const chunk = sttQueueRef.current.shift()
+      if (!chunk) return
+
+      // Android/Chrome: первый чанк содержит init-сегмент webm, остальные без заголовка.
+      // Чтобы Whisper принимал КАЖДЫЙ запрос — шлём init+chunk.
+      if (!sttInitRef.current) sttInitRef.current = chunk
+
+      let blob = chunk
+      if (sttInitRef.current && sttInitRef.current !== chunk) {
+        try {
+          blob = new Blob([sttInitRef.current, chunk], { type: chunk.type || "audio/webm" })
+        } catch {
+          blob = chunk
+        }
+      }
     if (blob.size < 12000) return
 
     try {
@@ -524,6 +538,7 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
 
       mediaRecorderRef.current = mr
       sttQueueRef.current = []
+        sttInitRef.current = null
       lastTranscriptRef.current = ""
       suppressUntilRef.current = 0
 
@@ -566,11 +581,13 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
 
   function pauseMicRecorder() {
     sttQueueRef.current = []
+        sttInitRef.current = null
     const mr = mediaRecorderRef.current
     if (!mr) return
     if (mr.state === "recording") {
       try {
         sttQueueRef.current = []
+        sttInitRef.current = null
         try {
           mr.stop()
           dlog("[Recorder] stop() during TTS")
@@ -587,6 +604,7 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
     if (mr.state === "inactive") {
       try {
         sttQueueRef.current = []
+        sttInitRef.current = null
         setTimeout(() => {
           try {
             mr.start(3500)
@@ -601,6 +619,7 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
 
   function stopMicRecorder() {
     sttQueueRef.current = []
+        sttInitRef.current = null
     const mr = mediaRecorderRef.current
     try {
       if (mr && mr.state !== "inactive") mr.stop()

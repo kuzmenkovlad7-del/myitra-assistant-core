@@ -123,6 +123,7 @@ export default function VoiceCallDialog({ isOpen, onClose, onError, userEmail, w
 
   // очередь чанков (ВАЖНО: теперь отправляем в STT только новые чанки, без diff)
   const sttQueueRef = useRef<Blob[]>([])
+    const sttInitRef = useRef<Blob | null>(null)
   const isSttBusyRef = useRef(false)
 
   const isCallActiveRef = useRef(false)
@@ -217,8 +218,21 @@ export default function VoiceCallDialog({ isOpen, onClose, onError, userEmail, w
 
     // берём ровно ОДИН валидный chunk (MediaRecorder отдаёт самостоятельный webm/mp4 файл).
     // Нельзя склеивать несколько чанков в один Blob — получится битый контейнер и Whisper вернёт "Invalid file format".
-    const blob = sttQueueRef.current.shift()
-    if (!blob) return
+    const chunk = sttQueueRef.current.shift()
+      if (!chunk) return
+
+      // Android/Chrome: первый чанк содержит init-сегмент webm, остальные без заголовка.
+      // Чтобы Whisper принимал КАЖДЫЙ запрос — шлём init+chunk.
+      if (!sttInitRef.current) sttInitRef.current = chunk
+
+      let blob = chunk
+      if (sttInitRef.current && sttInitRef.current !== chunk) {
+        try {
+          blob = new Blob([sttInitRef.current, chunk], { type: chunk.type || "audio/webm" })
+        } catch {
+          blob = chunk
+        }
+      }
     if (blob.size < 12000) {
       dlog("[STT] skip: too small", blob.size)
       return
@@ -286,6 +300,7 @@ export default function VoiceCallDialog({ isOpen, onClose, onError, userEmail, w
       if (rec && rec.state === "recording") {
         try {
           sttQueueRef.current = []
+        sttInitRef.current = null
             rec.stop()
             dlog("[Recorder] stop() during TTS")
         } catch {}
@@ -300,6 +315,7 @@ export default function VoiceCallDialog({ isOpen, onClose, onError, userEmail, w
       if (rec && rec.state === "inactive" && isCallActiveRef.current && !isMicMuted) {
         try {
           sttQueueRef.current = []
+        sttInitRef.current = null
             setTimeout(() => {
               try {
                 rec.start(3500)
@@ -452,6 +468,7 @@ export default function VoiceCallDialog({ isOpen, onClose, onError, userEmail, w
 
       mediaRecorderRef.current = recorder
       sttQueueRef.current = []
+        sttInitRef.current = null
       isSttBusyRef.current = false
       lastTranscriptRef.current = ""
       suppressUntilRef.current = 0
@@ -477,6 +494,7 @@ export default function VoiceCallDialog({ isOpen, onClose, onError, userEmail, w
       }
 
       recorder.onstop = () => {
+          sttInitRef.current = null
         dlog("[Recorder] onstop")
         setIsListening(false)
       }
@@ -520,6 +538,7 @@ export default function VoiceCallDialog({ isOpen, onClose, onError, userEmail, w
     setIsAiSpeaking(false)
     setNetworkError(null)
     sttQueueRef.current = []
+        sttInitRef.current = null
     lastTranscriptRef.current = ""
     isSttBusyRef.current = false
     suppressUntilRef.current = 0
@@ -551,6 +570,7 @@ export default function VoiceCallDialog({ isOpen, onClose, onError, userEmail, w
 
     // чистим очередь чтобы не отстрелило “хвостом”
     sttQueueRef.current = []
+        sttInitRef.current = null
 
     const rec = mediaRecorderRef.current
     if (!rec) return
