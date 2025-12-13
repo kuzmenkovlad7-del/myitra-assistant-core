@@ -85,6 +85,10 @@ export async function POST(req: Request) {
     fd.append("model", "whisper-1")
     if (lang) fd.append("language", lang)
 
+    // меньше “галлюцинаций”
+    fd.append("temperature", "0")
+    fd.append("prompt", "Transcribe only the spoken human speech. If there is silence, return empty text.")
+
     const ab = toArrayBufferStrict(bytes)
     const blob = new Blob([ab], { type: mime || "audio/wav" })
     fd.append("file", blob, filename || filenameForMime(mime || "audio/webm"))
