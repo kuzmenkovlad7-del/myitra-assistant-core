@@ -1,12 +1,15 @@
 "use client"
 
+
 import { useState, useRef, useEffect } from "react"
+
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogClose,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -704,7 +707,17 @@ export default function VoiceCallDialog({
                   )}
                 </DialogDescription>
               </div>
-            </div>
+            
+              <DialogClose asChild>
+                <button
+                  type="button"
+                  aria-label={t("Close")}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/90 transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/30"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </DialogClose>
+</div>
           </DialogHeader>
 
           <div className="flex h-[500px] flex-col md:h-[540px]">
