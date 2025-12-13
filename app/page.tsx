@@ -21,10 +21,7 @@ export default function Home() {
   const [isVoiceCallOpen, setIsVoiceCallOpen] = useState(false)
   const [isVideoCallOpen, setIsVideoCallOpen] = useState(false)
 
-  // Открываем модалки сразу
-  const openChat = () => {
-    setIsChatOpen(true)
-  }
+  const openChat = () => setIsChatOpen(true)
 
   const openVoice = () => {
     if (
@@ -33,12 +30,10 @@ export default function Home() {
       !window.SpeechRecognition &&
       // @ts-ignore
       !window.webkitSpeechRecognition &&
-      !navigator.mediaDevices
+      !navigator.mediaDevices?.getUserMedia
     ) {
       alert(
-        t(
-          "Your browser may not fully support voice features. For the best experience, please use Chrome, Edge, or Safari.",
-        ),
+        t("Your browser may not fully support voice features. For the best experience, please use Chrome, Edge, or Safari."),
       )
     }
 
@@ -46,11 +41,9 @@ export default function Home() {
   }
 
   const openVideo = () => {
-    if (typeof window !== "undefined" && !navigator.mediaDevices) {
+    if (typeof window !== "undefined" && !navigator.mediaDevices?.getUserMedia) {
       alert(
-        t(
-          "Your browser may not fully support video features. For the best experience, please use Chrome, Edge, or Safari.",
-        ),
+        t("Your browser may not fully support video features. For the best experience, please use Chrome, Edge, or Safari."),
       )
     }
 
@@ -61,7 +54,6 @@ export default function Home() {
     <div className="bg-slate-50">
       <HomeHero />
 
-      {/* Блок с тремя форматами общения */}
       <section
         id="assistant"
         className="relative -mt-10 bg-gradient-to-b from-slate-50 via-slate-50 to-white pb-28 pt-20 md:-mt-16 md:pt-24"
@@ -79,15 +71,13 @@ export default function Home() {
             <div className="rounded-[28px] bg-white/95 px-6 py-8 md:px-10 md:py-10 lg:px-12 lg:py-12">
               <div className="mb-10 text-center">
                 <p className="mb-3 inline-flex items-center rounded-full bg-slate-50 px-4 py-1 text-xs font-medium text-slate-500 ring-1 ring-slate-200">
-                   💬 {t("Choose how you want to talk")}
+                  💬 {t("Choose how you want to talk")}
                 </p>
                 <h2 className="mb-3 text-3xl font-semibold text-slate-900 md:text-4xl">
                   {t("How would you like to contact us?")}
                 </h2>
                 <p className="mx-auto max-w-2xl text-sm text-slate-600 md:text-base">
-                  {t(
-                    "Start with a quick chat, a voice call or a video session with our AI-psychologist — choose the format that feels safest right now.",
-                  )}
+                  {t("Start with a quick chat, a voice call or a video session with our AI-psychologist — choose the format that feels safest right now.")}
                 </p>
               </div>
 
@@ -95,16 +85,10 @@ export default function Home() {
                 <ContactMethodCard
                   icon={MessageSquare}
                   title={t("Chat with AI-psychologist")}
-                  description={t(
-                    "Write what is happening in your own words and get structured support in a few minutes.",
-                  )}
+                  description={t("Write what is happening in your own words and get structured support in a few minutes.")}
                   benefits={[
-                    t(
-                      "Best when you need privacy and want to stay silent around other people.",
-                    ),
-                    t(
-                      "You can return to the conversation history and exercises at any time.",
-                    ),
+                    t("Best when you need privacy and want to stay silent around other people."),
+                    t("You can return to the conversation history and exercises at any time."),
                   ]}
                   buttonText={t("Start chat")}
                   onClick={openChat}
@@ -113,14 +97,10 @@ export default function Home() {
                 <ContactMethodCard
                   icon={PhoneCall}
                   title={t("Call AI-psychologist")}
-                  description={t(
-                    "Voice format for more lively support when you want to hear a calm voice.",
-                  )}
+                  description={t("Voice format for more lively support when you want to hear a calm voice.")}
                   benefits={[
                     t("Helps reduce the feeling of loneliness in difficult moments."),
-                    t(
-                      "Suitable when emotions are strong and you need to speak out quickly.",
-                    ),
+                    t("Suitable when emotions are strong and you need to speak out quickly."),
                   ]}
                   buttonText={t("Start voice call")}
                   onClick={openVoice}
@@ -129,16 +109,10 @@ export default function Home() {
                 <ContactMethodCard
                   icon={Video}
                   title={t("Video session with AI")}
-                  description={t(
-                    "Face-to-face session with a 3D-avatar when you want to feel presence and eye contact.",
-                  )}
+                  description={t("Face-to-face session with a 3D-avatar when you want to feel presence and eye contact.")}
                   benefits={[
-                    t(
-                      "Gives a stronger feeling that someone is really next to you.",
-                    ),
-                    t(
-                      "Best for deeper work, body reactions and long-term processes.",
-                    ),
+                    t("Gives a stronger feeling that someone is really next to you."),
+                    t("Best for deeper work, body reactions and long-term processes."),
                   ]}
                   buttonText={t("Start video call")}
                   onClick={openVideo}
@@ -161,23 +135,16 @@ export default function Home() {
       </section>
 
       <ServiceFeatures />
-
       <ContactSection />
 
-      {/* Модальные окна ассистентов */}
-      <AIChatDialog
-        isOpen={isChatOpen}
-        onClose={() => setIsChatOpen(false)}
-      />
+      <AIChatDialog isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
 
       <VoiceCallDialog
         isOpen={isVoiceCallOpen}
         onClose={() => setIsVoiceCallOpen(false)}
         onError={(error) => {
           console.error("Voice call error:", error)
-          alert(
-            t("There was an issue with the voice call. Please try again."),
-          )
+          alert(t("There was an issue with the voice call. Please try again."))
           setIsVoiceCallOpen(false)
         }}
       />
@@ -185,11 +152,9 @@ export default function Home() {
       <VideoCallDialog
         isOpen={isVideoCallOpen}
         onClose={() => setIsVideoCallOpen(false)}
-onError={(error) => {
+        onError={(error) => {
           console.error("Video call error:", error)
-          alert(
-            t("There was an issue with the video call. Please try again."),
-          )
+          alert(t("There was an issue with the video call. Please try again."))
           setIsVideoCallOpen(false)
         }}
       />
