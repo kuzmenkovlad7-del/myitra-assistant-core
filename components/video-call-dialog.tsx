@@ -137,7 +137,7 @@ export default function VideoCallDialog({
 
   const activeLanguage = currentLanguage || ({ code: "en", name: "English", flag: "🇺🇸" } as any)
   const languageDisplayName =
-    activeLanguage.name ||
+    (activeLanguage as any).name ||
     (activeLanguage.code === "uk"
       ? "Ukrainian"
       : activeLanguage.code === "ru"
@@ -1021,7 +1021,7 @@ export default function VideoCallDialog({
             </h3>
             <div className="text-xs text-indigo-100 mt-1 truncate">
               {t("Video session in {{language}}", { language: languageDisplayName })} ·{" "}
-              {activeLanguage.flag}
+              {(activeLanguage as any).flag}
             </div>
           </div>
 
@@ -1055,7 +1055,7 @@ export default function VideoCallDialog({
               <div className="bg-blue-50 p-4 rounded-lg w-full max-w-md mx-auto text-center">
                 <p className="text-sm font-medium text-blue-700 mb-1">{t("Video call language")}:</p>
                 <div className="text-lg font-semibold text-blue-800 flex items-center justify-center">
-                  <span className="mr-2">{activeLanguage.flag}</span>
+                  <span className="mr-2">{(activeLanguage as any).flag}</span>
                   {languageDisplayName}
                 </div>
               </div>
