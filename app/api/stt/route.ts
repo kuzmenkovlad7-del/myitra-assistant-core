@@ -11,6 +11,17 @@ function normalizeLang(input?: string) {
   return undefined
 }
 
+function filenameForMime(mime: string) {
+  const m = String(mime || "").toLowerCase()
+  if (m.includes("webm")) return "speech.webm"
+  if (m.includes("mp4")) return "speech.mp4"
+  if (m.includes("mpeg") || m.includes("mp3")) return "speech.mp3"
+  if (m.includes("wav")) return "speech.wav"
+  if (m.includes("ogg")) return "speech.ogg"
+  if (m.includes("aac")) return "speech.aac"
+  return "speech.bin"
+}
+
 async function readAudioFromRequest(req: Request): Promise<{
   bytes: Uint8Array
   filename: string
@@ -28,7 +39,7 @@ async function readAudioFromRequest(req: Request): Promise<{
     const ab = await file.arrayBuffer()
     return {
       bytes: new Uint8Array(ab),
-      filename: file.name || "speech.wav",
+      filename: file.name || filenameForMime(file.type || "audio/webm"),
       mime: file.type || "application/octet-stream",
       lang,
     }
@@ -41,17 +52,19 @@ async function readAudioFromRequest(req: Request): Promise<{
 
     b64 = b64.replace(/^data:audio\/[a-z0-9.+-]+;base64,/i, "")
     const buf = Buffer.from(b64, "base64")
+    const mime = j?.mime || "audio/wav"
     return {
       bytes: new Uint8Array(buf),
-      filename: j?.filename || "speech.wav",
-      mime: j?.mime || "audio/wav",
+      filename: j?.filename || filenameForMime(mime),
+      mime,
       lang: normalizeLang(j?.language || j?.lang) || undefined,
     }
   }
 
+  // raw body (например audio/webm)
   const ab = await req.arrayBuffer()
   const mime = (ct.split(";")[0] || "application/octet-stream").trim()
-  return { bytes: new Uint8Array(ab), filename: "speech.wav", mime, lang: undefined }
+  return { bytes: new Uint8Array(ab), filename: filenameForMime(mime), mime, lang: undefined }
 }
 
 function toArrayBufferStrict(u8: Uint8Array): ArrayBuffer {
@@ -63,10 +76,7 @@ export async function POST(req: Request) {
   try {
     const OPENAI_API_KEY = process.env.OPENAI_API_KEY
     if (!OPENAI_API_KEY) {
-      return NextResponse.json(
-        { success: false, error: "OPENAI_API_KEY is not set on server" },
-        { status: 500 },
-      )
+      return NextResponse.json({ success: false, error: "OPENAI_API_KEY is not set on server" }, { status: 500 })
     }
 
     const { bytes, filename, mime, lang } = await readAudioFromRequest(req)
@@ -77,7 +87,7 @@ export async function POST(req: Request) {
 
     const ab = toArrayBufferStrict(bytes)
     const blob = new Blob([ab], { type: mime || "audio/wav" })
-    fd.append("file", blob, filename || "speech.wav")
+    fd.append("file", blob, filename || filenameForMime(mime || "audio/webm"))
 
     const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
@@ -97,9 +107,6 @@ export async function POST(req: Request) {
     const text = String(data?.text || "").trim()
     return NextResponse.json({ success: true, text })
   } catch (e: any) {
-    return NextResponse.json(
-      { success: false, error: "STT error", details: e?.message || String(e) },
-      { status: 500 },
-    )
+    return NextResponse.json({ success: false, error: "STT error", details: e?.message || String(e) }, { status: 500 })
   }
 }
