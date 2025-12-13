@@ -199,6 +199,8 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
 
   // video/audio refs
   const userVideoRef = useRef<HTMLVideoElement | null>(null)
+    const userCameraStreamRef = useRef<MediaStream | null>(null)
+
   const idleVideoRef = useRef<HTMLVideoElement | null>(null)
   const speakingVideoRef = useRef<HTMLVideoElement | null>(null)
 
@@ -413,19 +415,101 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
       } catch {}
     } catch {}
   }
+    async function attachUserCameraStreamToVideo(stream: MediaStream) {
+    if (typeof window === "undefined") return false
 
-  async function startUserCamera() {
+    const deadline = Date.now() + 2000
+    while (Date.now() < deadline) {
+      const el = userVideoRef.current
+      if (el) {
+        try {
+          ;(el as any).playsInline = true
+          ;(el as any).autoplay = true
+          el.muted = true
+
+          try {
+            el.srcObject = stream
+          } catch {
+            ;(el as any).srcObject = stream
+          }
+
+          try {
+            await el.play()
+          } catch (e) {
+            dlog("[Camera] play() blocked", e)
+          }
+          dlog("[Camera] attached to <video>")
+          return true
+        } catch (e) {
+          dlog("[Camera] attach error", e)
+          return false
+        }
+      }
+      await new Promise((r) => requestAnimationFrame(() => r(null)))
+    }
+
+    dlog("[Camera] attach timeout: video ref is null")
+    return false
+  }
+
+
+
+    async function startUserCamera() {
+    if (typeof window === "undefined") return
     if (!navigator.mediaDevices?.getUserMedia) return
-    if (!userVideoRef.current) return
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
-      userVideoRef.current.srcObject = stream
+      // stop previous camera stream if any
+      const prev = userCameraStreamRef.current
+      if (prev) {
+        prev.getTracks().forEach((t) => {
+          try { t.stop() } catch {}
+        })
+      }
+      userCameraStreamRef.current = null
+    } catch {}
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+        audio: false,
+      })
+
+      userCameraStreamRef.current = stream
       setIsCameraOff(false)
-    } catch {
+
+      // wait DOM render and attach stream to video element
+      await attachUserCameraStreamToVideo(stream)
+      const el = userVideoRef.current
+      if (el) {
+        // MUST for mobile Safari/Chrome
+        ;(el as any).playsInline = true
+        el.muted = true
+        ;(el as any).autoplay = true
+
+        try {
+          el.srcObject = stream
+        } catch {
+          // fallback
+          ;(el as any).srcObject = stream
+        }
+
+        try {
+          await el.play()
+        } catch (e) {
+          // on some mobiles play can be blocked, but since this is called from a click it usually works
+          dlog("[Camera] play() blocked", e)
+        }
+      }
+
+      dlog("[Camera] on", { videoTracks: stream.getVideoTracks().length })
+    } catch (e: any) {
+      dlog("[Camera] start error", e?.name || "", e?.message || String(e))
       setIsCameraOff(true)
+      userCameraStreamRef.current = null
     }
   }
+
 
   function stopUserCamera() {
     if (!userVideoRef.current?.srcObject) return
@@ -866,15 +950,21 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
 
     await startMicRecorder()
   }
-
-  function toggleCamera() {
-    if (!isCallActiveRef.current) return
-    if (isCameraOff) startUserCamera()
-    else {
-      stopUserCamera()
-      setIsCameraOff(true)
+  const toggleCamera = async () => {
+    try {
+      if (isCameraOff) {
+        await startUserCamera()
+      } else {
+        stopUserCamera()
+      }
+    } catch (e) {
+      dlog("[Camera] toggle error", e)
     }
-  }
+  };
+
+
+
+
 
   function toggleSound() {
     const next = !isSoundEnabled
@@ -995,7 +1085,7 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
               {/* LEFT: VIDEO */}
               <div className="w-full sm:w-2/3 flex flex-col">
-                <div className="relative w-full aspect-video sm:flex-1 bg-white rounded-lg overflow-hidden">
+                <div className="relative w-full aspect-video bg-white rounded-lg overflow-hidden">
                   <div className="absolute inset-0 bg-white overflow-hidden">
                     {hasEnhancedVideo ? (
                       <>
@@ -1069,7 +1159,7 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
               </div>
 
               {/* RIGHT: CHAT */}
-              <div className="w-full sm:w-1/3 flex flex-col bg-gray-50 rounded-lg border overflow-hidden">
+              <div className="w-full sm:w-1/3 flex flex-col bg-gray-50 rounded-lg border overflow-hidden min-h-0">
                 <div className="px-3 pt-3 pb-2 border-b flex items-center gap-2">
                   <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
                     <Brain className="h-4 w-4 text-emerald-700" />
@@ -1080,7 +1170,7 @@ export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError
                   </div>
                 </div>
 
-                <div className="flex-1 px-3 py-3 sm:px-4 sm:py-4 space-y-3 overflow-y-auto">
+                <div className="flex-1 min-h-0 px-3 py-3 sm:px-4 sm:py-4 space-y-3 overflow-y-auto">
                   {messages.length === 0 && (
                     <div className="bg-primary-50 rounded-2xl p-3 text-xs sm:text-sm text-slate-800">
                       {t("You can start speaking when you're ready. The assistant will answer with voice and text here.")}
