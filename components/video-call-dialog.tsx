@@ -3,25 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import {
-  X,
-  Mic,
-  MicOff,
-  Camera,
-  CameraOff,
-  Phone,
-  Volume2,
-  VolumeX,
-  Brain,
-  Video as VideoIcon,
-} from "lucide-react"
+import { X, Mic, MicOff, Camera, CameraOff, Phone, Volume2, VolumeX, Brain, Video } from "lucide-react"
 import { useLanguage } from "@/lib/i18n/language-context"
 import { useAuth } from "@/lib/auth/auth-context"
-import {
-  getLocaleForLanguage,
-  getNativeSpeechParameters,
-  getNativeVoicePreferences,
-} from "@/lib/i18n/translation-utils"
+import { getLocaleForLanguage, getNativeSpeechParameters, getNativeVoicePreferences } from "@/lib/i18n/translation-utils"
 import { shouldUseGoogleTTS, generateGoogleTTS } from "@/lib/google-tts"
 
 const VIDEO_ASSISTANT_WEBHOOK_URL =
@@ -31,6 +16,7 @@ const VIDEO_ASSISTANT_WEBHOOK_URL =
 
 const STT_ENDPOINT = "/api/stt"
 
+// локальные конфиги (если у тебя в generateGoogleTTS разные сигнатуры — ниже safeGenerateGoogleTTS)
 const VIDEO_CALL_GOOGLE_TTS_CREDENTIALS: any = {}
 const VIDEO_CALL_VOICE_CONFIGS: any = {
   uk: {
@@ -57,19 +43,6 @@ interface AICharacter {
   animated?: boolean
   idleVideo?: string
   speakingVideo?: string
-}
-
-interface VideoCallDialogProps {
-  isOpen: boolean
-  onClose: () => void
-  openAiApiKey?: string
-  onError?: (error: Error) => void
-}
-
-type ChatMessage = {
-  id: number
-  role: "user" | "assistant"
-  text: string
 }
 
 const AI_CHARACTERS: AICharacter[] = [
@@ -117,6 +90,19 @@ const AI_CHARACTERS: AICharacter[] = [
   },
 ]
 
+interface VideoCallDialogProps {
+  isOpen: boolean
+  onClose: () => void
+  openAiApiKey?: string
+  onError?: (error: Error) => void
+}
+
+type ChatMessage = {
+  id: number
+  role: "user" | "assistant"
+  text: string
+}
+
 function pickBestRecorderMimeType(): string | undefined {
   const MR: any = typeof window !== "undefined" ? (window as any).MediaRecorder : null
   if (!MR?.isTypeSupported) return undefined
@@ -128,7 +114,6 @@ function pickBestRecorderMimeType(): string | undefined {
     "audio/aac",
     "audio/mpeg",
   ]
-
   for (const t of candidates) {
     try {
       if (MR.isTypeSupported(t)) return t
@@ -139,10 +124,32 @@ function pickBestRecorderMimeType(): string | undefined {
 
 function filenameForMime(mime: string): string {
   const m = (mime || "").toLowerCase()
+  if (m.includes("webm")) return "speech.webm"
   if (m.includes("mp4")) return "speech.mp4"
-  if (m.includes("aac")) return "speech.aac"
   if (m.includes("mpeg") || m.includes("mp3")) return "speech.mp3"
-  return "speech.webm"
+  if (m.includes("wav")) return "speech.wav"
+  if (m.includes("ogg")) return "speech.ogg"
+  return "speech.bin"
+}
+
+function extractAnswer(data: any): string {
+  if (!data) return ""
+  if (typeof data === "string") return data.trim()
+
+  if (Array.isArray(data) && data.length > 0) {
+    const first = data[0] ?? {}
+    return (first.output || first.response || first.text || first.message || first.content || first.result || JSON.stringify(first))
+      ?.toString()
+      .trim()
+  }
+
+  if (typeof data === "object") {
+    return (data.output || data.response || data.text || data.message || data.content || data.result || JSON.stringify(data))
+      ?.toString()
+      .trim()
+  }
+
+  return ""
 }
 
 function cleanResponseText(text: string): string {
@@ -156,43 +163,7 @@ function cleanResponseText(text: string): string {
   return text.replace(/\n\n/g, " ").replace(/\*\*/g, "").replace(/```/g, "").replace(/[\n\r]/g, " ").trim()
 }
 
-function extractAnswer(data: any): string {
-  if (!data) return ""
-  if (typeof data === "string") return data.trim()
-
-  if (Array.isArray(data) && data.length > 0) {
-    const first = data[0] ?? {}
-    return (
-      first.output ||
-      first.response ||
-      first.text ||
-      first.message ||
-      first.content ||
-      first.result ||
-      JSON.stringify(first)
-    )
-      ?.toString()
-      .trim()
-  }
-
-  if (typeof data === "object") {
-    return (
-      data.output ||
-      data.response ||
-      data.text ||
-      data.message ||
-      data.content ||
-      data.result ||
-      JSON.stringify(data)
-    )
-      ?.toString()
-      .trim()
-  }
-
-  return ""
-}
-
-export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallDialogProps) {
+export default function VideoCallDialog({ isOpen, onClose, openAiApiKey, onError }: VideoCallDialogProps) {
   const { t, currentLanguage } = useLanguage()
   const { user } = useAuth()
 
@@ -209,22 +180,22 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
   const [isCallActive, setIsCallActive] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
 
-  const [isMicMuted, setIsMicMuted] = useState(false)
-  const [isCameraOff, setIsCameraOff] = useState(false)
+  const [isMicMuted, setIsMicMuted] = useState(false)     // ВАЖНО: стартуем с ON (как “слушаю”)
+  const [isCameraOff, setIsCameraOff] = useState(true)
   const [isSoundEnabled, setIsSoundEnabled] = useState(true)
 
-  const [isAiSpeaking, setIsAiSpeaking] = useState(false)
-  const [activityStatus, setActivityStatus] = useState<"paused" | "listening" | "thinking" | "speaking">("paused")
+  const [isListening, setIsListening] = useState(false)
+  const [activityStatus, setActivityStatus] = useState<"listening" | "thinking" | "speaking">("listening")
   const [speechError, setSpeechError] = useState<string | null>(null)
 
+  const [isAiSpeaking, setIsAiSpeaking] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [interimTranscript, setInterimTranscript] = useState("")
 
-  // streams/recorder
-  const avStreamRef = useRef<MediaStream | null>(null)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const recorderMimeRef = useRef<string>("audio/webm")
-  const audioChunksRef = useRef<Blob[]>([])
-  const isSttBusyRef = useRef(false)
+  // debug overlay (включить: ?debug=1)
+  const [debugEnabled, setDebugEnabled] = useState(false)
+  const [debugLines, setDebugLines] = useState<string[]>([])
+  const debugEnabledRef = useRef(false)
 
   // video/audio refs
   const userVideoRef = useRef<HTMLVideoElement | null>(null)
@@ -238,7 +209,47 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
   const isCallActiveRef = useRef(false)
   const isMicMutedRef = useRef(false)
 
+  // MediaRecorder STT (основной путь и на Android, и на iOS)
+  const supportsMediaRecorder = useMemo(() => {
+    if (typeof window === "undefined") return false
+    return !!(navigator.mediaDevices && (window as any).MediaRecorder)
+  }, [])
+
+  const micStreamRef = useRef<MediaStream | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const sttQueueRef = useRef<Blob[]>([])
+  const sttBusyRef = useRef(false)
+  const lastTranscriptRef = useRef<string>("")
+  const suppressUntilRef = useRef<number>(0)
+  const isAiSpeakingRef = useRef(false)
+
   const hasEnhancedVideo = !!selectedCharacter?.idleVideo && !!selectedCharacter?.speakingVideo
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const enabled = new URLSearchParams(window.location.search).get("debug") === "1"
+    setDebugEnabled(enabled)
+    debugEnabledRef.current = enabled
+  }, [])
+
+  function dlog(...args: any[]) {
+    // eslint-disable-next-line no-console
+    console.log(...args)
+    if (!debugEnabledRef.current) return
+    const line =
+      `[${new Date().toLocaleTimeString()}] ` +
+      args
+        .map((a) => {
+          if (typeof a === "string") return a
+          try {
+            return JSON.stringify(a)
+          } catch {
+            return String(a)
+          }
+        })
+        .join(" ")
+    setDebugLines((prev) => [...prev, line].slice(-160))
+  }
 
   useEffect(() => {
     isCallActiveRef.current = isCallActive
@@ -246,9 +257,6 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
 
   useEffect(() => {
     isMicMutedRef.current = isMicMuted
-    if (!isCallActiveRef.current) return
-    if (isMicMuted) setActivityStatus("paused")
-    else setActivityStatus("listening")
   }, [isMicMuted])
 
   // voices preload
@@ -287,18 +295,11 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
     }
   }, [])
 
+  // close modal -> stop call
   useEffect(() => {
     if (!isOpen && isCallActive) endCall()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
-
-  function computeShortLang(): string {
-    const code = String(activeLanguage.code || "uk").toLowerCase()
-    if (code.startsWith("uk") || code.startsWith("ua")) return "uk"
-    if (code.startsWith("ru")) return "ru"
-    if (code.startsWith("en")) return "en"
-    return "uk"
-  }
 
   function stopCurrentSpeech() {
     if (currentAudioRef.current) {
@@ -395,10 +396,11 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
     }
   }
 
+  // unlock audio after user gesture
   async function unlockMobileAudioOnce() {
     try {
       const a = new Audio(
-        "data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAADhAC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAA4T/jQwAAAAAAAAAAAAAAAAAAAAA//sQZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//sQZDwP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
+        "data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAADhAC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAAAA4T/jQwAAAAAAAAAAAAAAAAAAAAA//sQZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//sQZDwP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV"
       )
       a.setAttribute("playsinline", "true")
       a.setAttribute("webkit-playsinline", "true")
@@ -411,156 +413,194 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
     } catch {}
   }
 
-  function pauseMicCapture() {
-    const rec = mediaRecorderRef.current
-    if (rec && rec.state === "recording") {
-      try {
-        rec.pause()
-      } catch {}
+  async function startUserCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) return
+    if (!userVideoRef.current) return
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      userVideoRef.current.srcObject = stream
+      setIsCameraOff(false)
+    } catch {
+      setIsCameraOff(true)
     }
   }
 
-  function resumeMicCapture() {
-    if (!isCallActiveRef.current) return
-    if (isMicMutedRef.current) return
+  function stopUserCamera() {
+    if (!userVideoRef.current?.srcObject) return
+    const stream = userVideoRef.current.srcObject as MediaStream
+    stream.getTracks().forEach((t) => t.stop())
+    userVideoRef.current.srcObject = null
+  }
 
-    const rec = mediaRecorderRef.current
-    if (rec && rec.state === "paused") {
-      try {
-        rec.resume()
-      } catch {}
+  async function transcribeBlobViaApi(blob: Blob): Promise<string> {
+    const fd = new FormData()
+    fd.append("file", blob, filenameForMime(blob.type || "audio/webm"))
+    fd.append("language", activeLanguage.code || "uk")
+    fd.append("locale", currentLocale)
+
+    const res = await fetch(STT_ENDPOINT, { method: "POST", body: fd })
+    const raw = await res.text()
+
+    let data: any = null
+    try {
+      data = raw ? JSON.parse(raw) : null
+    } catch {
+      data = null
     }
+
+    if (!res.ok || !data || data.success === false) {
+      dlog("[STT] error", res.status, raw)
+      return ""
+    }
+
+    return String(data.text || "").trim()
   }
 
   async function maybeSendStt() {
     if (!isCallActiveRef.current) return
     if (isMicMutedRef.current) return
-    if (isSttBusyRef.current) return
-    if (!audioChunksRef.current.length) return
+    if (isAiSpeakingRef.current) return
+    if (Date.now() < suppressUntilRef.current) return
+    if (sttBusyRef.current) return
+    if (!sttQueueRef.current.length) return
 
-    const chunks = audioChunksRef.current
-    audioChunksRef.current = []
+    const parts = sttQueueRef.current.slice()
+    sttQueueRef.current = []
+
+    const blob = new Blob(parts, { type: parts[0]?.type || "audio/webm" })
+    if (blob.size < 12000) return
 
     try {
-      isSttBusyRef.current = true
+      sttBusyRef.current = true
+      setActivityStatus("thinking")
+      dlog("[STT] sending chunk", { size: blob.size, type: blob.type })
 
-      const mime = recorderMimeRef.current || "audio/webm"
-      const blob = new Blob(chunks, { type: mime })
-      if (blob.size < 8000) return
+      const text = await transcribeBlobViaApi(blob)
+      dlog("[STT] text", text)
 
-      const fd = new FormData()
-      fd.append("audio", blob, filenameForMime(mime))
-      fd.append("language", computeShortLang())
-
-      const res = await fetch(STT_ENDPOINT, { method: "POST", body: fd })
-      const raw = await res.text()
-
-      let data: any = null
-      try {
-        data = raw ? JSON.parse(raw) : null
-      } catch {
-        data = null
-      }
-
-      if (!res.ok || !data || data.success === false) {
-        console.error("[STT] error:", res.status, raw)
-        setSpeechError(t("Speech recognition failed. Please try again."))
+      if (!text) {
+        setActivityStatus("listening")
         return
       }
 
-      const text = String(data.text || "").trim()
-      if (!text) return
+      if (text === lastTranscriptRef.current) {
+        setActivityStatus("listening")
+        return
+      }
+      lastTranscriptRef.current = text
 
       await handleUserText(text)
     } catch (e: any) {
-      console.error("[STT] fatal:", e)
+      dlog("[STT] fatal", e?.message || String(e))
       setSpeechError(t("Speech recognition failed. Please try again."))
+      setActivityStatus("listening")
     } finally {
-      isSttBusyRef.current = false
-      if (audioChunksRef.current.length) void maybeSendStt()
+      sttBusyRef.current = false
     }
   }
 
-  async function startAVAndRecorder() {
-    if (!navigator.mediaDevices?.getUserMedia) throw new Error(t("Your browser does not support microphone/camera access."))
-    if (!window.isSecureContext) throw new Error(t("Microphone requires HTTPS. Open the site via https://"))
-    if (typeof window !== "undefined" && !(window as any).MediaRecorder) throw new Error(t("Voice recording is not supported on this device/browser."))
-
-    // 1 запрос — и камера, и микрофон
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "user" } as any,
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      } as any,
-    })
-
-    avStreamRef.current = stream
-
-    // camera preview
-    if (userVideoRef.current) {
-      userVideoRef.current.srcObject = stream
+  async function startMicRecorder() {
+    if (!supportsMediaRecorder) {
+      setSpeechError(t("Voice recording is not supported on this device."))
+      return
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setSpeechError(t("Your browser does not support microphone access."))
+      return
+    }
+    if (!window.isSecureContext) {
+      setSpeechError(t("Microphone requires HTTPS. Open the site via https://"))
+      return
     }
 
-    // recorder только по аудио-трекам
-    const audioTracks = stream.getAudioTracks()
-    const audioStream = new MediaStream(audioTracks)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      })
+      micStreamRef.current = stream
 
-    const mimeType = pickBestRecorderMimeType()
-    const recorder = mimeType ? new MediaRecorder(audioStream, { mimeType }) : new MediaRecorder(audioStream)
+      const mimeType = pickBestRecorderMimeType()
+      const mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
 
-    mediaRecorderRef.current = recorder
-    recorderMimeRef.current = recorder.mimeType || mimeType || "audio/webm"
-    audioChunksRef.current = []
-    isSttBusyRef.current = false
+      mediaRecorderRef.current = mr
+      sttQueueRef.current = []
+      lastTranscriptRef.current = ""
+      suppressUntilRef.current = 0
 
-    recorder.onstart = () => {
-      setSpeechError(null)
-      setActivityStatus(isMicMutedRef.current ? "paused" : "listening")
-    }
+      mr.onstart = () => {
+        setIsListening(true)
+        setActivityStatus("listening")
+        setSpeechError(null)
+        dlog("[Recorder] onstart", { mimeType: mr.mimeType })
+      }
 
-    recorder.ondataavailable = (e: BlobEvent) => {
-      if (e.data && e.data.size > 0) {
-        audioChunksRef.current.push(e.data)
-        void maybeSendStt()
+      mr.ondataavailable = (e: BlobEvent) => {
+        if (!isCallActiveRef.current) return
+        if (isMicMutedRef.current) return
+        if (isAiSpeakingRef.current) return
+        if (e.data && e.data.size > 0) {
+          sttQueueRef.current.push(e.data)
+          void maybeSendStt()
+        }
+      }
+
+      mr.onstop = () => {
+        setIsListening(false)
+        dlog("[Recorder] onstop")
+      }
+
+      mr.onerror = (e: any) => {
+        dlog("[Recorder] error", e?.name || "", e?.message || "")
+      }
+
+      mr.start(3500)
+    } catch (e: any) {
+      dlog("[Recorder] getUserMedia error", e?.name || "", e?.message || "")
+      if (e?.name === "NotAllowedError" || e?.name === "PermissionDeniedError") {
+        setSpeechError(t("Microphone access is blocked. Please allow microphone permission in the browser settings."))
+      } else {
+        setSpeechError(t("Unable to access microphone."))
       }
     }
-
-    recorder.onerror = (e: any) => {
-      console.error("[Recorder] error", e)
-      setSpeechError(t("Speech recognition failed. Please try again."))
-    }
-
-    recorder.start(3500)
   }
 
-  function stopAVAndRecorder() {
-    const rec = mediaRecorderRef.current
-    if (rec && rec.state !== "inactive") {
+  function pauseMicRecorder() {
+    sttQueueRef.current = []
+    const mr = mediaRecorderRef.current
+    if (!mr) return
+    if (mr.state === "recording") {
       try {
-        rec.stop()
+        mr.pause()
+        dlog("[Recorder] pause()")
       } catch {}
     }
+  }
+
+  function resumeMicRecorder() {
+    const mr = mediaRecorderRef.current
+    if (!mr) return
+    if (mr.state === "paused") {
+      try {
+        mr.resume()
+        dlog("[Recorder] resume()")
+      } catch {}
+    }
+  }
+
+  function stopMicRecorder() {
+    sttQueueRef.current = []
+    const mr = mediaRecorderRef.current
+    try {
+      if (mr && mr.state !== "inactive") mr.stop()
+    } catch {}
     mediaRecorderRef.current = null
 
-    if (avStreamRef.current) {
-      avStreamRef.current.getTracks().forEach((t) => {
-        try {
-          t.stop()
-        } catch {}
-      })
-      avStreamRef.current = null
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach((t) => t.stop())
+      micStreamRef.current = null
     }
-
-    if (userVideoRef.current) {
-      try {
-        userVideoRef.current.srcObject = null
-      } catch {}
-    }
-
-    audioChunksRef.current = []
-    isSttBusyRef.current = false
+    setIsListening(false)
   }
 
   async function speakText(text: string) {
@@ -572,11 +612,12 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
 
     stopCurrentSpeech()
 
+    // ВАЖНО: глушим микрофон пока ассистент говорит (иначе ловим эхо)
+    isAiSpeakingRef.current = true
     setIsAiSpeaking(true)
     setActivityStatus("speaking")
-
-    // пока ассистент говорит — не записываем микрофон
-    pauseMicCapture()
+    suppressUntilRef.current = Date.now() + 900
+    pauseMicRecorder()
 
     if (hasEnhancedVideo && speakingVideoRef.current && selectedCharacter.speakingVideo) {
       try {
@@ -589,6 +630,7 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
 
     const finish = () => {
       setIsAiSpeaking(false)
+      isAiSpeakingRef.current = false
 
       if (hasEnhancedVideo && speakingVideoRef.current) {
         try {
@@ -603,12 +645,9 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
         } catch {}
       }
 
-      // после речи — продолжаем запись, если микрофон не muted
       if (isCallActiveRef.current && !isMicMutedRef.current) {
         setActivityStatus("listening")
-        resumeMicCapture()
-      } else {
-        setActivityStatus("paused")
+        resumeMicRecorder()
       }
     }
 
@@ -641,13 +680,14 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
   }
 
   async function handleUserText(text: string) {
-    const trimmed = text.trim()
+    const trimmed = String(text || "").trim()
     if (!trimmed) return
     if (!isCallActiveRef.current) return
 
     setMessages((prev) => [...prev, { id: prev.length + 1, role: "user", text: trimmed }])
     setActivityStatus("thinking")
     setSpeechError(null)
+    setInterimTranscript("")
 
     try {
       const langForBackend =
@@ -668,13 +708,13 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
         }),
       })
 
-      if (!res.ok) throw new Error(`Webhook error: ${res.status}`)
-
       const raw = await res.text()
       let data: any = raw
       try {
         data = JSON.parse(raw)
       } catch {}
+
+      if (!res.ok) throw new Error(`Webhook error: ${res.status} ${raw}`)
 
       const aiRaw = extractAnswer(data)
       const cleaned = cleanResponseText(aiRaw)
@@ -683,12 +723,15 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
       setMessages((prev) => [...prev, { id: prev.length + 1, role: "assistant", text: cleaned }])
       await speakText(cleaned)
     } catch (error: any) {
-      console.error("Video assistant error:", error)
+      dlog("[CHAT] error", error?.message || String(error))
       const errorMessage = t("I couldn't process your message. Could you try again?")
       setMessages((prev) => [...prev, { id: prev.length + 1, role: "assistant", text: errorMessage }])
       if (onError && error instanceof Error) onError(error)
-      setActivityStatus(isMicMutedRef.current ? "paused" : "listening")
-      resumeMicCapture()
+      setActivityStatus("listening")
+    } finally {
+      if (isCallActiveRef.current && !isMicMutedRef.current && !isAiSpeakingRef.current) {
+        setActivityStatus("listening")
+      }
     }
   }
 
@@ -704,11 +747,10 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
       isCallActiveRef.current = true
 
       setMessages([])
+      setInterimTranscript("")
       setIsMicMuted(false)
       isMicMutedRef.current = false
-
-      setIsCameraOff(false)
-      setIsAiSpeaking(false)
+      setIsListening(false)
       setActivityStatus("listening")
 
       if (hasEnhancedVideo && idleVideoRef.current && selectedCharacter.idleVideo) {
@@ -717,13 +759,16 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
         } catch {}
       }
 
-      await startAVAndRecorder()
+      // камера по кнопке — но можешь включить сразу если надо:
+      // await startUserCamera()
+
+      // сразу стартуем слушание через MediaRecorder→STT
+      await startMicRecorder()
     } catch (e: any) {
-      console.error("startCall error:", e)
+      dlog("[CALL] startCall error", e?.message || String(e))
       setSpeechError(e?.message || t("Microphone access is blocked. Please allow permission and retry."))
       setIsCallActive(false)
       isCallActiveRef.current = false
-      stopAVAndRecorder()
     } finally {
       setIsConnecting(false)
     }
@@ -733,16 +778,18 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
     setIsCallActive(false)
     isCallActiveRef.current = false
 
+    stopMicRecorder()
     stopCurrentSpeech()
-    stopAVAndRecorder()
 
     setIsAiSpeaking(false)
-    setActivityStatus("paused")
+    isAiSpeakingRef.current = false
+    setActivityStatus("listening")
+    setInterimTranscript("")
     setMessages([])
     setSpeechError(null)
     setIsMicMuted(false)
     isMicMutedRef.current = false
-    setIsCameraOff(false)
+    setIsListening(false)
 
     if (idleVideoRef.current) {
       try {
@@ -756,50 +803,46 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
         speakingVideoRef.current.currentTime = 0
       } catch {}
     }
+
+    stopUserCamera()
   }
 
-  function toggleMicrophone() {
+  async function toggleMicrophone() {
     if (!isCallActiveRef.current) return
 
-    const next = !isMicMuted
-    setIsMicMuted(next)
-    isMicMutedRef.current = next
-
-    // mute -> pause recorder
-    if (next) {
-      pauseMicCapture()
-      setActivityStatus("paused")
+    // выключаем
+    if (!isMicMuted) {
+      setIsMicMuted(true)
+      isMicMutedRef.current = true
+      setIsListening(false)
+      setInterimTranscript("")
+      pauseMicRecorder()
+      setActivityStatus("listening")
       return
     }
 
-    // unmute -> resume recorder
+    // включаем
     setSpeechError(null)
-    setActivityStatus(isAiSpeaking ? "speaking" : "listening")
-    resumeMicCapture()
+    setIsMicMuted(false)
+    isMicMutedRef.current = false
+
+    // если уже есть рекордер — просто resume
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "paused") {
+      resumeMicRecorder()
+      setIsListening(true)
+      setActivityStatus("listening")
+      return
+    }
+
+    await startMicRecorder()
   }
 
   function toggleCamera() {
     if (!isCallActiveRef.current) return
-
-    const stream = avStreamRef.current
-    if (!stream) {
+    if (isCameraOff) startUserCamera()
+    else {
+      stopUserCamera()
       setIsCameraOff(true)
-      return
-    }
-
-    const videoTracks = stream.getVideoTracks()
-    if (!videoTracks.length) {
-      setIsCameraOff(true)
-      return
-    }
-
-    const next = !isCameraOff
-    setIsCameraOff(next)
-
-    for (const tr of videoTracks) {
-      try {
-        tr.enabled = !next
-      } catch {}
     }
   }
 
@@ -809,8 +852,7 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
     if (!next) {
       stopCurrentSpeech()
       setIsAiSpeaking(false)
-      if (isCallActiveRef.current) setActivityStatus(isMicMutedRef.current ? "paused" : "listening")
-      resumeMicCapture()
+      isAiSpeakingRef.current = false
     }
   }
 
@@ -818,91 +860,76 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
     if (!isCallActive) return t("Choose an AI psychologist and press “Start video call” to begin.")
     if (isAiSpeaking) return t("Assistant is speaking. Please wait a moment.")
     if (isMicMuted) return t("Paused. Turn on microphone to continue.")
-    return t("Listening… you can speak.")
+    if (isListening) return t("Listening… you can speak.")
+    return t("Waiting... you can start speaking at any moment.")
   })()
-
-  const badgeText =
-    activityStatus === "listening"
-      ? t("Listening...")
-      : activityStatus === "thinking"
-        ? t("Thinking...")
-        : activityStatus === "speaking"
-          ? t("Assistant is speaking...")
-          : t("Paused")
 
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4">
-      <div className="flex h-[100dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl sm:h-[90vh] sm:max-h-[860px]">
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-2 sm:p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl h-[100dvh] sm:h-[90vh] sm:max-h-[860px] flex flex-col overflow-hidden relative">
         {/* HEADER */}
-        <div className="relative flex items-center justify-between border-b bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 p-3 text-white sm:p-4">
-          <div className="flex min-w-0 flex-1 flex-col pr-2">
-            <h3 className="flex items-center gap-2 truncate text-base font-semibold sm:text-lg">
+        <div className="p-3 sm:p-4 border-b flex justify-between items-center relative bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 text-white">
+          <div className="flex flex-col flex-1 min-w-0 pr-2">
+            <h3 className="font-semibold text-base sm:text-lg truncate flex items-center gap-2">
               <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10">
-                <VideoIcon className="h-4 w-4" />
+                <Video className="h-4 w-4" />
               </span>
               {t("Video call with AI-psychologist")}
             </h3>
-            <div className="mt-1 truncate text-xs text-indigo-100">
+            <div className="text-xs text-indigo-100 mt-1 truncate">
               {t("Video session in {{language}}", { language: languageDisplayName })} · {activeLanguage.flag}
             </div>
           </div>
 
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
+            type="button"
             onClick={() => {
               endCall()
               onClose()
             }}
-            className="min-h-[44px] min-w-[44px] flex-shrink-0 rounded-full bg-white/10 text-white/90 hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/30"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/90 transition hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/30"
+            aria-label={t("Close")}
           >
             <X className="h-5 w-5" />
-          </Button>
+          </button>
         </div>
 
         {/* MAIN */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-3 touch-pan-y overscroll-contain sm:p-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 touch-pan-y overscroll-contain">
           {!isCallActive ? (
             <div className="flex flex-col gap-4">
-              <div className="mt-1 text-center">
-                <h3 className="mb-2 text-xl font-semibold sm:text-2xl">{t("Choose your AI psychologist")}</h3>
-                <p className="mx-auto max-w-2xl text-sm text-gray-600 sm:text-base">
+              <div className="text-center mt-1">
+                <h3 className="text-xl sm:text-2xl font-semibold mb-2">{t("Choose your AI psychologist")}</h3>
+                <p className="text-sm sm:text-base text-gray-600 max-w-2xl mx-auto">
                   {t("Select the AI psychologist you'd like to speak with during your video call.")}
                 </p>
               </div>
 
-              <div className="mx-auto w-full max-w-md rounded-lg bg-blue-50 p-4 text-center">
-                <p className="mb-1 text-sm font-medium text-blue-700">{t("Video call language")}:</p>
-                <div className="flex items-center justify-center text-lg font-semibold text-blue-800">
+              <div className="bg-blue-50 p-4 rounded-lg w-full max-w-md mx-auto text-center">
+                <p className="text-sm font-medium text-blue-700 mb-1">{t("Video call language")}:</p>
+                <div className="text-lg font-semibold text-blue-800 flex items-center justify-center">
                   <span className="mr-2">{activeLanguage.flag}</span>
                   {languageDisplayName}
                 </div>
               </div>
 
-              <div className="mx-auto w-full max-w-5xl">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="w-full max-w-5xl mx-auto">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {AI_CHARACTERS.map((character) => (
                     <button
                       key={character.id}
                       type="button"
                       onClick={() => setSelectedCharacter(character)}
-                      className={`relative rounded-xl border-2 bg-white shadow-sm transition-shadow hover:shadow-md ${
+                      className={`relative bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border-2 ${
                         selectedCharacter.id === character.id ? "border-primary-600" : "border-transparent"
                       }`}
                     >
-                      <div className="flex h-full flex-col p-4 sm:p-5">
-                        <div className="relative mb-3 aspect-square w-full overflow-hidden rounded-lg bg-black">
+                      <div className="p-4 sm:p-5 flex flex-col h-full">
+                        <div className="relative w-full aspect-square mb-3 overflow-hidden rounded-lg bg-black">
                           {character.idleVideo ? (
-                            <video
-                              className="absolute inset-0 h-full w-full scale-[1.08] object-cover"
-                              muted
-                              loop
-                              playsInline
-                              autoPlay
-                              preload="auto"
-                            >
+                            <video className="absolute inset-0 w-full h-full object-cover scale-[1.08]" muted loop playsInline autoPlay preload="auto">
                               <source src={character.idleVideo} type="video/mp4" />
                             </video>
                           ) : (
@@ -916,12 +943,12 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
                           )}
                         </div>
 
-                        <h4 className="mb-1 text-center text-base font-semibold sm:text-lg">{character.name}</h4>
-                        <p className="mb-3 text-center text-xs text-gray-600 sm:text-sm">{character.description}</p>
+                        <h4 className="font-semibold text-base sm:text-lg text-center mb-1">{character.name}</h4>
+                        <p className="text-xs sm:text-sm text-gray-600 text-center mb-3">{character.description}</p>
 
                         <div className="mt-auto text-center">
                           <span
-                            className={`inline-flex rounded-full px-4 py-2 text-xs font-medium ${
+                            className={`inline-flex px-4 py-2 rounded-full text-xs font-medium ${
                               selectedCharacter.id === character.id ? "bg-primary-600 text-white" : "bg-gray-100 text-gray-700"
                             }`}
                           >
@@ -935,17 +962,17 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
               </div>
             </div>
           ) : (
-            <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
               {/* LEFT: VIDEO */}
-              <div className="flex w-full flex-col sm:w-2/3">
-                <div className="relative aspect-video w-full overflow-hidden rounded-lg bg-white sm:flex-1">
-                  <div className="absolute inset-0 overflow-hidden bg-white">
+              <div className="w-full sm:w-2/3 flex flex-col">
+                <div className="relative w-full aspect-video sm:flex-1 bg-white rounded-lg overflow-hidden">
+                  <div className="absolute inset-0 bg-white overflow-hidden">
                     {hasEnhancedVideo ? (
                       <>
                         {selectedCharacter.idleVideo && (
                           <video
                             ref={idleVideoRef}
-                            className="absolute inset-0 h-full w-full scale-[1.08] object-cover"
+                            className="absolute inset-0 w-full h-full object-cover scale-[1.08]"
                             muted
                             loop
                             playsInline
@@ -959,7 +986,7 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
                         {selectedCharacter.speakingVideo && (
                           <video
                             ref={speakingVideoRef}
-                            className={`absolute inset-0 h-full w-full scale-[1.08] object-cover transition-opacity duration-700 ease-in-out ${
+                            className={`absolute inset-0 w-full h-full object-cover scale-[1.08] transition-opacity duration-700 ease-in-out ${
                               isAiSpeaking ? "opacity-100" : "opacity-0"
                             }`}
                             muted
@@ -974,12 +1001,12 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
                       </>
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center bg-white">
-                        <div className="relative h-40 w-40 sm:h-56 sm:w-56">
+                        <div className="w-40 h-40 sm:w-56 sm:h-56 relative">
                           <Image
                             src={selectedCharacter.avatar || "/placeholder.svg"}
                             alt={selectedCharacter.name}
                             fill
-                            className="rounded-full object-cover"
+                            className="object-cover rounded-full"
                             sizes="224px"
                           />
                         </div>
@@ -988,59 +1015,55 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
                   </div>
 
                   <div
-                    className={`absolute right-2 top-2 rounded-full px-2 py-1 text-xs font-medium sm:right-4 sm:top-4 sm:px-3 sm:text-sm ${
+                    className={`absolute top-2 sm:top-4 right-2 sm:right-4 px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium ${
                       activityStatus === "listening"
                         ? "bg-green-100 text-green-800"
                         : activityStatus === "thinking"
-                          ? "bg-blue-100 text-blue-800"
-                          : activityStatus === "speaking"
-                            ? "bg-purple-100 text-purple-800"
-                            : "bg-gray-100 text-gray-800"
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-purple-100 text-purple-800"
                     }`}
                   >
-                    {badgeText}
+                    {activityStatus === "listening"
+                      ? t("Listening...")
+                      : activityStatus === "thinking"
+                      ? t("Thinking...")
+                      : t("Assistant is speaking...")}
                   </div>
 
                   {!isCameraOff && (
-                    <div className="absolute bottom-2 right-2 w-20 overflow-hidden rounded bg-gray-800 shadow-lg sm:bottom-4 sm:right-4 sm:w-40">
-                      <video
-                        ref={userVideoRef}
-                        autoPlay
-                        muted
-                        playsInline
-                        className="h-full w-full object-cover"
-                      />
+                    <div className="absolute bottom-2 sm:bottom-4 right-2 sm:right-4 w-20 sm:w-40 aspect-video bg-gray-800 rounded overflow-hidden shadow-lg">
+                      <video ref={userVideoRef} autoPlay muted playsInline className="w-full h-full object-cover transform scale-x-[-1]" />
                     </div>
                   )}
                 </div>
               </div>
 
               {/* RIGHT: CHAT */}
-              <div className="flex w-full flex-col overflow-hidden rounded-lg border bg-gray-50 sm:w-1/3">
-                <div className="flex items-center gap-2 border-b px-3 pb-2 pt-3">
-                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-emerald-100">
+              <div className="w-full sm:w-1/3 flex flex-col bg-gray-50 rounded-lg border overflow-hidden">
+                <div className="px-3 pt-3 pb-2 border-b flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
                     <Brain className="h-4 w-4 text-emerald-700" />
                   </div>
-                  <div className="flex min-w-0 flex-col">
-                    <div className="truncate text-xs font-semibold text-slate-800">{selectedCharacter.name}</div>
-                    <div className="truncate text-[11px] text-slate-500">{statusText}</div>
+                  <div className="flex flex-col min-w-0">
+                    <div className="text-xs font-semibold text-slate-800 truncate">{selectedCharacter.name}</div>
+                    <div className="text-[11px] text-slate-500 truncate">{statusText}</div>
                   </div>
                 </div>
 
-                <div className="flex-1 space-y-3 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4">
+                <div className="flex-1 px-3 py-3 sm:px-4 sm:py-4 space-y-3 overflow-y-auto">
                   {messages.length === 0 && (
-                    <div className="rounded-2xl bg-primary-50 p-3 text-xs text-slate-800 sm:text-sm">
+                    <div className="bg-primary-50 rounded-2xl p-3 text-xs sm:text-sm text-slate-800">
                       {t("You can start speaking when you're ready. The assistant will answer with voice and text here.")}
                     </div>
                   )}
 
                   {messages.map((msg) =>
                     msg.role === "user" ? (
-                      <div key={msg.id} className="ml-auto max-w-[85%] rounded-2xl bg-blue-50 px-3 py-3 text-xs text-slate-900 sm:text-sm">
+                      <div key={msg.id} className="ml-auto max-w-[85%] rounded-2xl bg-blue-50 px-3 py-3 text-xs sm:text-sm text-slate-900">
                         <p>{msg.text}</p>
                       </div>
                     ) : (
-                      <div key={msg.id} className="max-w-[85%] rounded-2xl bg-emerald-50 px-3 py-3 text-xs text-slate-900 sm:text-sm">
+                      <div key={msg.id} className="max-w-[85%] rounded-2xl bg-emerald-50 px-3 py-3 text-xs sm:text-sm text-slate-900">
                         <p className="mb-1 flex items-center gap-1 text-[11px] font-medium text-emerald-800">
                           <Brain className="h-3.5 w-3.5" />
                           {selectedCharacter.name}
@@ -1050,8 +1073,14 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
                     ),
                   )}
 
+                  {!!interimTranscript && (
+                    <div className="bg-gray-50 rounded-lg p-3 italic text-xs sm:text-sm text-gray-500 break-words">
+                      {interimTranscript}...
+                    </div>
+                  )}
+
                   {speechError && (
-                    <div className="break-words rounded-lg bg-rose-50 p-3 text-xs text-rose-700 sm:text-sm">
+                    <div className="bg-rose-50 rounded-lg p-3 text-xs sm:text-sm text-rose-700 break-words">
                       {speechError}
                     </div>
                   )}
@@ -1063,22 +1092,22 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
 
         {/* FOOTER */}
         {!isCallActive ? (
-          <div className="border-t bg-white p-3 pb-[calc(env(safe-area-inset-bottom)+12px)] sm:p-4">
-            <div className="mx-auto max-w-md">
+          <div className="border-t bg-white p-3 sm:p-4 pb-[calc(env(safe-area-inset-bottom)+12px)]">
+            <div className="max-w-md mx-auto">
               <Button
-                className="min-h-[56px] w-full bg-primary-600 py-5 text-base text-white hover:bg-primary-700 sm:text-lg"
+                className="w-full bg-primary-600 hover:bg-primary-700 text-white text-base sm:text-lg py-5 min-h-[56px]"
                 onClick={startCall}
                 disabled={isConnecting}
               >
                 {isConnecting ? t("Connecting...") : t("Start video call")}
               </Button>
 
-              {speechError && <p className="mt-3 text-center text-xs text-rose-600">{speechError}</p>}
+              {speechError && <p className="mt-3 text-xs text-center text-rose-600">{speechError}</p>}
             </div>
           </div>
         ) : (
-          <div className="border-t bg-gray-50 p-3 pb-[calc(env(safe-area-inset-bottom)+12px)] sm:p-4">
-            <div className="mb-3 flex items-center gap-2 text-[11px] text-slate-500 sm:text-xs">
+          <div className="border-t bg-gray-50 p-3 sm:p-4 pb-[calc(env(safe-area-inset-bottom)+12px)]">
+            <div className="flex items-center gap-2 text-[11px] sm:text-xs text-slate-500 mb-3">
               <span className="truncate">{statusText}</span>
             </div>
 
@@ -1086,8 +1115,8 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
               <Button
                 variant="outline"
                 size="icon"
-                className={`h-14 w-14 touch-manipulation rounded-full sm:h-12 sm:w-12 ${
-                  isMicMuted ? "bg-red-100 text-red-600" : "bg-green-100 text-green-600"
+                className={`rounded-full h-14 w-14 sm:h-12 sm:w-12 touch-manipulation ${
+                  isMicMuted ? "bg-red-100 text-red-600" : isListening ? "bg-green-100 text-green-600 animate-pulse" : "bg-gray-100"
                 }`}
                 onClick={toggleMicrophone}
               >
@@ -1097,9 +1126,7 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
               <Button
                 variant="outline"
                 size="icon"
-                className={`h-14 w-14 touch-manipulation rounded-full sm:h-12 sm:w-12 ${
-                  isCameraOff ? "bg-red-100 text-red-600" : "bg-gray-100"
-                }`}
+                className={`rounded-full h-14 w-14 sm:h-12 sm:w-12 touch-manipulation ${isCameraOff ? "bg-red-100 text-red-600" : "bg-gray-100"}`}
                 onClick={toggleCamera}
               >
                 {isCameraOff ? <CameraOff className="h-6 w-6 sm:h-5 sm:w-5" /> : <Camera className="h-6 w-6 sm:h-5 sm:w-5" />}
@@ -1108,9 +1135,7 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
               <Button
                 variant="outline"
                 size="icon"
-                className={`h-14 w-14 touch-manipulation rounded-full sm:h-12 sm:w-12 ${
-                  isSoundEnabled ? "bg-gray-100" : "bg-red-100 text-red-600"
-                }`}
+                className={`rounded-full h-14 w-14 sm:h-12 sm:w-12 touch-manipulation ${isSoundEnabled ? "bg-gray-100" : "bg-red-100 text-red-600"}`}
                 onClick={toggleSound}
               >
                 {isSoundEnabled ? <Volume2 className="h-6 w-6 sm:h-5 sm:w-5" /> : <VolumeX className="h-6 w-6 sm:h-5 sm:w-5" />}
@@ -1119,11 +1144,26 @@ export default function VideoCallDialog({ isOpen, onClose, onError }: VideoCallD
               <Button
                 variant="destructive"
                 size="icon"
-                className="h-14 w-14 touch-manipulation rounded-full bg-red-600 text-white hover:bg-red-700 sm:h-12 sm:w-12"
+                className="rounded-full h-14 w-14 sm:h-12 sm:w-12 bg-red-600 hover:bg-red-700 text-white touch-manipulation"
                 onClick={endCall}
               >
                 <Phone className="h-6 w-6 sm:h-5 sm:w-5" />
               </Button>
+            </div>
+          </div>
+        )}
+
+        {/* DEBUG PANEL */}
+        {debugEnabled && (
+          <div className="absolute bottom-2 left-2 right-2 rounded-xl bg-black/70 p-2 text-[10px] text-white">
+            <div className="mb-1 flex items-center justify-between">
+              <div className="font-semibold">debug</div>
+              <button className="opacity-80 hover:opacity-100" onClick={() => setDebugLines([])}>
+                clear
+              </button>
+            </div>
+            <div className="max-h-[140px] overflow-auto whitespace-pre-wrap leading-snug">
+              {debugLines.length ? debugLines.join("\n") : "no logs yet"}
             </div>
           </div>
         )}
