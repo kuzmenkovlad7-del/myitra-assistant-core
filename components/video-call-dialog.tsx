@@ -184,7 +184,7 @@ export default function VideoCallDialog({
   const [isCallActive, setIsCallActive] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
 
-  const [isMicMuted, setIsMicMuted] = useState(false)
+  const [isMicMuted, setIsMicMuted] = useState(true)
   const [isCameraOff, setIsCameraOff] = useState(false)
   const [isSoundEnabled, setIsSoundEnabled] = useState(true)
 
@@ -884,15 +884,13 @@ export default function VideoCallDialog({
       setMessages([])
       setInterimTranscript("")
 
-      setIsMicMuted(false)
-      isMicMutedRef.current = false
+      setIsMicMuted(true)
+      isMicMutedRef.current = true
       lastSpeechActivityRef.current = Date.now()
       recognitionStopReasonRef.current = "none"
 
       // IMPORTANT: Start recognition while we still have the user gesture (Android requirement)
-      startSpeechRecognition()
-
-      // Now wait for mic permission result
+    // startSpeechRecognition() moved to mic button (Android gesture-safe)// Now wait for mic permission result
       const micOk = await micPromise
       if (!micOk) {
         // Rollback UI if permission denied / failed
@@ -965,24 +963,35 @@ export default function VideoCallDialog({
       userVideoRef.current.srcObject = null
     }
   }
-
-  function toggleMicrophone() {
+  async function toggleMicrophone() {
     if (!isCallActiveRef.current) return
 
-    if (isMicMuted) {
+    // Turn ON (strictly via user gesture)
+    if (isMicMutedRef.current) {
+      setSpeechError(null)
+
+      const ok = await requestMicrophoneAccess()
+      if (!ok) {
+        setIsMicMuted(true)
+        isMicMutedRef.current = true
+        return
+      }
+
       setIsMicMuted(false)
       isMicMutedRef.current = false
-      lastSpeechActivityRef.current = Date.now()
-      recognitionStopReasonRef.current = "none"
-      setSpeechError(null)
+
       startSpeechRecognition()
-    } else {
-      setIsMicMuted(true)
-      isMicMutedRef.current = true
-      stopSpeechRecognition()
-      setInterimTranscript("")
+      return
     }
+
+    // Turn OFF
+    stopSpeechRecognition()
+    setIsMicMuted(true)
+    isMicMutedRef.current = true
+    setInterimTranscript("")
   }
+
+
 
   function toggleCamera() {
     if (isCameraOff) {
