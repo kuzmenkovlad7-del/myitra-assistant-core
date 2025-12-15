@@ -899,10 +899,9 @@ export default function VideoCallDialog({
       isCallActiveRef.current = false
       setIsMicMuted(true)
       isMicMutedRef.current = true
-      try:
+      try {
         stopSpeechRecognition()
-      except Exception:
-        pass
+      } catch {}
     } finally {
       setIsConnecting(false)
     }
