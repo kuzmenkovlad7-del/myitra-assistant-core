@@ -697,7 +697,6 @@ export default function VideoCallDialog({
       }
     } finally {
       if (isCallActiveRef.current && !isMicMutedRef.current) {
-        startSpeechRecognition()
       } else {
         setActivityStatus("listening")
       }
@@ -869,6 +868,7 @@ export default function VideoCallDialog({
   }
 
   async function startCall() {
+
     if (isConnecting) return
     setIsConnecting(true)
     setSpeechError(null)
@@ -922,7 +922,8 @@ export default function VideoCallDialog({
     } finally {
       setIsConnecting(false)
     }
-  }
+  
+}
 
   function endCall() {
     setIsCallActive(false)
