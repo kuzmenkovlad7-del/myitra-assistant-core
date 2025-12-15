@@ -875,7 +875,6 @@ export default function VideoCallDialog({
 
     try {
       // Start permission request immediately (still inside the click gesture)
-      const micPromise = requestMicrophoneAccess()
 
       // Mark call active BEFORE starting recognition
       setIsCallActive(true)
