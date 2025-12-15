@@ -869,49 +869,59 @@ export default function VideoCallDialog({
   }
 
   async function startCall() {
+    if (isConnecting) return
     setIsConnecting(true)
     setSpeechError(null)
 
     try {
-      // IMPORTANT: Start recognition immediately inside the click handler (Android needs user gesture)
-startSpeechRecognition()
+      // Start permission request immediately (still inside the click gesture)
+      const micPromise = requestMicrophoneAccess()
 
-const micOk = await requestMicrophoneAccess()
-      if (!micOk) {
-        setIsConnecting(false)
-        return
-      }
-
+      // Mark call active BEFORE starting recognition
       setIsCallActive(true)
       isCallActiveRef.current = true
 
       setMessages([])
       setInterimTranscript("")
+
       setIsMicMuted(false)
       isMicMutedRef.current = false
       lastSpeechActivityRef.current = Date.now()
       recognitionStopReasonRef.current = "none"
 
-      if (
-        hasEnhancedVideo &&
-        idleVideoRef.current &&
-        selectedCharacter.idleVideo
-      ) {
-        try {
-          idleVideoRef.current.play().catch(() => {})
-        } catch {}
+      // IMPORTANT: Start recognition while we still have the user gesture (Android requirement)
+      startSpeechRecognition()
+
+      // Now wait for mic permission result
+      const micOk = await micPromise
+      if (!micOk) {
+        // Rollback UI if permission denied / failed
+        setIsMicMuted(true)
+        isMicMutedRef.current = true
+        stopSpeechRecognition()
+
+        setIsCallActive(false)
+        isCallActiveRef.current = false
+        setIsConnecting(false)
+        return
       }
 
-          } catch (error: any) {
-      console.error("Failed to start call:", error)
-      setSpeechError(
-        error?.message ||
-          t(
-            "Failed to start the call. Please check your microphone and camera permissions.",
-          ),
-      )
+      // play idle video if available
+      if (hasEnhancedVideo && videosRef.current.idle && (videosRef.current.idle as any).play) {
+        try {
+          await (videosRef.current.idle as any).play()
+        } catch {
+          // ignore autoplay restrictions here
+        }
+      }
+    } catch (e) {
+      console.error("[VIDEO] startCall error", e)
+      setSpeechError("Could not start. Check microphone permissions and try again.")
       setIsCallActive(false)
       isCallActiveRef.current = false
+      setIsMicMuted(true)
+      isMicMutedRef.current = true
+      stopSpeechRecognition()
     } finally {
       setIsConnecting(false)
     }
@@ -999,7 +1009,7 @@ const micOk = await requestMicrophoneAccess()
 
   if (!isOpen) return null
 
-  const micOn = isCallActive && !isMicMuted && isListening
+  const micOn = isCallActive && !isMicMuted
 
   const statusText = (() => {
     if (!isCallActive)
