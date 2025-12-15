@@ -866,102 +866,45 @@ export default function VideoCallDialog({
     }
     setIsListening(false)
   }
-
   async function startCall() {
-
     if (isConnecting) return
-
     setIsConnecting(true)
-
     setSpeechError(null)
 
-
     try {
-
-      // Start video session WITHOUT requesting microphone.
-
-      // Microphone/voice input will be requested only by the mic button.
-
+      // Активируем UI звонка. Камера поднимется через useEffect (getUserMedia({video:true})).
       setIsCallActive(true)
-
       isCallActiveRef.current = true
-
+      setIsCameraOff(false)
 
       setMessages([])
-
       setInterimTranscript("")
 
-
-      // mic is OFF by default
-
+      // Микрофон НЕ трогаем на старте. Разрешение и старт прослушки — только по кнопке микрофона.
       setIsMicMuted(true)
-
       isMicMutedRef.current = true
-
-
       lastSpeechActivityRef.current = Date.now()
-
       recognitionStopReasonRef.current = "none"
 
-
-      // play idle video if available (ignore autoplay restrictions)
-
-      if (
-
-        hasEnhancedVideo &&
-
-        videosRef.current.idle &&
-
-        (videosRef.current.idle as any).play
-
-      ) {
-
+      // idle video (если есть)
+      if (hasEnhancedVideo && videosRef.current.idle && (videosRef.current.idle as any).play) {
         try {
-
           await (videosRef.current.idle as any).play()
-
         } catch {
-
           // ignore autoplay restrictions
-
         }
-
       }
-
     } catch (e) {
-
       console.error("[VIDEO] startCall error", e)
-
-
-      setSpeechError(
-
-        t(
-
-          "Could not start the video session. Please check camera permissions and try again.",
-
-        ),
-
-      )
-
-
+      setSpeechError("Could not start. Please try again.")
       setIsCallActive(false)
-
       isCallActiveRef.current = false
-
-
       setIsMicMuted(true)
-
       isMicMutedRef.current = true
-
-
       stopSpeechRecognition()
-
     } finally {
-
       setIsConnecting(false)
-
     }
-
   }
 
 
