@@ -137,7 +137,7 @@ export default function VoiceCallDialog({
   const audioCtxRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const vadRafRef = useRef<number | null>(null)
-  const vadDataRef = useRef<Uint8Array | null>(null)
+  const vadDataRef = useRef<Uint8Array<ArrayBuffer> | null>(null)
   const vadNoiseRef = useRef(0.0002)
   const vadMaxRmsRef = useRef(0)
   const lastVoiceAtRef = useRef(0)
@@ -557,7 +557,7 @@ export default function VoiceCallDialog({
     silentGain.connect(ctx.destination)
 
     analyserRef.current = analyser
-    vadDataRef.current = new Uint8Array(analyser.fftSize)
+    vadDataRef.current = new Uint8Array(new ArrayBuffer(analyser.fftSize))
 
     vadNoiseRef.current = 0.0002
     vadMaxRmsRef.current = 0
