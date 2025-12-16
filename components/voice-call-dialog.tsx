@@ -29,17 +29,13 @@ type VoiceMessage = {
   gender?: "female" | "male"
 }
 
-// основной вебхук TurbotaAI агента
 const TURBOTA_AGENT_WEBHOOK_URL =
   process.env.NEXT_PUBLIC_TURBOTA_AGENT_WEBHOOK_URL || ""
 
-// запасной бекенд-прокси
 const FALLBACK_CHAT_API = "/api/chat"
 
-// аккуратно вытаскиваем текст из любого формата ответа n8n
 function extractAnswer(data: any): string {
   if (!data) return ""
-
   if (typeof data === "string") return data.trim()
 
   if (Array.isArray(data) && data.length > 0) {
@@ -74,7 +70,6 @@ function extractAnswer(data: any): string {
   return ""
 }
 
-// вычленяем только "новую" часть распознанного текста (чтоб не дублировало)
 function diffTranscript(prev: string, full: string): string {
   const normalize = (s: string) =>
     s
@@ -144,13 +139,14 @@ export default function VoiceCallDialog({
   const chunksRef = useRef<Blob[]>([])
   const discardOnStopRef = useRef(false)
 
-  // --- VAD state ---
+  // --- State refs ---
   const isCallActiveRef = useRef(false)
   const isAiSpeakingRef = useRef(false)
   const isMicMutedRef = useRef(false)
 
+  // --- VAD / metrics ---
   const startedAtRef = useRef(0)
-  const noiseFloorRef = useRef(0.001) // будет калиброваться
+  const noiseFloorRef = useRef(0.001)
   const maxRmsRef = useRef(0)
   const everHadVoiceRef = useRef(false)
 
@@ -158,16 +154,20 @@ export default function VoiceCallDialog({
   const recordingAtRef = useRef(0)
   const lastVoiceAtRef = useRef(0)
 
-  const baseThrRef = useRef(0.0012) // будет разный для mobile/desktop
+  const baseThrRef = useRef(0.0012)
   const baseThrMinRef = useRef(0.0006)
   const lastThrAdjustAtRef = useRef(0)
 
+  // --- STT ---
   const sttBusyRef = useRef(false)
   const lastTranscriptRef = useRef("")
 
+  // --- Debug ---
   const debugRef = useRef(false)
+  const silenceRetryTimerRef = useRef<number | null>(null)
+  const currentDeviceIdRef = useRef<string | null>(null)
+  const triedDeviceIdsRef = useRef<string[]>([])
 
-  // автоскролл
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -197,14 +197,13 @@ export default function VoiceCallDialog({
     return g === "male" ? "MALE" : "FEMALE"
   }
 
-  function getIsMobile(): boolean {
+  function isMobileUA(): boolean {
     if (typeof navigator === "undefined") return false
     return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
   }
 
   function pickRecorderMime(): string | undefined {
     if (typeof MediaRecorder === "undefined") return undefined
-    // порядок важен
     if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus"))
       return "audio/webm;codecs=opus"
     if (MediaRecorder.isTypeSupported("audio/webm")) return "audio/webm"
@@ -220,19 +219,62 @@ export default function VoiceCallDialog({
     }
   }
 
+  function clearSilenceRetryTimer() {
+    if (silenceRetryTimerRef.current != null) {
+      window.clearTimeout(silenceRetryTimerRef.current)
+      silenceRetryTimerRef.current = null
+    }
+  }
+
   function hardStopRecorder(discard: boolean) {
     const rec = recorderRef.current
     if (!rec) return
-
     discardOnStopRef.current = discard
-
     try {
-      if (rec.state !== "inactive") {
-        rec.stop()
-      }
+      if (rec.state !== "inactive") rec.stop()
     } catch (e) {
       console.error("Recorder stop error", e)
     }
+  }
+
+  function cleanupMedia() {
+    clearSilenceRetryTimer()
+    stopRafLoop()
+
+    try {
+      hardStopRecorder(true)
+    } catch {
+      // ignore
+    }
+    recorderRef.current = null
+    chunksRef.current = []
+
+    try {
+      sourceRef.current?.disconnect()
+    } catch {
+      // ignore
+    }
+    sourceRef.current = null
+    analyserRef.current = null
+
+    try {
+      audioCtxRef.current?.close()
+    } catch {
+      // ignore
+    }
+    audioCtxRef.current = null
+
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((tr) => {
+        try {
+          tr.stop()
+        } catch {
+          // ignore
+        }
+      })
+    }
+    mediaStreamRef.current = null
+    audioTrackRef.current = null
   }
 
   async function sendToStt(blob: Blob): Promise<string> {
@@ -243,9 +285,7 @@ export default function VoiceCallDialog({
 
       const res = await fetch("/api/stt", {
         method: "POST",
-        headers: {
-          "Content-Type": blob.type || "application/octet-stream",
-        },
+        headers: { "Content-Type": blob.type || "application/octet-stream" },
         body: blob,
       })
 
@@ -264,13 +304,11 @@ export default function VoiceCallDialog({
 
       const fullText = (data.text || "").toString().trim()
       dlog("[STT] text full =", fullText)
-
       if (!fullText) return ""
 
       const prev = lastTranscriptRef.current
       const delta = diffTranscript(prev, fullText)
       lastTranscriptRef.current = fullText
-
       return delta || ""
     } catch (e) {
       console.error("[STT] fatal", e)
@@ -307,16 +345,14 @@ export default function VoiceCallDialog({
         }),
       })
 
-      if (!res.ok) {
-        throw new Error(`Chat API error: ${res.status}`)
-      }
+      if (!res.ok) throw new Error(`Chat API error: ${res.status}`)
 
       const raw = await res.text()
       let data: any = raw
       try {
         data = JSON.parse(raw)
       } catch {
-        // ok: plain string
+        // ok
       }
 
       let answer = extractAnswer(data)
@@ -351,7 +387,6 @@ export default function VoiceCallDialog({
     const beginSpeaking = () => {
       isAiSpeakingRef.current = true
       setIsAiSpeaking(true)
-      // если юзер начал говорить поверх ассистента — мы это игнорируем (как ты и хотел)
       hardStopRecorder(true)
     }
 
@@ -385,7 +420,11 @@ export default function VoiceCallDialog({
         const audioUrl = `data:audio/mp3;base64,${data.audioContent}`
 
         if (audioRef.current) {
-          audioRef.current.pause()
+          try {
+            audioRef.current.pause()
+          } catch {
+            // ignore
+          }
           audioRef.current = null
         }
 
@@ -423,19 +462,17 @@ export default function VoiceCallDialog({
 
     // параметры VAD
     const VOICE_START_MS = 140
-    const SILENCE_MS = 4200              // стало длиннее — чтобы "не дослушивает" ушло
-    const MAX_UTTERANCE_MS = 45000       // длинные фразы + паузы
-    const TIMESLICE_MS = 250            // норм для webm/mp4
+    const SILENCE_MS = 4200
+    const MAX_UTTERANCE_MS = 45000
+    const TIMESLICE_MS = 250
 
     const data = new Uint8Array(analyser.fftSize)
 
     const tick = () => {
       if (!isCallActiveRef.current) return
 
-      // если мьют или ассистент говорит — ничего не пишем
       if (isMicMutedRef.current || isAiSpeakingRef.current) {
         voiceCandidateAtRef.current = 0
-        // если вдруг что-то писали — выкинуть
         hardStopRecorder(true)
         rafRef.current = requestAnimationFrame(tick)
         return
@@ -449,50 +486,38 @@ export default function VoiceCallDialog({
         sumSq += v * v
       }
       const rms = Math.sqrt(sumSq / data.length)
-
       if (rms > maxRmsRef.current) maxRmsRef.current = rms
 
-      // калибровка noise floor, только когда не говорим и не пишем
-      // (шум “плавает” и на ПК бывает меньше, чем мы ожидали)
+      // noise floor
       const noisePrev = noiseFloorRef.current
       const noiseNext = Math.max(0.0002, noisePrev * 0.985 + rms * 0.015)
       noiseFloorRef.current = noiseNext
 
-      // адаптивный порог: базовый + от шума
-      // ВАЖНО: на ПК фиксированный base 0.0045 был слишком высоким → никогда не стартовало.
       const noise = noiseFloorRef.current
       const base = baseThrRef.current
       const thr = Math.max(base, noise * 6 + 0.00035)
 
-      // защита от “слишком низкого” thr: нужно быть заметно выше шума
       const isVoice = rms > thr && rms > noise * 2.2
-
       const now = performance.now()
 
-      // если долго нет голоса — автоматически опускаем baseThr (ПК микрофоны часто тихие)
+      // автопонижение baseThr на ПК (если голос так и не появился)
       if (!everHadVoiceRef.current && now - startedAtRef.current > 2500) {
         if (now - lastThrAdjustAtRef.current > 900) {
-          // опускаем мягко, но не ниже baseThrMin
           baseThrRef.current = Math.max(baseThrMinRef.current, baseThrRef.current * 0.85)
           lastThrAdjustAtRef.current = now
         }
       }
 
-      // запуск записи
-      if (!recorderRef.current || recorderRef.current.state === "inactive") {
-        // ok
-      }
-
       const isRecording =
         recorderRef.current &&
-        (recorderRef.current.state === "recording" || recorderRef.current.state === "paused")
+        (recorderRef.current.state === "recording" ||
+          recorderRef.current.state === "paused")
 
       if (!isRecording) {
         if (isVoice) {
           if (!voiceCandidateAtRef.current) {
             voiceCandidateAtRef.current = now
           } else if (now - voiceCandidateAtRef.current >= VOICE_START_MS) {
-            // старт utterance recorder
             voiceCandidateAtRef.current = 0
             everHadVoiceRef.current = true
             recordingAtRef.current = now
@@ -521,8 +546,6 @@ export default function VoiceCallDialog({
 
                   const localChunks = chunksRef.current
                   chunksRef.current = []
-
-                  // после stop() recorder становится inactive
                   recorderRef.current = null
 
                   if (discard) return
@@ -548,9 +571,7 @@ export default function VoiceCallDialog({
                   await handleUserText(text)
                 }
 
-                rec.onerror = (e: any) => {
-                  console.error("[REC] error", e)
-                }
+                rec.onerror = (e: any) => console.error("[REC] error", e)
 
                 rec.start(TIMESLICE_MS)
                 dlog("[REC] start", { mime: rec.mimeType || "auto" })
@@ -563,10 +584,7 @@ export default function VoiceCallDialog({
           voiceCandidateAtRef.current = 0
         }
       } else {
-        // идёт запись utterance
-        if (isVoice) {
-          lastVoiceAtRef.current = now
-        }
+        if (isVoice) lastVoiceAtRef.current = now
 
         const recStarted = recordingAtRef.current || now
         const lastVoice = lastVoiceAtRef.current || now
@@ -580,16 +598,6 @@ export default function VoiceCallDialog({
         }
       }
 
-      // “нет сигнала микрофона” показываем только если реально вообще ничего не поднялось
-      if (now - startedAtRef.current > 6000 && maxRmsRef.current < 0.0012) {
-        // один раз показать и не спамить
-        if (!networkError) {
-          setNetworkError(
-            "На ПК не вижу сигнал микрофона. Проверь: разрешение микрофона в адресной строке, выбранный input в системе/браузере, и что микрофон не занят другим приложением. Для логов открой страницу с ?debug=1."
-          )
-        }
-      }
-
       if (debugRef.current) {
         dlog("[VAD]", {
           rms: Number(rms.toFixed(5)),
@@ -599,6 +607,7 @@ export default function VoiceCallDialog({
           rec: recorderRef.current?.state || "none",
           base: Number(baseThrRef.current.toFixed(5)),
           max: Number(maxRmsRef.current.toFixed(5)),
+          dev: currentDeviceIdRef.current || "default",
         })
       }
 
@@ -608,9 +617,144 @@ export default function VoiceCallDialog({
     rafRef.current = requestAnimationFrame(tick)
   }
 
+  async function getAudioInputsSafe(): Promise<MediaDeviceInfo[]> {
+    try {
+      if (!navigator.mediaDevices?.enumerateDevices) return []
+      const all = await navigator.mediaDevices.enumerateDevices()
+      return all.filter((d) => d.kind === "audioinput")
+    } catch {
+      return []
+    }
+  }
+
+  async function tryStartWithDevice(deviceId: string | null, attempt: number) {
+    setNetworkError(null)
+
+    // сброс метрик
+    startedAtRef.current = performance.now()
+    noiseFloorRef.current = 0.001
+    maxRmsRef.current = 0
+    everHadVoiceRef.current = false
+    voiceCandidateAtRef.current = 0
+    recordingAtRef.current = 0
+    lastVoiceAtRef.current = 0
+    lastThrAdjustAtRef.current = 0
+    lastTranscriptRef.current = ""
+    sttBusyRef.current = false
+
+    cleanupMedia()
+
+    const isMobile = isMobileUA()
+    baseThrRef.current = isMobile ? 0.006 : 0.0012
+    baseThrMinRef.current = isMobile ? 0.004 : 0.0006
+
+    const audioConstraints: any = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    }
+    if (deviceId) {
+      audioConstraints.deviceId = { exact: deviceId }
+    }
+
+    dlog("[CALL] getUserMedia attempt", { attempt, deviceId: deviceId || "default" })
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: audioConstraints,
+    })
+
+    mediaStreamRef.current = stream
+    const track = stream.getAudioTracks()[0] || null
+    audioTrackRef.current = track
+    if (track) track.enabled = true
+
+    // сохранить текущий deviceId
+    let resolvedDeviceId: string | null = deviceId
+    try {
+      const settings = track?.getSettings?.()
+      if (settings?.deviceId) resolvedDeviceId = settings.deviceId
+      dlog("[CALL] track settings", { label: track?.label, settings })
+    } catch {
+      // ignore
+    }
+    currentDeviceIdRef.current = resolvedDeviceId
+
+    // AudioContext + analyser
+    const AudioCtx = (window.AudioContext || (window as any).webkitAudioContext) as
+      | typeof AudioContext
+      | undefined
+    if (!AudioCtx) throw new Error("AudioContext not supported")
+
+    try {
+      await audioCtxRef.current?.close()
+    } catch {
+      // ignore
+    }
+    audioCtxRef.current = new AudioCtx()
+    try {
+      await audioCtxRef.current.resume()
+    } catch {
+      // ignore
+    }
+
+    analyserRef.current = audioCtxRef.current.createAnalyser()
+    analyserRef.current.fftSize = 2048
+    analyserRef.current.smoothingTimeConstant = 0.8
+
+    sourceRef.current = audioCtxRef.current.createMediaStreamSource(stream)
+    sourceRef.current.connect(analyserRef.current)
+
+    startVadLoop()
+
+    // Авто-ретрай микрофона только на ПК
+    clearSilenceRetryTimer()
+    silenceRetryTimerRef.current = window.setTimeout(async () => {
+      if (!isCallActiveRef.current) return
+      if (isMobileUA()) return
+
+      const max = maxRmsRef.current
+      dlog("[CALL] signal check", { attempt, max, dev: currentDeviceIdRef.current })
+
+      // если max почти ноль — это 99% “не тот input”
+      if (max < 0.0008 && attempt < 3) {
+        const inputs = await getAudioInputsSafe()
+        dlog(
+          "[CALL] audio inputs",
+          inputs.map((d) => ({ label: d.label, deviceId: d.deviceId }))
+        )
+
+        // построим список кандидатов, исключая уже пробованные
+        const tried = triedDeviceIdsRef.current
+        const current = currentDeviceIdRef.current
+        const candidates = inputs
+          .map((d) => d.deviceId)
+          .filter((id) => id && id !== "default" && id !== "communications")
+          .filter((id) => id !== current)
+          .filter((id) => !tried.includes(id))
+
+        const next = candidates[0] || null
+        if (next) {
+          triedDeviceIdsRef.current = [...tried, next]
+          setNetworkError("На ПК переключаю микрофон на другой input (авто-поиск сигнала)…")
+          await tryStartWithDevice(next, attempt + 1)
+          return
+        }
+      }
+
+      // если уже пытались и всё равно ноль — тогда показываем ошибку
+      if (max < 0.0008) {
+        setNetworkError(
+          "На ПК не вижу сигнал микрофона. Проверь: разрешение микрофона в адресной строке, выбранный input в системе/браузере, и что микрофон не занят другим приложением. Для логов открой страницу с ?debug=1."
+        )
+      } else {
+        // сигнал есть — убрать любые предупреждения
+        setNetworkError(null)
+      }
+    }, 2600) as unknown as number
+  }
+
   const startCall = async (gender: "female" | "male") => {
     voiceGenderRef.current = gender
-
     setIsConnecting(true)
     setNetworkError(null)
 
@@ -619,116 +763,39 @@ export default function VoiceCallDialog({
         debugRef.current = new URLSearchParams(window.location.search).get("debug") === "1"
       }
 
-      if (
-        typeof navigator === "undefined" ||
-        !navigator.mediaDevices ||
-        !navigator.mediaDevices.getUserMedia
-      ) {
+      if (!navigator.mediaDevices?.getUserMedia) {
         setNetworkError(
-          t(
-            "Microphone access is not supported in this browser. Please use the latest version of Chrome, Edge or Safari."
-          )
+          t("Microphone access is not supported in this browser. Please use the latest version of Chrome, Edge or Safari.")
         )
         setIsConnecting(false)
         return
       }
 
-      const isMobile = getIsMobile()
-      baseThrRef.current = isMobile ? 0.006 : 0.0012
-      baseThrMinRef.current = isMobile ? 0.004 : 0.0006
-
-      // важное: на ПК слишком строгие noiseSuppression/AGC иногда “душат” уровень,
-      // поэтому ставим их true, но пороги делаем адаптивными (см. VAD loop).
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        } as any,
-      })
-
-      mediaStreamRef.current = stream
-      const track = stream.getAudioTracks()[0] || null
-      audioTrackRef.current = track
-      if (track) track.enabled = true
-
-      // audio context + analyser
-      const AudioCtx = (window.AudioContext || (window as any).webkitAudioContext) as
-        | typeof AudioContext
-        | undefined
-
-      if (!AudioCtx) {
-        setNetworkError(
-          t(
-            "Microphone access is not supported in this browser. Please use the latest version of Chrome, Edge or Safari."
-          )
-        )
-        setIsConnecting(false)
-        return
-      }
-
-      // закрыть старый контекст если был
-      try {
-        await audioCtxRef.current?.close()
-      } catch {
-        // ignore
-      }
-      audioCtxRef.current = new AudioCtx()
-
-      try {
-        await audioCtxRef.current.resume()
-      } catch {
-        // ignore
-      }
-
-      analyserRef.current = audioCtxRef.current.createAnalyser()
-      analyserRef.current.fftSize = 2048
-      analyserRef.current.smoothingTimeConstant = 0.8
-
-      sourceRef.current = audioCtxRef.current.createMediaStreamSource(stream)
-      sourceRef.current.connect(analyserRef.current)
-
-      // reset VAD state
       isCallActiveRef.current = true
-      startedAtRef.current = performance.now()
-      noiseFloorRef.current = 0.001
-      maxRmsRef.current = 0
-      everHadVoiceRef.current = false
-      voiceCandidateAtRef.current = 0
-      recordingAtRef.current = 0
-      lastVoiceAtRef.current = 0
-      lastThrAdjustAtRef.current = 0
-      lastTranscriptRef.current = ""
-      sttBusyRef.current = false
-
       setIsCallActive(true)
       setIsListeningUi(true)
+
+      // reset retry state
+      triedDeviceIdsRef.current = []
+      currentDeviceIdRef.current = null
+
+      // первая попытка: default
+      await tryStartWithDevice(null, 0)
+
       setIsConnecting(false)
-
-      dlog("[CALL] started", {
-        isMobile,
-        track: track?.label || "unknown",
-        settings: track?.getSettings?.() || {},
-      })
-
-      startVadLoop()
     } catch (error: any) {
       console.error("[CALL] start error:", error)
 
       const name = error?.name
       if (name === "NotAllowedError" || name === "PermissionDeniedError") {
         setNetworkError(
-          t(
-            "Microphone is blocked for this site in the browser. Please allow access in the address bar and reload the page."
-          )
+          t("Microphone is blocked for this site in the browser. Please allow access in the address bar and reload the page.")
         )
       } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
         setNetworkError(t("No microphone was found on this device. Please check your hardware."))
       } else {
         setNetworkError(
-          t(
-            "Could not start microphone. Check permissions in the browser and system settings, then try again."
-          )
+          t("Could not start microphone. Check permissions in the browser and system settings, then try again.")
         )
       }
 
@@ -750,47 +817,8 @@ export default function VoiceCallDialog({
     isAiSpeakingRef.current = false
     isMicMutedRef.current = false
 
-    stopRafLoop()
+    cleanupMedia()
 
-    // recorder
-    try {
-      hardStopRecorder(true)
-    } catch {
-      // ignore
-    }
-    recorderRef.current = null
-    chunksRef.current = []
-
-    // audio ctx
-    try {
-      sourceRef.current?.disconnect()
-    } catch {
-      // ignore
-    }
-    sourceRef.current = null
-    analyserRef.current = null
-
-    try {
-      audioCtxRef.current?.close()
-    } catch {
-      // ignore
-    }
-    audioCtxRef.current = null
-
-    // tracks
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((tr) => {
-        try {
-          tr.stop()
-        } catch {
-          // ignore
-        }
-      })
-    }
-    mediaStreamRef.current = null
-    audioTrackRef.current = null
-
-    // tts audio
     if (audioRef.current) {
       try {
         audioRef.current.pause()
@@ -817,11 +845,9 @@ export default function VoiceCallDialog({
     const track = audioTrackRef.current
     if (track) track.enabled = !next
 
-    // если мьют — выкидываем текущую запись
     if (next) {
       hardStopRecorder(true)
     } else {
-      // при анмьюте перезапускаем калибровку шума, чтобы быстрее подхватить
       noiseFloorRef.current = 0.001
       maxRmsRef.current = 0
       startedAtRef.current = performance.now()
@@ -867,7 +893,6 @@ export default function VoiceCallDialog({
       <DialogContent className="max-w-xl border-none bg-transparent p-0">
         <div className="overflow-hidden rounded-3xl bg-white shadow-xl shadow-slate-900/10">
           <DialogHeader className="border-b border-indigo-100 bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 px-6 pt-5 pb-4 text-white">
-            {/* pr-12 чтобы заголовок не лез под крестик на мобилках */}
             <div className="flex items-center justify-between gap-3 pr-12">
               <div>
                 <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
