@@ -19,9 +19,9 @@ function normalizeWhisperLanguage(value: string | null): string | undefined {
   if (!v) return undefined
 
   // поддержка форматов типа "uk-UA", "ru-RU"
-  if (v.startswith("uk")) return "uk"
-  if (v.startswith("ru")) return "ru"
-  if (v.startswith("en")) return "en"
+  if (v.startsWith("uk")) return "uk"
+  if (v.startsWith("ru")) return "ru"
+  if (v.startsWith("en")) return "en"
   // если пришло что-то экзотическое — отдаём как есть (Whisper может проигнорировать)
   return v
 }
