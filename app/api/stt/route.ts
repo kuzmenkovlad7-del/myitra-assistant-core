@@ -1,61 +1,72 @@
-import OpenAI from "openai"
-
 export const runtime = "nodejs"
-export const dynamic = "force-dynamic"
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
-
-function pickFilename(ctRaw: string | null): string {
-  const ct = (ctRaw || "").toLowerCase()
-  if (ct.includes("webm")) return "speech.webm"
-  if (ct.includes("mp4")) return "speech.mp4"
-  if (ct.includes("mpeg") || ct.includes("mp3")) return "speech.mp3"
-  if (ct.includes("wav")) return "speech.wav"
-  if (ct.includes("ogg")) return "speech.ogg"
+function pickFilename(ct: string) {
+  const s = (ct || "").toLowerCase()
+  if (s.includes("webm")) return "speech.webm"
+  if (s.includes("mp4")) return "speech.mp4"
+  if (s.includes("mpeg") || s.includes("mp3")) return "speech.mp3"
+  if (s.includes("wav")) return "speech.wav"
+  if (s.includes("ogg")) return "speech.ogg"
+  if (s.includes("m4a")) return "speech.m4a"
   return "speech.audio"
 }
 
 export async function POST(req: Request) {
   try {
-    if (!process.env.OPENAI_API_KEY) {
+    const apiKey = process.env.OPENAI_API_KEY
+    if (!apiKey) {
       return Response.json(
         { success: false, error: "OPENAI_API_KEY is not set" },
         { status: 500 },
       )
     }
 
-    const ct = req.headers.get("content-type")
+    const ct = req.headers.get("content-type") || "application/octet-stream"
     const ab = await req.arrayBuffer()
-    if (!ab || ab.byteLength === 0) {
+    const bytes = new Uint8Array(ab)
+
+    if (!bytes || bytes.byteLength === 0) {
       return Response.json(
         { success: false, error: "Empty audio body" },
         { status: 400 },
       )
     }
 
-    const url = new URL(req.url)
-    const lang = (url.searchParams.get("lang") || "").toLowerCase()
-    const language =
-      lang === "uk" || lang === "ru" || lang === "en" ? (lang as any) : undefined
+    const filename = pickFilename(ct)
+    const file = new File([bytes], filename, { type: ct })
 
-    const bytes = new Uint8Array(ab)
-    const blob = new Blob([bytes], { type: ct || "application/octet-stream" })
-    const file = new File([blob], pickFilename(ct), {
-      type: ct || "application/octet-stream",
+    const form = new FormData()
+    form.append("file", file)
+    form.append("model", "whisper-1")
+
+    const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: form,
     })
 
-    const tr = await openai.audio.transcriptions.create({
-      file,
-      model: "whisper-1",
-      language,
-    })
+    const textRaw = await r.text()
+    let data: any = null
+    try {
+      data = textRaw ? JSON.parse(textRaw) : null
+    } catch {
+      data = null
+    }
 
-    return Response.json({ success: true, text: tr.text || "" })
+    if (!r.ok) {
+      return Response.json(
+        { success: false, error: data?.error?.message || textRaw || "STT error" },
+        { status: 500 },
+      )
+    }
+
+    const text = (data?.text || "").toString().trim()
+    return Response.json({ success: true, text })
   } catch (e: any) {
     return Response.json(
-      { success: false, error: e?.message || "STT error" },
+      { success: false, error: e?.message || "Unknown STT error" },
       { status: 500 },
     )
   }
