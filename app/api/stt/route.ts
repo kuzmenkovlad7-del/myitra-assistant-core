@@ -1,72 +1,46 @@
+import { NextRequest, NextResponse } from "next/server"
+import OpenAI from "openai"
+
 export const runtime = "nodejs"
 
-function pickFilename(ct: string) {
-  const s = (ct || "").toLowerCase()
-  if (s.includes("webm")) return "speech.webm"
-  if (s.includes("mp4")) return "speech.mp4"
-  if (s.includes("mpeg") || s.includes("mp3")) return "speech.mp3"
-  if (s.includes("wav")) return "speech.wav"
-  if (s.includes("ogg")) return "speech.ogg"
-  if (s.includes("m4a")) return "speech.m4a"
-  return "speech.audio"
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
+
+function pickExt(contentType: string) {
+  const ct = (contentType || "").toLowerCase()
+  if (ct.includes("mp4") || ct.includes("m4a")) return "mp4"
+  if (ct.includes("mpeg") || ct.includes("mp3")) return "mp3"
+  if (ct.includes("wav")) return "wav"
+  if (ct.includes("webm")) return "webm"
+  return "webm"
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const apiKey = process.env.OPENAI_API_KEY
-    if (!apiKey) {
-      return Response.json(
-        { success: false, error: "OPENAI_API_KEY is not set" },
-        { status: 500 },
-      )
+    const contentType = req.headers.get("content-type") || "application/octet-stream"
+    const sttLang = (req.headers.get("x-stt-lang") || "").toLowerCase()
+
+    const arrayBuffer = await req.arrayBuffer()
+    const size = arrayBuffer?.byteLength ?? 0
+    if (!arrayBuffer || size < 1200) {
+      return NextResponse.json({ success: true, text: "" }, { status: 200 })
     }
 
-    const ct = req.headers.get("content-type") || "application/octet-stream"
-    const ab = await req.arrayBuffer()
-    const bytes = new Uint8Array(ab)
+    const buffer = Buffer.from(arrayBuffer)
+    const ext = pickExt(contentType)
+    const file = new File([buffer], `speech.${ext}`, { type: contentType })
 
-    if (!bytes || bytes.byteLength === 0) {
-      return Response.json(
-        { success: false, error: "Empty audio body" },
-        { status: 400 },
-      )
-    }
-
-    const filename = pickFilename(ct)
-    const file = new File([bytes], filename, { type: ct })
-
-    const form = new FormData()
-    form.append("file", file)
-    form.append("model", "whisper-1")
-
-    const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: form,
+    const transcription = await openai.audio.transcriptions.create({
+      file,
+      model: "whisper-1",
+      ...(sttLang === "uk" || sttLang === "ru" || sttLang === "en" ? { language: sttLang } : {}),
     })
 
-    const textRaw = await r.text()
-    let data: any = null
-    try {
-      data = textRaw ? JSON.parse(textRaw) : null
-    } catch {
-      data = null
-    }
-
-    if (!r.ok) {
-      return Response.json(
-        { success: false, error: data?.error?.message || textRaw || "STT error" },
-        { status: 500 },
-      )
-    }
-
-    const text = (data?.text || "").toString().trim()
-    return Response.json({ success: true, text })
-  } catch (e: any) {
-    return Response.json(
-      { success: false, error: e?.message || "Unknown STT error" },
+    const text = (transcription.text ?? "").trim()
+    return NextResponse.json({ success: true, text }, { status: 200 })
+  } catch (error) {
+    console.error("[/api/stt] error:", error)
+    return NextResponse.json(
+      { success: false, error: "Audio file might be corrupted or unsupported" },
       { status: 500 },
     )
   }
