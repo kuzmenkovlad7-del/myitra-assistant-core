@@ -24,40 +24,18 @@ function normLang(v: string | null): "uk" | "ru" | "en" | undefined {
   return undefined
 }
 
-function isCommonHallucination(text: string) {
-  const t = text.toLowerCase().trim()
-  return (
-    t === "thank you" ||
-    t === "thanks" ||
-    t === "bye" ||
-    t === "bye bye" ||
-    t === "ok" ||
-    t === "okay"
-  )
-}
-
 export async function POST(req: NextRequest) {
   const contentType = req.headers.get("content-type") || "application/octet-stream"
   const ext = pickExt(contentType)
-
-  const url = req.nextUrl
-  const langRaw =
-    req.headers.get("x-stt-language") ||
-    url.searchParams.get("lang") ||
-    url.searchParams.get("stt") ||
-    null
-
-  // по умолчанию ВСЕГДА украинский
-  const lang = normLang(req.headers.get("x-stt-language") || req.nextUrl.searchParams.get("lang"))
-|| "uk"
+  const lang = normLang(req.headers.get("x-stt-language"))
   const debug = req.headers.get("x-debug") === "1"
 
   try {
     const arrayBuffer = await req.arrayBuffer()
     const size = arrayBuffer?.byteLength ?? 0
 
-    // мелочь = тишина/шум
-    if (!arrayBuffer || size < 1500) {
+    // очень маленькие куски — это тишина/шум
+    if (!arrayBuffer || size < 800) {
       return NextResponse.json(
         { success: true, text: "", debug: debug ? { contentType, size, ext, lang, note: "too_small" } : undefined },
         { status: 200 },
@@ -70,18 +48,10 @@ export async function POST(req: NextRequest) {
     const transcription = await openai.audio.transcriptions.create({
       file,
       model: "whisper-1",
-      language: lang,
+      ...(lang ? { language: lang } : {}),
     })
 
     const text = (transcription.text ?? "").trim()
-
-    // анти-«галлюцинации» на коротких/тихих кусках
-    if (size < 25000 && isCommonHallucination(text)) {
-      return NextResponse.json(
-        { success: true, text: "", debug: debug ? { contentType, size, ext, lang, note: "filtered_hallucination" } : undefined },
-        { status: 200 },
-      )
-    }
 
     return NextResponse.json(
       { success: true, text, debug: debug ? { contentType, size, ext, lang, textLen: text.length } : undefined },
@@ -92,7 +62,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: "stt_failed",
+        error: "Audio file might be corrupted or unsupported",
         debug: debug
           ? { contentType, ext, lang, message: error?.message || String(error) }
           : undefined,
