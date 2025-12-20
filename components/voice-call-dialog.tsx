@@ -341,7 +341,7 @@ const isCallActiveRef = useRef(false)
         headers: {
           "Content-Type": blob.type || "application/octet-stream",
           "X-STT-Hint": (lastSttHintRef.current || computeHint3()),
-          "X-STT-Lang": computeLangCode(),
+          "X-STT-Lang": (debugParams.stt ? computeLangCode() : "auto"),
         } as any,
         body: blob,
       })
