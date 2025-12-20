@@ -868,7 +868,7 @@ async function maybeSendStt(reason: string) {
     ? `stt=${debugParams.stt || "auto"} rms=${vad.current.rms.toFixed(5)} thr=${vad.current.thr.toFixed(5)} nf=${vad.current.noiseFloor.toFixed(5)} voice=${vad.current.voice ? 1 : 0} chunks=${audioChunksRef.current.length} sentIdx=${sentIdxRef.current}`
     : null
 
-  // ANDROID_ONE_SHOT_V4: server logs + watchdog (только мобилки). Логи в терминал через /api/client-log при ?serverLog=1
+  // ANDROID_ONE_SHOT_V5: server logs + watchdog (Android one-shot). Логи в Vercel через /api/client-log при ?serverLog=1
   function __serverLog(event: string, data: any = {}) {
     try {
       if (typeof window === "undefined") return
@@ -893,10 +893,15 @@ async function maybeSendStt(reason: string) {
     if (!isCallActive) return
 
     const ua = typeof navigator !== "undefined" ? navigator.userAgent : ""
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(ua)
+    const isAndroid = /Android/i.test(ua)
+    const isIOS = /iPhone|iPad|iPod/i.test(ua)
+    const isMobile = isAndroid || isIOS
     if (!isMobile) return
 
     let tick = 0
+    let prevChunksLen: any = null
+    let stale = 0
+
     const id = window.setInterval(() => {
       try {
         if (!isCallActiveRef.current) return
@@ -911,9 +916,9 @@ async function maybeSendStt(reason: string) {
 
         tick++
 
-        // периодически шлём состояние в терминал
+        // лог состояния
         if (tick % 3 === 0) {
-          __serverLog("mobile_state", { state, chunksLen, sentIdx, sttBusy, micMuted })
+          __serverLog("mobile_state", { state, chunksLen, prevChunksLen, stale, sentIdx, sttBusy, micMuted })
         }
 
         // если чанки обнулились, а sentIdx остался большим — сбрасываем
@@ -923,12 +928,36 @@ async function maybeSendStt(reason: string) {
           __serverLog("sentIdx_reset", { sentIdx, chunksLen })
         }
 
-        // если запись идёт — иногда Android не отдаёт чанки, принудительно просим data
-        if (!micMuted && rec && state === "recording" && tick % 2 === 0) {
+        // Android: часто "зависает" dataavailable после первого сообщения — чанки не растут
+        if (isAndroid && !micMuted && rec && state === "recording" && typeof chunksLen === "number") {
+          if (prevChunksLen !== null && chunksLen === prevChunksLen) stale++
+          else stale = 0
+          prevChunksLen = chunksLen
+
+          // форсим requestData чаще
           try { rec.requestData?.() } catch {}
+
+          // если 3 тика подряд чанки не меняются — hard restart recorder
+          if (stale >= 3) {
+            __serverLog("chunks_stalled", { state, chunksLen, prevChunksLen, stale })
+            stale = 0
+            try { (sentIdxRef as any).current = 0 } catch {}
+            try { (lastTranscriptRef as any).current = "" } catch {}
+
+            try { rec.stop?.() } catch {}
+            window.setTimeout(() => {
+              try {
+                const r: any = mediaRecorderRef.current
+                if (r && r.state === "inactive") {
+                  r.start?.(250)
+                  __serverLog("rec_hard_restart", { after: r.state })
+                }
+              } catch {}
+            }, 180)
+          }
         }
 
-        // если рекордер подвис — оживляем
+        // если рекордер явно подвис по стейту — оживляем
         if (!micMuted && rec) {
           if (state === "paused") {
             try { rec.resume() } catch {}
@@ -941,10 +970,11 @@ async function maybeSendStt(reason: string) {
           }
         }
       } catch {}
-    }, 900)
+    }, 800)
 
     return () => window.clearInterval(id)
   }, [isCallActive, isMicMuted])
+
 
 
 
