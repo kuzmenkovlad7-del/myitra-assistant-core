@@ -12,8 +12,7 @@ s = s.replace(
   /(\b[A-Za-z_$][\w$]*ChunksRef)\.current\s*=\s*\[\s*\]\s*;?/g,
   (_, ref) => {
     nEmpty++
-    return `${ref}.current.length = 0`
-  }
+    return `${ref}.current.length = 0;`}
 )
 
 // 2) ...ChunksRef.current = ...ChunksRef.current.slice(X)
@@ -24,8 +23,7 @@ s = s.replace(
     const a = String(arg).trim()
     if (a.startsWith("-")) return m // не трогаем отрицательный slice
     nSlice++
-    return `${ref}.current.splice(0, (${a}))`
-  }
+    return `${ref}.current.splice(0, (${a}));`}
 )
 
 if (s === before) {
