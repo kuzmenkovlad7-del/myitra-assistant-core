@@ -382,18 +382,20 @@ const isCallActiveRef = useRef(false)
       }
 
       setMessages((prevMsgs) => [...prevMsgs, userMsg])
-      await handleUserText(delta, sttLangToLangCode((data as any)?.lang));} catch (e: any) {
+      await handleUserText(delta, sttLangToLangCode((data as any)?.lang))
+    } catch (e: any) {
       console.error("[STT] fatal", e)
     } finally {
       isSttBusyRef.current = false
     }
   }
 
-  function speakText(text: string) {
+  function speakText(text: string, langCodeOverride?: string) {
     const cleanText = text?.trim()
     if (!cleanText) return
 
-    const langCode = (langCodeOverride || computeLangCode());const gender = getCurrentGender()
+    const langCode = (langCodeOverride || computeLangCode())
+    const gender = getCurrentGender()
 
     const begin = () => {
       setIsAiSpeaking(true)
