@@ -826,16 +826,12 @@ async function maybeSendStt(reason: string) {
 
     if (next) {
       if (rec.state === "recording") {
-        try {
-          rec.pause()
-        } catch {}
-      }
+        // Android: не паузим MediaRecorder во время TTS (ломает 2-е сообщение)
+}
     } else {
       if (rec.state === "paused" && isCallActiveRef.current) {
-        try {
-          rec.resume()
-        } catch {}
-      }
+        // Android: не резюмим MediaRecorder (watchdog/рестарт держит поток)
+}
     }
   }
 
@@ -960,7 +956,7 @@ async function maybeSendStt(reason: string) {
         // если рекордер явно подвис по стейту — оживляем
         if (!micMuted && rec) {
           if (state === "paused") {
-            try { rec.resume() } catch {}
+            try { /* rec.resume() disabled on Android */} catch {}
             __serverLog("rec_resume_try", { state })
           } else if (state === "inactive") {
             try { rec.start(250) } catch {}
