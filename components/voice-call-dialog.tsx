@@ -139,7 +139,10 @@ export default function VoiceCallDialog({
   const isSttBusyRef = useRef(false)
   const lastTranscriptRef = useRef("")
 
-  const isCallActiveRef = useRef(false)
+  
+
+  const lastSttHintRef = useRef<"uk" | "ru" | "en">("uk")
+const isCallActiveRef = useRef(false)
   const isAiSpeakingRef = useRef(false)
   const isMicMutedRef = useRef(false)
 
@@ -201,6 +204,29 @@ export default function VoiceCallDialog({
     if (lang.startsWith("uk")) return "uk-UA"
     if (lang.startsWith("ru")) return "ru-RU"
     return "en-US"
+  }
+
+  function computeHint3(): "uk" | "ru" | "en" {
+    const forced = debugParams.stt
+    if (forced === "uk") return "uk"
+    if (forced === "ru") return "ru"
+    if (forced === "en") return "en"
+
+    const lang =
+      typeof (currentLanguage as any) === "string"
+        ? ((currentLanguage as any) as string)
+        : (currentLanguage as any)?.code || "uk"
+
+    if (lang.startsWith("ru")) return "ru"
+    if (lang.startsWith("en")) return "en"
+    return "uk"
+  }
+
+  function sttLangToLangCode(sttLang: any): string {
+    const l = (sttLang || "").toString().toLowerCase()
+    if (l.startsWith("ru")) return "ru-RU"
+    if (l.startsWith("en")) return "en-US"
+    return "uk-UA"
   }
 
   function getCurrentGender(): "MALE" | "FEMALE" {
@@ -314,6 +340,7 @@ export default function VoiceCallDialog({
         method: "POST",
         headers: {
           "Content-Type": blob.type || "application/octet-stream",
+          "X-STT-Hint": (lastSttHintRef.current || computeHint3()),
           "X-STT-Lang": computeLangCode(),
         } as any,
         body: blob,
@@ -355,8 +382,7 @@ export default function VoiceCallDialog({
       }
 
       setMessages((prevMsgs) => [...prevMsgs, userMsg])
-      await handleUserText(delta)
-    } catch (e: any) {
+      await handleUserText(delta, sttLangToLangCode((data as any)?.lang));} catch (e: any) {
       console.error("[STT] fatal", e)
     } finally {
       isSttBusyRef.current = false
@@ -367,8 +393,7 @@ export default function VoiceCallDialog({
     const cleanText = text?.trim()
     if (!cleanText) return
 
-    const langCode = computeLangCode()
-    const gender = getCurrentGender()
+    const langCode = (langCodeOverride || computeLangCode());const gender = getCurrentGender()
 
     const begin = () => {
       setIsAiSpeaking(true)
@@ -437,7 +462,7 @@ export default function VoiceCallDialog({
     })()
   }
 
-  async function handleUserText(text: string) {
+  async function handleUserText(text: string, langCodeOverride?: string) {
     const langCode =
       typeof (currentLanguage as any) === "string"
         ? ((currentLanguage as any) as string)
