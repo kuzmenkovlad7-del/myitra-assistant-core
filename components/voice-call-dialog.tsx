@@ -382,9 +382,7 @@ async function maybeSendStt(reason: string) {
       for (let i = Math.max(1, sentIdx); i < chunks.length; i++) take.push(chunks[i])
     }
 
-    const blob = new Blob(take, { type: take[0]?.type || "audio/webm" })
-
-    if (blob.size < 6000) return
+    const blob = buildSttBlob(chunks, sentIdx, take[0]?.type || "audio/webm");if (blob.size < 6000) return
     if (isSttBusyRef.current) return
 
     try {
@@ -708,7 +706,23 @@ async function maybeSendStt(reason: string) {
       bridgedStreamRef.current = bridged
 
       // reset state
-      audioChunksRef.current.length = 0; sentIdxRef.current = 1 // первый чанк (header) всегда оставляем как “0”
+      if (typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent)) {
+
+        // Android: держим header в [0], отправку начинаем после него
+
+        if (audioChunksRef.current.length > 0) audioChunksRef.current.splice(1)
+
+        sentIdxRef.current = 1
+
+      } else {
+
+        // Desktop: не ставим sentIdx=1 при пустом буфере (иначе 2-й webm без header)
+
+        audioChunksRef.current.length = 0
+
+        sentIdxRef.current = 0
+
+      }
       isSttBusyRef.current = false
       lastTranscriptRef.current = ""
       vad.current = {
