@@ -154,7 +154,8 @@ export default function VoiceCallDialog({
   const keepAudioElRef = useRef<HTMLAudioElement | null>(null)
 
   const audioChunksRef = useRef<Blob[]>([])
-  const dropAudioRef = useRef(false)
+  
+  const webmInitChunkRef = useRef<Blob | null>(null)const dropAudioRef = useRef(false)
   const dropAudioUntilTsRef = useRef(0)
   const sentIdxRef = useRef(0)
   const isSttBusyRef = useRef(false)
@@ -757,8 +758,8 @@ async function maybeSendStt(reason: string) {
           log("[REC] chunk", { size, type: b?.type, totalChunks: audioChunksRef.current.length + (size > 0 ? 1 : 0) })
         }
         if (size > 0) {
-          audioChunksRef.current.push(b)
-        }
+          if (!webmInitChunkRef.current && b && b.size > 0) webmInitChunkRef.current = b
+          audioChunksRef.current.push(b)}
       }
 
       rec.onerror = (ev: any) => {
