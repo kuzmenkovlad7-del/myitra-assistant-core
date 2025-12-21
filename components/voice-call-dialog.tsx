@@ -422,7 +422,7 @@ const isCallActiveRef = useRef(false)
         const res = await fetch("/api/tts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: cleanText, language: agentLang, gender }),
+          body: JSON.stringify({ text: cleanText, language: langCode, gender }),
         })
 
         const raw = await res.text()
