@@ -14,6 +14,25 @@ import { Phone, Brain, Mic, MicOff, Loader2, Sparkles } from "lucide-react"
 import { useLanguage } from "@/lib/i18n/language-context"
 import { useAuth } from "@/lib/auth/auth-context"
 
+
+function buildSttBlob(allChunks: any[], startIdx: number, mimeType: string) {
+  const isAndroid =
+    typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent)
+
+  const safeType = String(mimeType || "audio/webm").split(";")[0] || "audio/webm"
+
+  const idx = Math.max(0, Math.min(startIdx || 0, allChunks.length))
+  const slice = allChunks.slice(idx)
+
+  // Desktop Chrome: куски после первого иногда без init/header -> OpenAI: "Invalid file format"
+  // Решение: для non-Android при idx>0 всегда добавляем самый первый чанк (там контейнерный заголовок)
+  if (!isAndroid && idx > 0 && allChunks.length > 0) {
+    return new Blob([allChunks[0], ...slice], { type: safeType })
+  }
+  return new Blob(slice, { type: safeType })
+}
+
+
 interface VoiceCallDialogProps {
   isOpen: boolean
   onClose: () => void
