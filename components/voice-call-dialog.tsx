@@ -340,7 +340,7 @@ const isCallActiveRef = useRef(false)
         method: "POST",
         headers: {
           "Content-Type": blob.type || "application/octet-stream",
-          "X-STT-Hint": (lastSttHintRef.current || computeHint3()),
+          "X-STT-Hint": "auto",
           "X-STT-Lang": computeLangCode(),
         } as any,
         body: blob,
@@ -422,7 +422,7 @@ const isCallActiveRef = useRef(false)
         const res = await fetch("/api/tts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: cleanText, language: langCode, gender }),
+          body: JSON.stringify({ text: cleanText, language: agentLang, gender }),
         })
 
         const raw = await res.text()
@@ -465,10 +465,9 @@ const isCallActiveRef = useRef(false)
   }
 
   async function handleUserText(text: string, langCodeOverride?: string) {
-    const langCode =
-      typeof (currentLanguage as any) === "string"
-        ? ((currentLanguage as any) as string)
-        : (currentLanguage as any)?.code || "uk"
+    const voiceLangCode = langCodeOverride || computeLangCode()
+    const lc = voiceLangCode.toLowerCase()
+    const agentLang = lc.startsWith("ru") ? "ru" : lc.startsWith("en") ? "en" : "uk"
 
     const resolvedWebhook =
       (webhookUrl && webhookUrl.trim()) ||
@@ -481,11 +480,11 @@ const isCallActiveRef = useRef(false)
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query: text,
-          language: langCode,
+          language: agentLang,
           email: effectiveEmail,
           mode: "voice",
           gender: voiceGenderRef.current,
-          voiceLanguage: computeLangCode(),
+          voiceLanguage: voiceLangCode,
         }),
       })
 
@@ -510,7 +509,7 @@ const isCallActiveRef = useRef(false)
       }
 
       setMessages((prev) => [...prev, assistantMsg])
-      speakText(answer)
+      speakText(answer, voiceLangCode)
     } catch (e: any) {
       console.error(e)
       setNetworkError(t("Connection error. Please try again."))

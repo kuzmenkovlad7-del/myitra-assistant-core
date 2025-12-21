@@ -5,14 +5,19 @@ export const dynamic = "force-dynamic"
 
 type Lang3 = "uk" | "ru" | "en"
 
-function normalizeHint(h: string | null): Lang3 {
-  const s = (h || "").toLowerCase()
+type Hint3 = Lang3 | "auto"
+function normalizeHint(h: string | null): Hint3 {
+  const s = (h || "").toString().toLowerCase().trim()
+  if (!s) return "auto"
+  if (s.includes("auto")) return "auto"
   if (s.includes("ru")) return "ru"
   if (s.includes("en")) return "en"
-  return "uk"
+  if (s.includes("uk")) return "uk"
+  return "auto"
 }
 
-function orderFromHint(h: Lang3): Lang3[] {
+function orderFromHint(h: Hint3): Lang3[] {
+  if (h === "auto") return ["uk", "ru", "en"]
   if (h === "ru") return ["ru", "uk", "en"]
   if (h === "en") return ["en", "uk", "ru"]
   return ["uk", "ru", "en"]
@@ -128,15 +133,20 @@ function adjustScoreForLetters(lang: Lang3, text: string, baseScore: number): nu
   return score
 }
 
-function pickRuUkByScores(hint: Lang3, ru: { score: number; noSpeech: number }, uk: { score: number; noSpeech: number }): "ru" | "uk" {
+function pickRuUkByScores(hint: Hint3, auto: Lang3 | null, ru: { score: number; noSpeech: number }, uk: { score: number; noSpeech: number }): "ru" | "uk" {
   if (ru.noSpeech > 0.75 && uk.noSpeech < 0.55) return "uk"
   if (uk.noSpeech > 0.75 && ru.noSpeech < 0.55) return "ru"
 
   const diff = uk.score - ru.score
   const abs = Math.abs(diff)
 
-  // ключевой фикс: если уверенность почти одинаковая — НЕ прыгаем, держим hint
-  if (abs < 0.35) return hint === "ru" ? "ru" : "uk"
+  if (abs < 0.35) {
+    if (auto === "ru") return "ru"
+    if (auto === "uk") return "uk"
+    if (hint === "ru") return "ru"
+    if (hint === "uk") return "uk"
+    return diff >= 0 ? "uk" : "ru"
+  }
 
   return diff > 0 ? "uk" : "ru"
 }
@@ -147,11 +157,12 @@ export async function POST(req: Request) {
     const hintHeader = req.headers.get("x-stt-hint") || req.headers.get("x-stt-lang") || ""
     const hint = normalizeHint(hintHeader)
 
+    const safeHint: Lang3 = hint === "auto" ? "uk" : hint
     const ab = await req.arrayBuffer()
     const audio = new Blob([ab], { type: ct })
 
     if (audio.size < 6000) {
-      return NextResponse.json({ success: true, text: "", lang: hint, dropped: "tiny" })
+      return NextResponse.json({ success: true, text: "", lang: safeHint, dropped: "tiny" })
     }
 
     // 1) AUTO (без language) — чтобы ловить акустику ru vs uk
@@ -161,10 +172,10 @@ export async function POST(req: Request) {
 
     // фильтры тишины/галлюцинаций
     if (autoText && isHallucination(autoText) && auto.meta.noSpeech > 0.25) {
-      return NextResponse.json({ success: true, text: "", lang: hint, dropped: "hallucination", debug: { auto } })
+      return NextResponse.json({ success: true, text: "", lang: safeHint, dropped: "hallucination", debug: { auto } })
     }
     if (!autoText && auto.meta.noSpeech > 0.6) {
-      return NextResponse.json({ success: true, text: "", lang: hint, dropped: "no_speech", debug: { auto } })
+      return NextResponse.json({ success: true, text: "", lang: safeHint, dropped: "no_speech", debug: { auto } })
     }
 
     // en — можно сразу вернуть
@@ -180,7 +191,7 @@ export async function POST(req: Request) {
       const ruScore = adjustScoreForLetters("ru", ruR.text, ruR.meta.score)
       const ukScore = adjustScoreForLetters("uk", ukR.text, ukR.meta.score)
 
-      const picked = pickRuUkByScores(hint, { score: ruScore, noSpeech: ruR.meta.noSpeech }, { score: ukScore, noSpeech: ukR.meta.noSpeech })
+      const picked = pickRuUkByScores(hint, autoLang3, { score: ruScore, noSpeech: ruR.meta.noSpeech }, { score: ukScore, noSpeech: ukR.meta.noSpeech })
       const outText = picked === "ru" ? ruR.text : ukR.text
 
       return NextResponse.json({
@@ -211,7 +222,7 @@ export async function POST(req: Request) {
     const best = tries[0]
 
     if (!best.text) {
-      return NextResponse.json({ success: true, text: "", lang: hint, dropped: "empty", debug: { auto, tries } })
+      return NextResponse.json({ success: true, text: "", lang: safeHint, dropped: "empty", debug: { auto, tries } })
     }
 
     return NextResponse.json({ success: true, text: best.text, lang: best.lang, debug: { pickedBy: "forced3", auto, tries } })
