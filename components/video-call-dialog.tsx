@@ -223,11 +223,11 @@ export default function VideoCallDialog({
 
   const AUTO_MUTE_AFTER_MS = 15 * 60 * 1000
 
-  const VAD_START_THRESHOLD = 0.020
-  const VAD_END_THRESHOLD = 0.014
-  const SILENCE_END_MS = 850
+  const VAD_START_THRESHOLD = 0.010
+  const VAD_END_THRESHOLD = 0.007
+  const SILENCE_END_MS = 700
   const MAX_UTTERANCE_MS = 18_000
-  const MIN_BLOB_BYTES = 18_000
+  const MIN_BLOB_BYTES = 2_000
   const MAX_BLOB_BYTES = 1_200_000
 
   const hasEnhancedVideo =
@@ -398,11 +398,11 @@ export default function VideoCallDialog({
     for (const w of words) {
       if (w.toLowerCase() === last.toLowerCase()) {
         run += 1
-        if (run <= 2) out.append(w)
+        if (run <= 2) out.push(w)
       } else {
         last = w
         run = 0
-        out.append(w)
+        out.push(w)
       }
     }
     return out.join(" ").trim()
@@ -615,6 +615,7 @@ export default function VideoCallDialog({
     stopSTT()
 
     const ctx = new AC()
+    try { if (ctx.state === "suspended") await ctx.resume() } catch {}
     audioCtxRef.current = ctx
     const source = ctx.createMediaStreamSource(stream)
     sourceRef.current = source
@@ -1138,7 +1139,7 @@ export default function VideoCallDialog({
               endCall()
               onClose()
             }}
-            className="text-black/70 bg-black/10 hover:bg-black/20 border border-black/20 rounded-full min-w-[44px] min-h-[44px] flex-shrink-0"
+            className="text-white bg-black/20 hover:bg-black/30 border-0 rounded-full min-w-[44px] min-h-[44px] flex-shrink-0"
           >
             <X className="h-5 w-5" />
           </Button>
