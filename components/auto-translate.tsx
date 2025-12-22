@@ -41,7 +41,7 @@ export function AutoTranslate({ children, className = "", enabled = true, exclud
           return
         }
 
-        console.log(`🌐 Auto-translating content to ${currentLanguage.name}`)
+        console.log(`🌐 Auto-translating content to ${currentLanguage.code}`)
 
         const { translateElement } = await import("@/lib/i18n/translation-utils")
 
@@ -69,7 +69,7 @@ export function AutoTranslate({ children, className = "", enabled = true, exclud
         }
 
         lastLanguageRef.current = currentLanguage.code
-        console.log(`✅ Auto-translation to ${currentLanguage.name} completed`)
+        console.log(`✅ Auto-translation to ${currentLanguage.code} completed`)
       } catch (error) {
         console.error("Auto-translation error:", error)
       }
