@@ -9,7 +9,7 @@ import {
   MicOff,
   Camera,
   CameraOff,
-  Phone,
+  Video,
   Volume2,
   VolumeX,
   Sparkles,
@@ -209,19 +209,12 @@ export default function VideoCallDialog({
 
   const isCallActiveRef = useRef(false)
   const isMicMutedRef = useRef(false)
-  const isAiSpeakingRef = useRef(false)
-
   const lastSpeechActivityRef = useRef<number | null>(null)
   const recognitionStopReasonRef = useRef<"none" | "manual" | "finalResult">(
     "none",
   )
 
-  const lastFinalTranscriptRef = useRef<string>("")
-  const lastFinalAtRef = useRef<number>(0)
-  const restartTimerRef = useRef<any>(null)
-
   const AUTO_MUTE_AFTER_MS = 15 * 60 * 1000 // 15 минут тишины до авто-отключения
-  const RESTART_DELAY_MS = 250 // небольшой буфер после TTS/ответа, чтобы не ловить хвост аудио
 
   const hasEnhancedVideo =
     !!selectedCharacter?.idleVideo && !!selectedCharacter?.speakingVideo
@@ -233,10 +226,6 @@ export default function VideoCallDialog({
   useEffect(() => {
     isMicMutedRef.current = isMicMuted
   }, [isMicMuted])
-
-  useEffect(() => {
-    isAiSpeakingRef.current = isAiSpeaking
-  }, [isAiSpeaking])
 
   // preload voices
   useEffect(() => {
@@ -288,7 +277,7 @@ export default function VideoCallDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
-  // ----- явный запрос доступа к микрофону (особенно важен на мобилках) -----
+  // ----- явный запрос доступа к микрофону (fallback) -----
   async function requestMicrophoneAccess(): Promise<boolean> {
     if (typeof navigator === "undefined") {
       setSpeechError(
@@ -317,7 +306,6 @@ export default function VideoCallDialog({
         audio: true,
       })
 
-      // мы только просим разрешение — треки можно сразу остановить
       stream.getTracks().forEach((track) => {
         try {
           track.stop()
@@ -361,9 +349,7 @@ export default function VideoCallDialog({
         if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].output) {
           return String(parsed[0].output).trim()
         }
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
 
     return text
@@ -408,84 +394,6 @@ export default function VideoCallDialog({
     }
 
     return ""
-  }
-
-  function clampLen(s: string, max = 400): string {
-    if (!s) return ""
-    if (s.length <= max) return s
-    return s.slice(0, max).trim()
-  }
-
-  function normalizeUserTranscript(raw: string): string {
-    if (!raw) return ""
-    let s = String(raw)
-      .replace(/\u00A0/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-
-    // убрать "залипание" одинаковых слов подряд (оставляем максимум 2 подряд)
-    const words = s.split(" ").filter(Boolean)
-    const out: string[] = []
-    let prev = ""
-    let run = 0
-    for (const w of words) {
-      const lw = w.toLowerCase()
-      if (lw === prev) {
-        run += 1
-        if (run <= 2) out.push(w)
-      } else {
-        prev = lw
-        run = 1
-        out.push(w)
-      }
-    }
-
-    s = out.join(" ").replace(/\s+/g, " ").trim()
-    return clampLen(s, 500)
-  }
-
-  function looksLikeHallucinatedRepeat(text: string): boolean {
-    const s = (text || "").trim()
-    if (!s) return true
-
-    const words = s
-      .toLowerCase()
-      .split(/\s+/)
-      .filter(Boolean)
-
-    if (words.length < 2) return true
-
-    // слишком низкое разнообразие слов -> часто "зацикливание"
-    const uniq = new Set(words)
-    if (words.length >= 12 && uniq.size / words.length < 0.35) return true
-
-    // явный повтор начала фразы много раз
-    const prefix = words.slice(0, Math.min(8, words.length)).join(" ")
-    if (prefix.length >= 10) {
-      const joined = words.join(" ")
-      const hits = joined.split(prefix).length - 1
-      if (hits >= 3) return true
-    }
-
-    // сверхдлинное без пунктуации тоже часто мусор
-    if (s.length > 320 && !/[.!?…]/.test(s)) return true
-
-    return false
-  }
-
-  function scheduleRecognitionRestart(delayMs = RESTART_DELAY_MS) {
-    if (restartTimerRef.current) {
-      try {
-        clearTimeout(restartTimerRef.current)
-      } catch {}
-      restartTimerRef.current = null
-    }
-    restartTimerRef.current = setTimeout(() => {
-      if (!isCallActiveRef.current) return
-      if (isMicMutedRef.current) return
-      if (isAiSpeakingRef.current) return
-      startSpeechRecognition()
-    }, delayMs)
   }
 
   function getRefinedVoiceForLanguage(
@@ -596,8 +504,6 @@ export default function VideoCallDialog({
     const cleaned = cleanResponseText(text)
     if (!cleaned) return
 
-    // важное: на время TTS стопаем распознавание, чтобы не ловить эхо
-    stopSpeechRecognition()
     stopCurrentSpeech()
 
     setIsAiSpeaking(true)
@@ -639,7 +545,6 @@ export default function VideoCallDialog({
 
       if (isCallActiveRef.current && !isMicMutedRef.current) {
         setActivityStatus("listening")
-        scheduleRecognitionRestart(RESTART_DELAY_MS)
       }
     }
 
@@ -654,9 +559,7 @@ export default function VideoCallDialog({
             VIDEO_CALL_VOICE_CONFIGS,
           )
 
-          if (!audioDataUrl) {
-            throw new Error("No audio from Google TTS")
-          }
+          if (!audioDataUrl) throw new Error("No audio from Google TTS")
 
           await new Promise<void>((resolve) => {
             const audio = new Audio()
@@ -668,20 +571,13 @@ export default function VideoCallDialog({
             audio.src = audioDataUrl
             audio.onended = () => resolve()
             audio.onerror = () => resolve()
-            audio
-              .play()
-              .then(() => {})
-              .catch(() => resolve())
+            audio.play().catch(() => resolve())
           })
-        } catch (e) {
-          await new Promise<void>((resolve) => {
-            browserSpeak(cleaned, gender, resolve)
-          })
+        } catch {
+          await new Promise<void>((resolve) => browserSpeak(cleaned, gender, resolve))
         }
       } else {
-        await new Promise<void>((resolve) => {
-          browserSpeak(cleaned, gender, resolve)
-        })
+        await new Promise<void>((resolve) => browserSpeak(cleaned, gender, resolve))
       }
     } finally {
       finish()
@@ -689,26 +585,9 @@ export default function VideoCallDialog({
   }
 
   async function handleUserText(text: string) {
-    const normalized = normalizeUserTranscript(text)
-    const trimmed = normalized.trim()
-    if (!trimmed) {
-      // пустое/мусор — просто продолжаем слушать
-      if (isCallActiveRef.current && !isMicMutedRef.current) {
-        setActivityStatus("listening")
-        scheduleRecognitionRestart(120)
-      }
-      return
-    }
+    const trimmed = text.trim()
+    if (!trimmed) return
     if (!isCallActiveRef.current) return
-
-    // фильтр "зацикливания" / мусора
-    if (looksLikeHallucinatedRepeat(trimmed)) {
-      if (isCallActiveRef.current && !isMicMutedRef.current) {
-        setActivityStatus("listening")
-        scheduleRecognitionRestart(180)
-      }
-      return
-    }
 
     setMessages((prev) => [
       ...prev,
@@ -717,16 +596,13 @@ export default function VideoCallDialog({
     setActivityStatus("thinking")
     setSpeechError(null)
 
-    // на время запроса тоже стопаем распознавание (защита от гонок)
-    stopSpeechRecognition()
-
     try {
-      const langCode = (activeLanguage.code || "uk").toLowerCase()
-      const agentLang = langCode.startsWith("ru")
-        ? "ru"
-        : langCode.startsWith("en")
-        ? "en"
-        : "uk"
+      const langForBackend =
+        activeLanguage.code?.startsWith("uk") ||
+        activeLanguage.code?.startsWith("ru") ||
+        activeLanguage.code?.startsWith("en")
+          ? activeLanguage.code
+          : activeLanguage.code || "uk"
 
       if (!VIDEO_ASSISTANT_WEBHOOK_URL) {
         throw new Error("VIDEO_ASSISTANT_WEBHOOK_URL is not configured")
@@ -737,7 +613,7 @@ export default function VideoCallDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           query: trimmed,
-          language: agentLang,
+          language: langForBackend,
           email: user?.email || "guest@example.com",
           mode: "video",
           characterId: selectedCharacter.id,
@@ -745,24 +621,17 @@ export default function VideoCallDialog({
         }),
       })
 
-      if (!res.ok) {
-        throw new Error(`Webhook error: ${res.status}`)
-      }
+      if (!res.ok) throw new Error(`Webhook error: ${res.status}`)
 
       const raw = await res.text()
       let data: any = raw
       try {
         data = JSON.parse(raw)
-      } catch {
-        // string
-      }
+      } catch {}
 
       const aiRaw = extractAnswer(data)
       const cleaned = cleanResponseText(aiRaw)
-
-      if (!cleaned) {
-        throw new Error("Empty response received")
-      }
+      if (!cleaned) throw new Error("Empty response received")
 
       setMessages((prev) => [
         ...prev,
@@ -792,13 +661,10 @@ export default function VideoCallDialog({
         { id: prev.length + 1, role: "assistant", text: errorMessage },
       ])
 
-      if (onError && error instanceof Error) {
-        onError(error)
-      }
+      if (onError && error instanceof Error) onError(error)
     } finally {
       if (isCallActiveRef.current && !isMicMutedRef.current) {
-        setActivityStatus("listening")
-        scheduleRecognitionRestart(RESTART_DELAY_MS)
+        startSpeechRecognition()
       } else {
         setActivityStatus("listening")
       }
@@ -807,25 +673,22 @@ export default function VideoCallDialog({
 
   function startSpeechRecognition() {
     if (typeof window === "undefined") return
-    if (!isCallActiveRef.current) return
-    if (isMicMutedRef.current) return
-    if (isAiSpeakingRef.current) return
-
     const SpeechRecognition =
       window.SpeechRecognition || window.webkitSpeechRecognition
+
     if (!SpeechRecognition) {
       setSpeechError(
         t(
           "Your browser does not support voice recognition. Please use Chrome or another modern browser.",
         ),
       )
+      // fallback: проверка доступа к микрофону (не критично)
+      requestMicrophoneAccess().then(() => {})
       return
     }
 
-    // гарантированно один инстанс
     if (recognitionRef.current) {
       try {
-        recognitionStopReasonRef.current = "manual"
         recognitionRef.current.stop()
       } catch {}
       recognitionRef.current = null
@@ -847,10 +710,6 @@ export default function VideoCallDialog({
     }
 
     recognition.onresult = (event: any) => {
-      if (!isCallActiveRef.current) return
-      if (isMicMutedRef.current) return
-      if (isAiSpeakingRef.current) return
-
       let finalTranscript = ""
       let interim = ""
       let hadAnySpeech = false
@@ -859,9 +718,14 @@ export default function VideoCallDialog({
         const result = event.results[i]
         const text = result[0]?.transcript || ""
         if (!text) continue
+
         hadAnySpeech = true
-        if (result.isFinal) finalTranscript += text + " "
-        else interim += text
+
+        if (result.isFinal) {
+          finalTranscript += text + " "
+        } else {
+          interim += text
+        }
       }
 
       if (hadAnySpeech) {
@@ -873,37 +737,14 @@ export default function VideoCallDialog({
       }
 
       if (finalTranscript.trim()) {
-        const now = Date.now()
-        const normalized = normalizeUserTranscript(finalTranscript.trim())
-
-        // анти-дубль: если тот же финал прилетел второй раз подряд — игнор
-        const prev = lastFinalTranscriptRef.current
-        const prevAt = lastFinalAtRef.current
-        if (prev && normalized && prev === normalized && now - prevAt < 2500) {
-          setInterimTranscript("")
-          return
-        }
-
-        // анти-мусор
-        if (!normalized || looksLikeHallucinatedRepeat(normalized)) {
-          setInterimTranscript("")
-          return
-        }
-
-        lastFinalTranscriptRef.current = normalized
-        lastFinalAtRef.current = now
-
+        const text = finalTranscript.trim()
         setInterimTranscript("")
         recognitionStopReasonRef.current = "finalResult"
-
         try {
           recognition.stop()
         } catch {}
-
         setIsListening(false)
-
-        // дальше — уже один запрос/один ответ
-        handleUserText(normalized)
+        handleUserText(text)
       }
     }
 
@@ -940,35 +781,37 @@ export default function VideoCallDialog({
         return
       }
 
-      if (event.error === "no-speech") {
-        // просто продолжаем
-        return
-      }
+      if (event.error === "no-speech") return
 
       setSpeechError(t("Error while listening. Please try again."))
       setActivityStatus("listening")
     }
 
     recognition.onend = () => {
-      // инстанс завершился
       recognitionRef.current = null
       setIsListening(false)
 
-      // если сами остановили или получили финал — дальше решит speakText()/finally
-      if (recognitionStopReasonRef.current !== "none") return
-
       if (
+        recognitionStopReasonRef.current === "none" &&
         isCallActiveRef.current &&
-        !isMicMutedRef.current &&
-        !isAiSpeakingRef.current
+        !isMicMutedRef.current
       ) {
         const now = Date.now()
         const lastActivity = lastSpeechActivityRef.current ?? now
-        if (!lastSpeechActivityRef.current) lastSpeechActivityRef.current = now
+        if (!lastSpeechActivityRef.current) {
+          lastSpeechActivityRef.current = now
+        }
         const inactiveFor = now - lastActivity
 
         if (inactiveFor < AUTO_MUTE_AFTER_MS) {
-          scheduleRecognitionRestart(180)
+          try {
+            recognitionStopReasonRef.current = "none"
+            recognition.start()
+            recognitionRef.current = recognition
+            setIsListening(true)
+          } catch (err) {
+            console.log("Error auto-restarting recognition:", err)
+          }
         } else {
           setIsMicMuted(true)
           isMicMutedRef.current = true
@@ -981,16 +824,12 @@ export default function VideoCallDialog({
       recognitionRef.current = recognition
     } catch (error) {
       console.log("Error starting recognition:", error)
+      // fallback: если старт упал на мобилке из-за user-gesture, пусть хотя бы покажет норм ошибку
+      requestMicrophoneAccess().then(() => {})
     }
   }
 
   function stopSpeechRecognition() {
-    if (restartTimerRef.current) {
-      try {
-        clearTimeout(restartTimerRef.current)
-      } catch {}
-      restartTimerRef.current = null
-    }
     if (recognitionRef.current) {
       recognitionStopReasonRef.current = "manual"
       try {
@@ -1001,17 +840,12 @@ export default function VideoCallDialog({
     setIsListening(false)
   }
 
-  async function startCall() {
+  // ВАЖНО ДЛЯ МОБИЛКИ: без await до startSpeechRecognition()
+  function startCall() {
     setIsConnecting(true)
     setSpeechError(null)
 
     try {
-      const micOk = await requestMicrophoneAccess()
-      if (!micOk) {
-        setIsConnecting(false)
-        return
-      }
-
       setIsCallActive(true)
       isCallActiveRef.current = true
 
@@ -1021,8 +855,6 @@ export default function VideoCallDialog({
       isMicMutedRef.current = false
       lastSpeechActivityRef.current = Date.now()
       recognitionStopReasonRef.current = "none"
-      lastFinalTranscriptRef.current = ""
-      lastFinalAtRef.current = 0
 
       if (
         hasEnhancedVideo &&
@@ -1034,7 +866,8 @@ export default function VideoCallDialog({
         } catch {}
       }
 
-      scheduleRecognitionRestart(200)
+      // старт распознавания прямо в клике (Android Chrome)
+      startSpeechRecognition()
     } catch (error: any) {
       console.error("Failed to start call:", error)
       setSpeechError(
@@ -1064,8 +897,6 @@ export default function VideoCallDialog({
     setSpeechError(null)
     lastSpeechActivityRef.current = null
     recognitionStopReasonRef.current = "manual"
-    lastFinalTranscriptRef.current = ""
-    lastFinalAtRef.current = 0
 
     if (idleVideoRef.current) {
       try {
@@ -1100,7 +931,7 @@ export default function VideoCallDialog({
       lastSpeechActivityRef.current = Date.now()
       recognitionStopReasonRef.current = "none"
       setSpeechError(null)
-      scheduleRecognitionRestart(150)
+      startSpeechRecognition()
     } else {
       setIsMicMuted(true)
       isMicMutedRef.current = true
@@ -1129,11 +960,6 @@ export default function VideoCallDialog({
     if (!next) {
       stopCurrentSpeech()
       setIsAiSpeaking(false)
-      // если звук выключили — просто слушаем пользователя дальше
-      if (isCallActiveRef.current && !isMicMutedRef.current) {
-        setActivityStatus("listening")
-        scheduleRecognitionRestart(150)
-      }
     }
   }
 
@@ -1143,9 +969,7 @@ export default function VideoCallDialog({
 
   const statusText = (() => {
     if (!isCallActive)
-      return t(
-        "Choose an AI psychologist and press “Start video call” to begin.",
-      )
+      return t("Choose an AI psychologist and press “Start video call” to begin.")
     if (isAiSpeaking) return t("Assistant is speaking. Please wait a moment.")
     if (micOn) return t("Listening… you can speak.")
     return t("Paused. Turn on microphone to continue.")
@@ -1159,7 +983,7 @@ export default function VideoCallDialog({
           <div className="flex flex-col flex-1 min-w-0 pr-2">
             <h3 className="font-semibold text-base sm:text-lg truncate flex items-center gap-2">
               <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10">
-                <Phone className="h-4 w-4" />
+                <Video className="h-4 w-4" />
               </span>
               {t("AI Psychologist Video Call")}
             </h3>
@@ -1178,7 +1002,7 @@ export default function VideoCallDialog({
               endCall()
               onClose()
             }}
-            className="text-white hover:bg-indigo-500/60 min-w-[44px] min-h-[44px] flex-shrink-0"
+            className="text-white bg-white/10 hover:bg-white/20 border border-black/30 rounded-full min-w-[44px] min-h-[44px] flex-shrink-0"
           >
             <X className="h-5 w-5" />
           </Button>
@@ -1210,12 +1034,8 @@ export default function VideoCallDialog({
                 </div>
                 <p className="text-xs text-blue-600 mt-2">
                   {shouldUseGoogleTTS(activeLanguage.code)
-                    ? t(
-                        "All characters use Google TTS for authentic native accent.",
-                      )
-                    : t(
-                        "AI will understand and respond in this language with native accent",
-                      )}
+                    ? t("All characters use Google TTS for authentic native accent.")
+                    : t("AI will understand and respond in this language with native accent")}
                 </p>
               </div>
 
@@ -1350,10 +1170,7 @@ export default function VideoCallDialog({
                           <div className="absolute inset-0 flex items-center justify-center bg-white">
                             <div className="w-40 h-40 sm:w-56 sm:h-56 relative">
                               <Image
-                                src={
-                                  selectedCharacter.avatar ||
-                                  "/placeholder.svg"
-                                }
+                                src={selectedCharacter.avatar || "/placeholder.svg"}
                                 alt={selectedCharacter.name}
                                 fill
                                 className="object-cover rounded-full"
@@ -1542,7 +1359,7 @@ export default function VideoCallDialog({
                 className="rounded-full h-14 w-14 sm:h-12 sm:w-12 bg-red-600 hover:bg-red-700 text-white touch-manipulation"
                 onClick={endCall}
               >
-                <Phone className="h-6 w-6 sm:h-5 sm:w-5" />
+                <Video className="h-6 w-6 sm:h-5 sm:w-5" />
               </Button>
             </div>
           </div>
