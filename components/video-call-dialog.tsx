@@ -144,7 +144,7 @@ declare global {
 interface VideoCallDialogProps {
   isOpen: boolean
   onClose: () => void
-  openAiApiKey: string
+  openAiApiKey?: string
   onError?: (error: Error) => void
 }
 
