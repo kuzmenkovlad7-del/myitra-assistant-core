@@ -43,7 +43,11 @@ export function AutoTranslate({ children, className = "", enabled = true, exclud
 
         console.log(`🌐 Auto-translating content to ${currentLanguage.code}`)
 
-        const { translateElement } = await import("@/lib/i18n/translation-utils")
+        const [{ translateElement }, { getTranslations }] = await Promise.all([
+          import("@/lib/i18n/translation-utils"),
+          import("@/lib/i18n/translations"),
+        ])
+        const translations = getTranslations(currentLanguage.code)
 
         // Get all elements that should be translated
         const elementsToTranslate = containerRef.current.querySelectorAll("*")
@@ -65,7 +69,7 @@ export function AutoTranslate({ children, className = "", enabled = true, exclud
             continue
           }
 
-          await translateElement(element as HTMLElement, currentLanguage.code)
+          await translateElement(element as HTMLElement, translations)
         }
 
         lastLanguageRef.current = currentLanguage.code
