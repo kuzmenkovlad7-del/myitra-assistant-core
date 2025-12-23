@@ -5,12 +5,17 @@ import { Inter } from "next/font/google"
 
 import "./globals.css"
 import { AuthProvider } from "@/lib/auth/auth-context"
+import dynamic from "next/dynamic"
 import { LanguageProvider } from "@/lib/i18n/language-context"
-import { AutoTranslate } from "@/components/auto-translate"
 import { RTLWrapper } from "@/components/rtl-wrapper"
 import Header from "@/components/header"
 import Footer from "@/components/footer"
 import { APP_NAME } from "@/lib/app-config"
+
+const AutoTranslate = dynamic(
+  () => import("@/components/auto-translate").then((m) => m.AutoTranslate ?? m.default),
+  { ssr: false },
+)
 
 const inter = Inter({ subsets: ["latin"] })
 
