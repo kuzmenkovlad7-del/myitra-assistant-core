@@ -1,232 +1,122 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 
 export const runtime = "nodejs"
-export const dynamic = "force-dynamic"
 
-type Lang3 = "uk" | "ru" | "en"
-
-type Hint3 = Lang3 | "auto"
-function normalizeHint(h: string | null): Hint3 {
-  const s = (h || "").toString().toLowerCase().trim()
-  if (!s) return "auto"
-  if (s.includes("auto")) return "auto"
-  if (s.includes("ru")) return "ru"
-  if (s.includes("en")) return "en"
-  if (s.includes("uk")) return "uk"
-  return "auto"
+function normalizeLanguage(raw: string | null): string | undefined {
+  if (!raw) return undefined
+  // "uk-ua" -> "uk", "uk_UA" -> "uk", "uk" -> "uk"
+  const code = raw.toString().trim().toLowerCase().split(/[-_]/)[0]
+  if (!code || code.length < 2 || code.length > 5) return undefined
+  return code
 }
 
-function orderFromHint(h: Hint3): Lang3[] {
-  if (h === "auto") return ["uk", "ru", "en"]
-  if (h === "ru") return ["ru", "uk", "en"]
-  if (h === "en") return ["en", "uk", "ru"]
-  return ["uk", "ru", "en"]
+function mapToLocale(lang?: string): string {
+  const l = (lang || "").toLowerCase()
+  if (l.startsWith("ru")) return "ru-RU"
+  if (l.startsWith("en")) return "en-US"
+  return "uk-UA"
 }
 
-function clampText(t: any): string {
-  return (t ?? "").toString().replace(/\s+/g, " ").trim()
-}
-
-function hasUkLetters(s: string): boolean {
-  return /[іІїЇєЄґҐ]/.test(s)
-}
-function hasRuLetters(s: string): boolean {
-  return /[ыЫэЭёЁъЪ]/.test(s)
-}
-
-function isHallucination(text: string): boolean {
-  const t = (text || "").toLowerCase()
-  if (!t) return true
-  if (t.includes("thank you for watching")) return true
-  if (t.includes("thanks for watching")) return true
-  if (t.includes("like and subscribe")) return true
-  if (t.includes("підпис")) return true
-  if (t.includes("подпис")) return true
-  return false
-}
-
-function avg(nums: number[]): number {
-  if (!nums.length) return -999
-  let s = 0
-  for (const n of nums) s += n
-  return s / nums.length
-}
-
-function scoreFromVerboseJson(j: any): { avgLog: number; noSpeech: number; score: number } {
-  const segs: any[] = Array.isArray(j?.segments) ? j.segments : []
-  const logps: number[] = []
-  const nos: number[] = []
-
-  for (const s of segs) {
-    if (typeof s?.avg_logprob === "number") logps.push(s.avg_logprob)
-    if (typeof s?.no_speech_prob === "number") nos.push(s.no_speech_prob)
-  }
-
-  const avgLog = avg(logps)
-  const noSpeech = avg(nos)
-  const score = avgLog - (Number.isFinite(noSpeech) ? noSpeech * 1.2 : 0)
-  return { avgLog, noSpeech, score }
-}
-
-function lang3FromWhisper(lang: any): Lang3 | null {
-  const s = (lang || "").toString().toLowerCase()
-  if (s.startsWith("uk")) return "uk"
-  if (s.startsWith("ru")) return "ru"
-  if (s.startsWith("en")) return "en"
-  return null
-}
-
-function extFromContentType(ct: string): string {
-  const x = (ct || "").split(";")[0].trim().toLowerCase()
-  if (x.includes("webm")) return "webm"
-  if (x.includes("ogg")) return "ogg"
-  if (x.includes("wav")) return "wav"
-  if (x.includes("mpeg") || x.includes("mp3")) return "mp3"
-  if (x.includes("mp4")) return "mp4"
-  return "webm"
-}
-
-async function callWhisper(audio: Blob, lang?: Lang3): Promise<{ text: string; whisperLang: string | null; meta: any }> {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) throw new Error("OPENAI_API_KEY is missing")
-
-  const model = process.env.OPENAI_STT_MODEL || "whisper-1"
-  const ct = audio.type || "audio/webm"
-  const ext = extFromContentType(ct)
-  const file = new File([audio], `audio.${ext}`, { type: ct })
-
-  const fd = new FormData()
-  fd.append("file", file)
-  fd.append("model", model)
-  fd.append("response_format", "verbose_json")
-  fd.append("temperature", "0")
-  if (lang) fd.append("language", lang)
-
-  const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: fd,
-  })
-
-  const raw = await r.text()
-  if (!r.ok) throw new Error(`OpenAI STT failed (${r.status}): ${raw.slice(0, 400)}`)
-
-  const j = raw ? JSON.parse(raw) : {}
-  const text = clampText(j?.text)
-  const whisperLang = typeof j?.language === "string" ? j.language : null
-  const meta = scoreFromVerboseJson(j)
-  return { text, whisperLang, meta }
-}
-
-function adjustScoreForLetters(lang: Lang3, text: string, baseScore: number): number {
-  let score = baseScore
-  const uk = hasUkLetters(text)
-  const ru = hasRuLetters(text)
-
-  if (lang === "uk") {
-    if (uk) score += 0.8
-    if (ru) score -= 0.8
-  } else if (lang === "ru") {
-    if (ru) score += 0.8
-    if (uk) score -= 0.8
-  }
-  return score
-}
-
-function pickRuUkByScores(hint: Hint3, auto: Lang3 | null, ru: { score: number; noSpeech: number }, uk: { score: number; noSpeech: number }): "ru" | "uk" {
-  if (ru.noSpeech > 0.75 && uk.noSpeech < 0.55) return "uk"
-  if (uk.noSpeech > 0.75 && ru.noSpeech < 0.55) return "ru"
-
-  const diff = uk.score - ru.score
-  const abs = Math.abs(diff)
-
-  if (abs < 0.35) {
-    if (auto === "ru") return "ru"
-    if (auto === "uk") return "uk"
-    if (hint === "ru") return "ru"
-    if (hint === "uk") return "uk"
-    return diff >= 0 ? "uk" : "ru"
-  }
-
-  return diff > 0 ? "uk" : "ru"
-}
-
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const ct = req.headers.get("content-type") || "audio/webm"
-    const hintHeader = req.headers.get("x-stt-hint") || req.headers.get("x-stt-lang") || ""
-    const hint = normalizeHint(hintHeader)
+    const contentType = req.headers.get("content-type") || ""
+    const headerLang =
+      normalizeLanguage(req.headers.get("x-stt-lang")) ||
+      normalizeLanguage(req.headers.get("x-stt-hint"))
 
-    const safeHint: Lang3 = hint === "auto" ? "uk" : hint
-    const ab = await req.arrayBuffer()
-    const audio = new Blob([ab], { type: ct })
+    let file: Blob | null = null
+    let language: string | undefined = headerLang
 
-    if (audio.size < 6000) {
-      return NextResponse.json({ success: true, text: "", lang: safeHint, dropped: "tiny" })
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await req.formData()
+      const fdFile = formData.get("file")
+      const rawLanguage = (formData.get("language") as string | null) ?? null
+      language = normalizeLanguage(rawLanguage) || language
+      if (fdFile instanceof Blob) {
+        file = fdFile
+      }
+    } else {
+      const ab = await req.arrayBuffer()
+      if (ab.byteLength > 0) {
+        const blobType = contentType || "audio/webm"
+        file = new Blob([ab], { type: blobType })
+      }
     }
 
-    // 1) AUTO (без language) — чтобы ловить акустику ru vs uk
-    const auto = await callWhisper(audio)
-    const autoText = auto.text
-    const autoLang3 = lang3FromWhisper(auto.whisperLang)
-
-    // фильтры тишины/галлюцинаций
-    if (autoText && isHallucination(autoText) && auto.meta.noSpeech > 0.25) {
-      return NextResponse.json({ success: true, text: "", lang: safeHint, dropped: "hallucination", debug: { auto } })
-    }
-    if (!autoText && auto.meta.noSpeech > 0.6) {
-      return NextResponse.json({ success: true, text: "", lang: safeHint, dropped: "no_speech", debug: { auto } })
+    if (!file) {
+      console.error("[/api/stt] no audio file in request")
+      return NextResponse.json(
+        { success: false, error: "No audio file provided" },
+        { status: 400 },
+      )
     }
 
-    // en — можно сразу вернуть
-    if (autoLang3 === "en") {
-      return NextResponse.json({ success: true, text: autoText, lang: "en", debug: { pickedBy: "auto_en", auto } })
+    const apiKey = process.env.OPENAI_API_KEY
+    if (!apiKey) {
+      console.error("[/api/stt] OPENAI_API_KEY is missing")
+      return NextResponse.json(
+        { success: false, error: "Server STT config error (missing API key)" },
+        { status: 500 },
+      )
     }
 
-    // 2) ru/uk — уточняем ДВУМЯ прогонами и берём лучший с тэйбрейком
-    if (autoLang3 === "ru" || autoLang3 === "uk") {
-      const ruR = await callWhisper(audio, "ru")
-      const ukR = await callWhisper(audio, "uk")
+    // Собираем форму для OpenAI: обязательно язык в формате ISO-639-1
+    const openaiForm = new FormData()
+    const fileForOpenAI =
+      file instanceof File ? file : new File([file], "audio.webm", { type: file.type || "audio/webm" })
+    openaiForm.append("file", fileForOpenAI)
+    openaiForm.append("model", "whisper-1")
+    openaiForm.append("response_format", "verbose_json")
+    if (language) {
+      openaiForm.append("language", language)
+    }
 
-      const ruScore = adjustScoreForLetters("ru", ruR.text, ruR.meta.score)
-      const ukScore = adjustScoreForLetters("uk", ukR.text, ukR.meta.score)
+    console.log("[/api/stt] sending to OpenAI STT", {
+      langNormalized: language,
+    })
 
-      const picked = pickRuUkByScores(hint, autoLang3, { score: ruScore, noSpeech: ruR.meta.noSpeech }, { score: ukScore, noSpeech: ukR.meta.noSpeech })
-      const outText = picked === "ru" ? ruR.text : ukR.text
+    const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: openaiForm,
+    })
 
-      return NextResponse.json({
-        success: true,
-        text: outText,
-        lang: picked,
-        debug: {
-          pickedBy: "auto+ruuk",
-          auto,
-          ru: { meta: ruR.meta, adj: ruScore, sample: ruR.text.slice(0, 120) },
-          uk: { meta: ukR.meta, adj: ukScore, sample: ukR.text.slice(0, 120) },
-          hint,
-        },
+    const data = await res.json().catch(() => ({}))
+
+    if (!res.ok) {
+      console.error("[/api/stt] OpenAI error", {
+        status: res.status,
+        error: data?.error,
       })
+
+      const message =
+        data?.error?.message ||
+        `STT request failed with status ${res.status}`
+
+      return NextResponse.json(
+        { success: false, error: message },
+        { status: 500 },
+      )
     }
 
-    // 3) авто определил что-то другое (например pl) — форсим только ru/uk/en и выбираем по score
-    const order = orderFromHint(hint)
-    const tries: Array<{ lang: Lang3; text: string; score: number; noSpeech: number; meta: any }> = []
+    const text = typeof data?.text === "string" ? data.text : ""
+    const detectedLang =
+      normalizeLanguage((data as any)?.language) || language || "uk"
 
-    for (const l of order) {
-      const r = await callWhisper(audio, l)
-      const s = adjustScoreForLetters(l, r.text, r.meta.score)
-      tries.push({ lang: l, text: r.text, score: s, noSpeech: r.meta.noSpeech, meta: r.meta })
-    }
+    console.log("[/api/stt] transcription ok, length:", text.length)
 
-    tries.sort((a, b) => b.score - a.score)
-    const best = tries[0]
-
-    if (!best.text) {
-      return NextResponse.json({ success: true, text: "", lang: safeHint, dropped: "empty", debug: { auto, tries } })
-    }
-
-    return NextResponse.json({ success: true, text: best.text, lang: best.lang, debug: { pickedBy: "forced3", auto, tries } })
-  } catch (e: any) {
-    return NextResponse.json({ success: false, error: (e?.message || "STT error").toString() }, { status: 500 })
+    return NextResponse.json({
+      success: true,
+      text,
+      lang: mapToLocale(detectedLang),
+    })
+  } catch (error) {
+    console.error("[/api/stt] unexpected error", error)
+    return NextResponse.json(
+      { success: false, error: "Internal STT error" },
+      { status: 500 },
+    )
   }
 }

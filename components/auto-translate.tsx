@@ -1,11 +1,10 @@
-// @ts-nocheck
 "use client"
+// @ts-nocheck
 
 import type React from "react"
 
 import { useEffect, useRef } from "react"
 import { useLanguage } from "@/lib/i18n/language-context"
-import { translateElement } from "@/lib/i18n/translation-utils"
 
 interface AutoTranslateProps {
   children: React.ReactNode
@@ -28,6 +27,13 @@ export function AutoTranslate({ children, className = "", enabled = true, exclud
     const translateContent = async () => {
       if (!containerRef.current) return
 
+      const combinedExcludes = [
+        "[data-notranslate]",
+        ".notranslate",
+        ".no-translate",
+        ...excludeSelectors,
+      ]
+
       try {
         // Skip if this is the first load and already in target language
         if (!lastLanguageRef.current && currentLanguage.code === "en") {
@@ -35,14 +41,20 @@ export function AutoTranslate({ children, className = "", enabled = true, exclud
           return
         }
 
-        console.log(`🌐 Auto-translating content to ${currentLanguage.name}`)
+        console.log(`🌐 Auto-translating content to ${currentLanguage.code}`)
+
+        const [{ translateElement }, { getTranslations }] = await Promise.all([
+          import("@/lib/i18n/translation-utils"),
+          import("@/lib/i18n/translations"),
+        ])
+        const translations = getTranslations(currentLanguage.code)
 
         // Get all elements that should be translated
         const elementsToTranslate = containerRef.current.querySelectorAll("*")
 
         for (const element of Array.from(elementsToTranslate)) {
           // Skip excluded elements
-          if (excludeSelectors.some((selector) => element.matches(selector))) {
+          if (combinedExcludes.some((selector) => element.matches(selector))) {
             continue
           }
 
@@ -50,16 +62,18 @@ export function AutoTranslate({ children, className = "", enabled = true, exclud
           if (
             element.tagName.toLowerCase() === "code" ||
             element.tagName.toLowerCase() === "pre" ||
-            element.classList.contains("no-translate")
+            element.classList.contains("no-translate") ||
+            element.classList.contains("notranslate") ||
+            element.getAttribute("data-notranslate") !== null
           ) {
             continue
           }
 
-          await translateElement(element as HTMLElement, currentLanguage.code)
+          await translateElement(element as HTMLElement, translations)
         }
 
         lastLanguageRef.current = currentLanguage.code
-        console.log(`✅ Auto-translation to ${currentLanguage.name} completed`)
+        console.log(`✅ Auto-translation to ${currentLanguage.code} completed`)
       } catch (error) {
         console.error("Auto-translation error:", error)
       }
