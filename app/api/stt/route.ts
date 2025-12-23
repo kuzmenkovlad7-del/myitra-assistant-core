@@ -1,232 +1,216 @@
 import { NextResponse } from "next/server"
 
-export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
 
 type Lang3 = "uk" | "ru" | "en"
-
 type Hint3 = Lang3 | "auto"
-function normalizeHint(h: string | null): Hint3 {
-  const s = (h || "").toString().toLowerCase().trim()
-  if (!s) return "auto"
-  if (s.includes("auto")) return "auto"
-  if (s.includes("ru")) return "ru"
-  if (s.includes("en")) return "en"
-  if (s.includes("uk")) return "uk"
-  return "auto"
+
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY
+const OPENAI_STT_MODEL = process.env.OPENAI_STT_MODEL || "whisper-1"
+
+type WhisperVerboseJson = {
+  text?: string
+  language?: string
+  segments?: Array<{
+    avg_logprob?: number
+    no_speech_prob?: number
+    compression_ratio?: number
+    temperature?: number
+    text?: string
+  }>
 }
 
-function orderFromHint(h: Hint3): Lang3[] {
-  if (h === "auto") return ["uk", "ru", "en"]
-  if (h === "ru") return ["ru", "uk", "en"]
-  if (h === "en") return ["en", "uk", "ru"]
-  return ["uk", "ru", "en"]
+type ScoreMeta = {
+  avgLogprob?: number
+  noSpeechProb?: number
+  compressionRatio?: number
+  temperature?: number
 }
 
-function clampText(t: any): string {
-  return (t ?? "").toString().replace(/\s+/g, " ").trim()
+function avg(nums: Array<number | undefined>): number | undefined {
+  const xs = nums.filter((n): n is number => typeof n === "number")
+  if (!xs.length) return undefined
+  return xs.reduce((a, b) => a + b, 0) / xs.length
 }
 
-function hasUkLetters(s: string): boolean {
-  return /[іІїЇєЄґҐ]/.test(s)
-}
-function hasRuLetters(s: string): boolean {
-  return /[ыЫэЭёЁъЪ]/.test(s)
-}
-
-function isHallucination(text: string): boolean {
-  const t = (text || "").toLowerCase()
-  if (!t) return true
-  if (t.includes("thank you for watching")) return true
-  if (t.includes("thanks for watching")) return true
-  if (t.includes("like and subscribe")) return true
-  if (t.includes("підпис")) return true
-  if (t.includes("подпис")) return true
-  return false
-}
-
-function avg(nums: number[]): number {
-  if (!nums.length) return -999
-  let s = 0
-  for (const n of nums) s += n
-  return s / nums.length
-}
-
-function scoreFromVerboseJson(j: any): { avgLog: number; noSpeech: number; score: number } {
-  const segs: any[] = Array.isArray(j?.segments) ? j.segments : []
-  const logps: number[] = []
-  const nos: number[] = []
-
-  for (const s of segs) {
-    if (typeof s?.avg_logprob === "number") logps.push(s.avg_logprob)
-    if (typeof s?.no_speech_prob === "number") nos.push(s.no_speech_prob)
+function scoreFromVerboseJson(json: WhisperVerboseJson): ScoreMeta {
+  const segs = Array.isArray(json.segments) ? json.segments : []
+  return {
+    avgLogprob: avg(segs.map((s) => s.avg_logprob)),
+    noSpeechProb: avg(segs.map((s) => s.no_speech_prob)),
+    compressionRatio: avg(segs.map((s) => s.compression_ratio)),
+    temperature: avg(segs.map((s) => s.temperature)),
   }
-
-  const avgLog = avg(logps)
-  const noSpeech = avg(nos)
-  const score = avgLog - (Number.isFinite(noSpeech) ? noSpeech * 1.2 : 0)
-  return { avgLog, noSpeech, score }
 }
 
-function lang3FromWhisper(lang: any): Lang3 | null {
-  const s = (lang || "").toString().toLowerCase()
+function lang3FromWhisper(language?: string): Lang3 {
+  const l = (language || "").toLowerCase()
+  if (l.startsWith("uk")) return "uk"
+  if (l.startsWith("ru")) return "ru"
+  return "en"
+}
+
+function normalizeHint(h?: string | null): Hint3 {
+  const s = String(h || "").trim().toLowerCase()
+  if (!s) return "uk" // default MVP
+  if (s === "auto") return "auto"
   if (s.startsWith("uk")) return "uk"
   if (s.startsWith("ru")) return "ru"
   if (s.startsWith("en")) return "en"
-  return null
+  return "uk"
 }
 
-function extFromContentType(ct: string): string {
-  const x = (ct || "").split(";")[0].trim().toLowerCase()
-  if (x.includes("webm")) return "webm"
-  if (x.includes("ogg")) return "ogg"
-  if (x.includes("wav")) return "wav"
-  if (x.includes("mpeg") || x.includes("mp3")) return "mp3"
-  if (x.includes("mp4")) return "mp4"
-  return "webm"
+function normalizeText(s: string): string {
+  return String(s || "")
+    .replace(/[\u0000-\u001F\u007F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
 }
 
-async function callWhisper(audio: Blob, lang?: Lang3): Promise<{ text: string; whisperLang: string | null; meta: any }> {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) throw new Error("OPENAI_API_KEY is missing")
+const HALLUCINATION_PHRASES = [
+  // RU
+  "спасибо за просмотр",
+  "спасибо за внимание",
+  "ставьте лайк",
+  "подписывайтесь на канал",
+  "подписывайтесь",
+  "до новых встреч",
+  // UK
+  "дякую за перегляд",
+  "дякую за увагу",
+  "підписуйтеся на канал",
+  "підписуйтеся",
+  "ставте вподобайку",
+  "до зустрічі",
+  // EN
+  "thanks for watching",
+  "thanks for listening",
+  "like and subscribe",
+  "subscribe to the channel",
+  "see you next time",
+]
 
-  const model = process.env.OPENAI_STT_MODEL || "whisper-1"
-  const ct = audio.type || "audio/webm"
-  const ext = extFromContentType(ct)
-  const file = new File([audio], `audio.${ext}`, { type: ct })
+function isLikelyHallucination(text: string): boolean {
+  const norm = normalizeText(text).toLowerCase()
+  if (!norm) return true
+  if (/^(\[?music\]?|\[?applause\]?|\(?music\)?|\(?applause\)?)$/.test(norm)) return true
+  if (norm.length <= 2) return true
+
+  for (const p of HALLUCINATION_PHRASES) {
+    if (norm === p) return true
+    if (norm.startsWith(p + " ")) return true
+    if (norm.endsWith(" " + p)) return true
+  }
+  return false
+}
+
+function shouldDropTranscript(text: string, meta: ScoreMeta): boolean {
+  const cleaned = normalizeText(text)
+  if (!cleaned) return true
+
+  const norm = cleaned.toLowerCase()
+  const noSpeech = meta.noSpeechProb ?? 0
+  const logp = meta.avgLogprob ?? 0
+
+  // If Whisper itself thinks it's "no speech", drop short-ish outputs.
+  if (noSpeech >= 0.7 && norm.length <= 80) return true
+
+  // Very low confidence + short output is usually garbage on silence/noise.
+  if (logp <= -1.2 && norm.length <= 80) return true
+
+  // Common hallucinated "outro" phrases.
+  if (isLikelyHallucination(norm) && (noSpeech >= 0.35 || norm.length <= 40)) return true
+
+  return false
+}
+
+async function callWhisper(audio: File, lang?: Lang3): Promise<{ text: string; whisperLang?: string; meta: ScoreMeta }> {
+  if (!OPENAI_API_KEY) {
+    throw new Error("Missing OPENAI_API_KEY")
+  }
 
   const fd = new FormData()
-  fd.append("file", file)
-  fd.append("model", model)
+  fd.append("model", OPENAI_STT_MODEL)
+  fd.append("file", audio, audio.name || "audio.webm")
   fd.append("response_format", "verbose_json")
-  fd.append("temperature", "0")
   if (lang) fd.append("language", lang)
 
   const r = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}` },
+    headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
     body: fd,
   })
 
+  if (!r.ok) {
+    const errText = await r.text().catch(() => "")
+    throw new Error(`OpenAI STT failed: ${r.status} ${r.statusText} ${errText}`.slice(0, 800))
+  }
+
   const raw = await r.text()
-  if (!r.ok) throw new Error(`OpenAI STT failed (${r.status}): ${raw.slice(0, 400)}`)
+  let json: WhisperVerboseJson = {}
+  try {
+    json = JSON.parse(raw)
+  } catch {
+    // ignore, fall back to raw text
+  }
 
-  const j = raw ? JSON.parse(raw) : {}
-  const text = clampText(j?.text)
-  const whisperLang = typeof j?.language === "string" ? j.language : null
-  const meta = scoreFromVerboseJson(j)
+  const text = normalizeText(json.text || raw || "")
+  const whisperLang = (json.language || "").toLowerCase() || undefined
+  const meta = scoreFromVerboseJson(json)
+
   return { text, whisperLang, meta }
-}
-
-function adjustScoreForLetters(lang: Lang3, text: string, baseScore: number): number {
-  let score = baseScore
-  const uk = hasUkLetters(text)
-  const ru = hasRuLetters(text)
-
-  if (lang === "uk") {
-    if (uk) score += 0.8
-    if (ru) score -= 0.8
-  } else if (lang === "ru") {
-    if (ru) score += 0.8
-    if (uk) score -= 0.8
-  }
-  return score
-}
-
-function pickRuUkByScores(hint: Hint3, auto: Lang3 | null, ru: { score: number; noSpeech: number }, uk: { score: number; noSpeech: number }): "ru" | "uk" {
-  if (ru.noSpeech > 0.75 && uk.noSpeech < 0.55) return "uk"
-  if (uk.noSpeech > 0.75 && ru.noSpeech < 0.55) return "ru"
-
-  const diff = uk.score - ru.score
-  const abs = Math.abs(diff)
-
-  if (abs < 0.35) {
-    if (auto === "ru") return "ru"
-    if (auto === "uk") return "uk"
-    if (hint === "ru") return "ru"
-    if (hint === "uk") return "uk"
-    return diff >= 0 ? "uk" : "ru"
-  }
-
-  return diff > 0 ? "uk" : "ru"
 }
 
 export async function POST(req: Request) {
   try {
-    const ct = req.headers.get("content-type") || "audio/webm"
-    const hintHeader = req.headers.get("x-stt-hint") || req.headers.get("x-stt-lang") || ""
-    const hint = normalizeHint(hintHeader)
-
-    const safeHint: Lang3 = hint === "auto" ? "uk" : hint
-    const ab = await req.arrayBuffer()
-    const audio = new Blob([ab], { type: ct })
-
-    if (audio.size < 6000) {
-      return NextResponse.json({ success: true, text: "", lang: safeHint, dropped: "tiny" })
+    const formData = await req.formData()
+    const audio = formData.get("audio")
+    if (!(audio instanceof File)) {
+      return NextResponse.json({ success: false, error: "No audio file provided" }, { status: 400 })
     }
 
-    // 1) AUTO (без language) — чтобы ловить акустику ru vs uk
-    const auto = await callWhisper(audio)
-    const autoText = auto.text
-    const autoLang3 = lang3FromWhisper(auto.whisperLang)
+    // We respect the UI language hint (MVP). VoiceCallDialog already sends X-STT-Hint.
+    const hintHeader = req.headers.get("x-stt-hint") || req.headers.get("x-stt-lang")
+    const hint3 = normalizeHint(hintHeader)
 
-    // фильтры тишины/галлюцинаций
-    if (autoText && isHallucination(autoText) && auto.meta.noSpeech > 0.25) {
-      return NextResponse.json({ success: true, text: "", lang: safeHint, dropped: "hallucination", debug: { auto } })
-    }
-    if (!autoText && auto.meta.noSpeech > 0.6) {
-      return NextResponse.json({ success: true, text: "", lang: safeHint, dropped: "no_speech", debug: { auto } })
-    }
+    const res = await callWhisper(audio, hint3 === "auto" ? undefined : hint3)
+    const pickedLang: Lang3 = hint3 === "auto" ? lang3FromWhisper(res.whisperLang) : hint3
 
-    // en — можно сразу вернуть
-    if (autoLang3 === "en") {
-      return NextResponse.json({ success: true, text: autoText, lang: "en", debug: { pickedBy: "auto_en", auto } })
-    }
-
-    // 2) ru/uk — уточняем ДВУМЯ прогонами и берём лучший с тэйбрейком
-    if (autoLang3 === "ru" || autoLang3 === "uk") {
-      const ruR = await callWhisper(audio, "ru")
-      const ukR = await callWhisper(audio, "uk")
-
-      const ruScore = adjustScoreForLetters("ru", ruR.text, ruR.meta.score)
-      const ukScore = adjustScoreForLetters("uk", ukR.text, ukR.meta.score)
-
-      const picked = pickRuUkByScores(hint, autoLang3, { score: ruScore, noSpeech: ruR.meta.noSpeech }, { score: ukScore, noSpeech: ukR.meta.noSpeech })
-      const outText = picked === "ru" ? ruR.text : ukR.text
-
+    if (shouldDropTranscript(res.text, res.meta)) {
       return NextResponse.json({
         success: true,
-        text: outText,
-        lang: picked,
+        text: "",
+        lang: pickedLang,
         debug: {
-          pickedBy: "auto+ruuk",
-          auto,
-          ru: { meta: ruR.meta, adj: ruScore, sample: ruR.text.slice(0, 120) },
-          uk: { meta: ukR.meta, adj: ukScore, sample: ukR.text.slice(0, 120) },
-          hint,
+          pickedBy: hint3 === "auto" ? "auto" : "hint",
+          hint3,
+          whisperLang: res.whisperLang,
+          meta: res.meta,
+          dropped: true,
         },
       })
     }
 
-    // 3) авто определил что-то другое (например pl) — форсим только ru/uk/en и выбираем по score
-    const order = orderFromHint(hint)
-    const tries: Array<{ lang: Lang3; text: string; score: number; noSpeech: number; meta: any }> = []
-
-    for (const l of order) {
-      const r = await callWhisper(audio, l)
-      const s = adjustScoreForLetters(l, r.text, r.meta.score)
-      tries.push({ lang: l, text: r.text, score: s, noSpeech: r.meta.noSpeech, meta: r.meta })
-    }
-
-    tries.sort((a, b) => b.score - a.score)
-    const best = tries[0]
-
-    if (!best.text) {
-      return NextResponse.json({ success: true, text: "", lang: safeHint, dropped: "empty", debug: { auto, tries } })
-    }
-
-    return NextResponse.json({ success: true, text: best.text, lang: best.lang, debug: { pickedBy: "forced3", auto, tries } })
+    return NextResponse.json({
+      success: true,
+      text: res.text,
+      lang: pickedLang,
+      debug: {
+        pickedBy: hint3 === "auto" ? "auto" : "hint",
+        hint3,
+        whisperLang: res.whisperLang,
+        meta: res.meta,
+        dropped: false,
+      },
+    })
   } catch (e: any) {
-    return NextResponse.json({ success: false, error: (e?.message || "STT error").toString() }, { status: 500 })
+    return NextResponse.json(
+      {
+        success: false,
+        error: e?.message || "STT error",
+      },
+      { status: 500 },
+    )
   }
 }
