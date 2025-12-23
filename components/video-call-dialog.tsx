@@ -1,182 +1,237 @@
+// @ts-nocheck
 "use client"
 
-import { useEffect, useRef, useState } from "react"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import {
-  Video,
-  VideoOff,
-  Phone,
-  Brain,
+  X,
   Mic,
   MicOff,
-  Loader2,
+  Camera,
+  CameraOff,
+  Phone,
+  Volume2,
+  VolumeX,
   Sparkles,
+  Brain,
 } from "lucide-react"
+import Image from "next/image"
 import { useLanguage } from "@/lib/i18n/language-context"
 import { useAuth } from "@/lib/auth/auth-context"
+import {
+  getLocaleForLanguage,
+  getNativeSpeechParameters,
+  getNativeVoicePreferences,
+} from "@/lib/i18n/translation-utils"
+import { shouldUseGoogleTTS, generateGoogleTTS } from "@/lib/google-tts"
+import { APP_NAME } from "@/lib/app-config"
+
+const VIDEO_ASSISTANT_WEBHOOK_URL =
+  process.env.NEXT_PUBLIC_TURBOTA_AI_VIDEO_ASSISTANT_WEBHOOK_URL ||
+  process.env.NEXT_PUBLIC_TURBOTA_AGENT_WEBHOOK_URL ||
+  "/api/turbotaai-agent"
+
+const VIDEO_CALL_GOOGLE_TTS_CREDENTIALS: any = {}
+
+const VIDEO_CALL_VOICE_CONFIGS = {
+  uk: {
+    female: {
+      languageCode: "uk-UA",
+      name: "uk-UA-Standard-A",
+      ssmlGender: "FEMALE",
+    },
+    male: {
+      languageCode: "uk-UA",
+      name: "uk-UA-Chirp3-HD-Schedar",
+      ssmlGender: "MALE",
+    },
+  },
+  ru: {
+    female: {
+      languageCode: "ru-RU",
+      name: "ru-RU-Standard-A",
+      ssmlGender: "FEMALE",
+    },
+    male: {
+      languageCode: "ru-RU",
+      name: "ru-RU-Standard-B",
+      ssmlGender: "MALE",
+    },
+  },
+  en: {
+    female: {
+      languageCode: "en-US",
+      name: "en-US-Neural2-F",
+      ssmlGender: "FEMALE",
+    },
+    male: {
+      languageCode: "en-US",
+      name: "en-US-Neural2-D",
+      ssmlGender: "MALE",
+    },
+  },
+}
+
+interface AICharacter {
+  id: string
+  name: string
+  gender: "male" | "female"
+  description: string
+  avatar: string
+  voice: string
+  animated?: boolean
+  idleVideo?: string
+  speakingVideo?: string
+}
+
+const AI_CHARACTERS: AICharacter[] = [
+  {
+    id: "dr-alexander",
+    name: "Dr. Alexander",
+    gender: "male",
+    description:
+      "Senior psychologist specializing in cognitive behavioral therapy with 15+ years of experience",
+    avatar:
+      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/photo_2025-10-31_22-27-18-BmxDH7DCv7e3p0y8HobTyoPkQw1COM.jpg",
+    voice: "en-US-GuyNeural",
+    animated: true,
+    idleVideo:
+      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_7660-2BvRYFiYOwNRwDjKtBtSCtEGUbLMEh.MP4",
+    speakingVideo:
+      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_9968-64neCIRuZ7CYXDT86QGYu4XSE7j0Ug.MP4",
+  },
+  {
+    id: "dr-sophia",
+    name: "Dr. Sophia",
+    gender: "female",
+    description:
+      "Clinical psychologist specializing in anxiety, depression, and workplace stress management",
+    avatar:
+      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/photo_2025-10-31_22-27-ds8y3Pe7RedqJBqZMDPltEeFI149ki.jpg",
+    voice: "en-US-JennyNeural",
+    animated: true,
+    idleVideo:
+      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_9962-fVXHRSVmzv64cpPJf4FddeCDXqxdGE.MP4",
+    speakingVideo:
+      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_9950-XyDJMndgIHEWrKcLj25FUlV4c18GLp.MP4",
+  },
+  {
+    id: "dr-maria",
+    name: "Dr. Maria",
+    gender: "female",
+    description:
+      "Psychotherapist specializing in emotional regulation, trauma recovery, and relationship counseling",
+    avatar:
+      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/photo_2025-10-31_22-27-19%D1%83-iWDrUd3gH9sLBeOjmIvu8wX3yxwBuq.jpg",
+    voice: "en-US-JennyNeural",
+    animated: true,
+    idleVideo:
+      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_9963-sneJ4XhoEuemkYgVb425Mscu7X9OC6.MP4",
+    speakingVideo:
+      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_9949-mYErfm0ubE19kr4trLKJrggtvoh4zy.MP4",
+  },
+]
+
+declare global {
+  interface Window {
+    SpeechRecognition?: any
+    webkitSpeechRecognition?: any
+    AudioContext?: any
+    webkitAudioContext?: any
+    speechSynthesis?: SpeechSynthesis
+  }
+}
 
 interface VideoCallDialogProps {
   isOpen: boolean
   onClose: () => void
+  openAiApiKey: string
   onError?: (error: Error) => void
-  userEmail?: string
-  webhookUrl?: string
 }
 
-type VideoMessage = {
-  id: string
+type ChatMessage = {
+  id: number
   role: "user" | "assistant"
   text: string
-  gender?: "female" | "male"
-}
-
-// основной вебхук TurbotaAI агента
-const TURBOTA_AGENT_WEBHOOK_URL =
-  process.env.NEXT_PUBLIC_TURBOTA_AGENT_WEBHOOK_URL || ""
-
-// запасной бекенд-прокси
-const FALLBACK_CHAT_API = "/api/chat"
-
-// аккуратно вытаскиваем текст из любого формата ответа n8n
-function extractAnswer(data: any): string {
-  if (!data) return ""
-
-  if (typeof data === "string") return data.trim()
-
-  if (Array.isArray(data) && data.length > 0) {
-    const first = data[0] ?? {}
-    return (
-      first.text ||
-      first.response ||
-      first.output ||
-      first.message ||
-      first.content ||
-      first.result ||
-      JSON.stringify(first)
-    )
-      ?.toString()
-      .trim()
-  }
-
-  if (typeof data === "object") {
-    return (
-      data.text ||
-      data.response ||
-      data.output ||
-      data.message ||
-      data.content ||
-      data.result ||
-      JSON.stringify(data)
-    )
-      ?.toString()
-      .trim()
-  }
-
-  return ""
-}
-
-// вычленяем только "новую" часть распознанного текста
-function diffTranscript(prev: string, full: string): string {
-  const normalize = (s: string) =>
-    s
-      .toLowerCase()
-      .replace(/[.,!?;:«»"“”‚‘’…]/g, "")
-      .replace(/\s+/g, " ")
-      .trim()
-
-  full = full.trim()
-  if (!full) return ""
-  if (!prev) return full
-
-  const prevNorm = normalize(prev)
-  const fullNorm = normalize(full)
-
-  if (!prevNorm || !fullNorm) return full
-
-  const prevWords = prevNorm.split(" ")
-  const fullWords = fullNorm.split(" ")
-
-  const maxCommon = Math.min(prevWords.length, fullWords.length)
-  let common = 0
-
-  while (common < maxCommon && prevWords[common] === fullWords[common]) {
-    common++
-  }
-
-  if (common === 0) return full
-
-  const rawTokens = full.split(/\s+/)
-  if (common >= rawTokens.length) return ""
-
-  return rawTokens.slice(common).join(" ").trim()
 }
 
 export default function VideoCallDialog({
   isOpen,
   onClose,
+  openAiApiKey,
   onError,
-  userEmail,
-  webhookUrl,
 }: VideoCallDialogProps) {
   const { t, currentLanguage } = useLanguage()
   const { user } = useAuth()
 
-  const [isSessionActive, setIsSessionActive] = useState(false)
+  const activeLanguage =
+    currentLanguage || ({ code: "en", name: "English", flag: "🇺🇸" } as any)
+
+  const languageDisplayName =
+    activeLanguage.name ||
+    (activeLanguage.code === "uk"
+      ? "Ukrainian"
+      : activeLanguage.code === "ru"
+      ? "Russian"
+      : "English")
+
+  const nativeVoicePreferences = getNativeVoicePreferences()
+  const getCurrentLocale = () =>
+    getLocaleForLanguage(
+      (sessionLangRef.current || activeLanguage.code || "uk").split("-")[0] as any,
+    )
+
+  const [selectedCharacter, setSelectedCharacter] = useState<AICharacter>(
+    AI_CHARACTERS[1] || AI_CHARACTERS[0],
+  )
+
+  const [isCallActive, setIsCallActive] = useState(false)
   const [isConnecting, setIsConnecting] = useState(false)
-  const [isListening, setIsListening] = useState(false)
+
   const [isMicMuted, setIsMicMuted] = useState(false)
   const [isCameraOff, setIsCameraOff] = useState(false)
+  const [isSoundEnabled, setIsSoundEnabled] = useState(true)
+
+  const [isListening, setIsListening] = useState(false)
+  const [activityStatus, setActivityStatus] = useState<
+    "listening" | "thinking" | "speaking"
+  >("listening")
+  const [speechError, setSpeechError] = useState<string | null>(null)
+
   const [isAiSpeaking, setIsAiSpeaking] = useState(false)
-  const [messages, setMessages] = useState<VideoMessage[]>([])
-  const [networkError, setNetworkError] = useState<string | null>(null)
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [interimTranscript, setInterimTranscript] = useState("")
 
-  const voiceGenderRef = useRef<"female" | "male">("female")
-  const effectiveEmail = userEmail || user?.email || "guest@example.com"
-
-  // общий поток (audio+video), чтобы показывать камеру
-  const mediaStreamRef = useRef<MediaStream | null>(null)
-  // отдельный поток (audio-only) для MediaRecorder (чтобы не писать видео в контейнер)
-  const audioStreamRef = useRef<MediaStream | null>(null)
-
+  const recognitionRef = useRef<any>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const isSttBusyRef = useRef(false)
   const lastTranscriptRef = useRef("")
-  const [sessionLang, setSessionLang] = useState(() => computeLangCode())
-  const sessionLangRef = useRef(sessionLang)
-  const isSessionActiveRef = useRef(false)
-
-  // важное: чтобы НЕ захватывать речь/эхо когда ассистент говорит
+  const sessionLangRef = useRef<string>(
+    (activeLanguage.code && getLocaleForLanguage(activeLanguage.code as any)) ||
+      "uk-UA",
+  )
+  const audioStreamRef = useRef<MediaStream | null>(null)
   const isAiSpeakingRef = useRef(false)
-  const isMicMutedRef = useRef(false)
-
   const userVideoRef = useRef<HTMLVideoElement | null>(null)
-  const scrollRef = useRef<HTMLDivElement | null>(null)
-  const ttsAudioRef = useRef<HTMLAudioElement | null>(null)
+  const idleVideoRef = useRef<HTMLVideoElement | null>(null)
+  const speakingVideoRef = useRef<HTMLVideoElement | null>(null)
 
-  // автоскролл
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-    }
-  }, [messages])
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null)
+  const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
+  const voiceCacheRef = useRef<Map<string, SpeechSynthesisVoice>>(new Map())
 
-  useEffect(() => {
-    sessionLangRef.current = sessionLang
-  }, [sessionLang])
+  const isCallActiveRef = useRef(false)
+  const isMicMutedRef = useRef(false)
+  const lastSpeechActivityRef = useRef<number | null>(null)
+  const recognitionStopReasonRef = useRef<"none" | "manual" | "finalResult">(
+    "none",
+  )
 
-  function logDebug(...args: any[]) {
-    // eslint-disable-next-line no-console
-    console.log(...args)
-  }
+  const AUTO_MUTE_AFTER_MS = 15 * 60 * 1000 // 15 минут тишины до авто-отключения
+
+  const hasEnhancedVideo =
+    !!selectedCharacter?.idleVideo && !!selectedCharacter?.speakingVideo
 
   function computeLangCode(): string {
     const lang =
@@ -184,97 +239,195 @@ export default function VideoCallDialog({
         ? ((currentLanguage as any) as string)
         : (currentLanguage as any)?.code || "uk"
 
-    if (lang.startsWith("uk")) return "uk-UA"
     if (lang.startsWith("ru")) return "ru-RU"
-    return "en-US"
-  }
-
-  function sttLangToLangCode(sttLang: any): string {
-    const l = (sttLang || "").toString().toLowerCase()
-    if (l.startsWith("ru")) return "ru-RU"
-    if (l.startsWith("en")) return "en-US"
+    if (lang.startsWith("en")) return "en-US"
     return "uk-UA"
   }
 
-  function langCodeToShort(langCode: string): "uk" | "ru" | "en" {
+  function sttLangToLocale(sttLang?: string | null): string {
+    const raw = (sttLang || "").toString().toLowerCase()
+    if (raw.startsWith("ru")) return "ru-RU"
+    if (raw.startsWith("en")) return "en-US"
+    return "uk-UA"
+  }
+
+  function localeToShort(langCode: string): "uk" | "ru" | "en" {
     const lc = (langCode || "").toLowerCase()
     if (lc.startsWith("ru")) return "ru"
     if (lc.startsWith("en")) return "en"
     return "uk"
   }
 
-  function getCurrentGender(): "MALE" | "FEMALE" {
-    const g = voiceGenderRef.current || "female"
-    return g === "male" ? "MALE" : "FEMALE"
-  }
+  useEffect(() => {
+    isCallActiveRef.current = isCallActive
+  }, [isCallActive])
 
-  function attachUserVideo(stream: MediaStream) {
-    const el = userVideoRef.current
-    if (!el) return
-    try {
-      el.srcObject = stream
-      // iOS любит playsInline + muted для автоплея превью
-      el.muted = true
-      // @ts-ignore
-      el.playsInline = true
-      el.onloadedmetadata = () => {
-        const p = el.play()
-        if (p && typeof (p as any).catch === "function") {
-          ;(p as any).catch(() => {})
-        }
+  useEffect(() => {
+    isMicMutedRef.current = isMicMuted
+  }, [isMicMuted])
+
+  useEffect(() => {
+    isAiSpeakingRef.current = isAiSpeaking
+  }, [isAiSpeaking])
+
+  // preload voices
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return
+    const load = () => {
+      const voices = window.speechSynthesis!.getVoices()
+      if (voices.length) {
+        getRefinedVoiceForLanguage(activeLanguage.code, "female")
+        getRefinedVoiceForLanguage(activeLanguage.code, "male")
       }
-    } catch (e) {
-      console.error("[Video] attach error", e)
+    }
+    load()
+    window.speechSynthesis.addEventListener("voiceschanged", load)
+    return () => {
+      window.speechSynthesis?.removeEventListener("voiceschanged", load)
+    }
+  })
+
+  // camera PIP
+  useEffect(() => {
+    if (isCallActive && !isCameraOff && userVideoRef.current) {
+      navigator.mediaDevices
+        .getUserMedia({ video: true })
+        .then((stream) => {
+          if (userVideoRef.current) {
+            userVideoRef.current.srcObject = stream
+          }
+        })
+        .catch(() => {
+          setIsCameraOff(true)
+        })
+    }
+
+    return () => {
+      const videoEl = userVideoRef.current
+      if (videoEl?.srcObject) {
+        const stream = videoEl.srcObject as MediaStream
+        stream.getTracks().forEach((track) => track.stop())
+        videoEl.srcObject = null
+      }
+    }
+  }, [isCallActive, isCameraOff])
+
+  // close modal -> стоп звонок
+  useEffect(() => {
+    if (!isOpen && isCallActive) {
+      endCall()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen])
+
+  // ----- явный запрос доступа к микрофону (особенно важен на мобилках) -----
+  async function requestMicrophoneAccess(): Promise<boolean> {
+    if (typeof navigator === "undefined") {
+      setSpeechError(
+        t(
+          "Microphone access is not available in this environment. Please open the assistant in a regular browser window.",
+        ),
+      )
+      return false
+    }
+
+    const hasMediaDevices =
+      typeof navigator.mediaDevices !== "undefined" &&
+      typeof navigator.mediaDevices.getUserMedia === "function"
+
+    if (!hasMediaDevices) {
+      setSpeechError(
+        t(
+          "Microphone access is not supported in this browser. Please use the latest version of Chrome, Edge or Safari.",
+        ),
+      )
+      return false
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      })
+
+      // мы только просим разрешение — треки можно сразу остановить
+      stream.getTracks().forEach((track) => {
+        try {
+          track.stop()
+        } catch {}
+      })
+
+      setSpeechError(null)
+      return true
+    } catch (error: any) {
+      console.log("[Video] getUserMedia error:", error)
+      const name = error?.name
+
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        setSpeechError(
+          t(
+            "Microphone is blocked in the browser. Please allow access in the site permissions and reload the page.",
+          ),
+        )
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        setSpeechError(
+          t("No microphone was found on this device. Please check your hardware."),
+        )
+      } else {
+        setSpeechError(
+          t(
+            "Could not start microphone. Check permissions in the browser and system settings, then try again.",
+          ),
+        )
+      }
+
+      return false
     }
   }
 
   function pickRecorderMimeType(): string | undefined {
     if (typeof MediaRecorder === "undefined") return undefined
-
-    // Chrome/Android — webm opus; Safari/iOS — часто mp4
-    if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
-      return "audio/webm;codecs=opus"
-    }
-    if (MediaRecorder.isTypeSupported("audio/webm")) {
-      return "audio/webm"
-    }
-    if (MediaRecorder.isTypeSupported("audio/mp4")) {
-      return "audio/mp4"
-    }
+    if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) return "audio/webm;codecs=opus"
+    if (MediaRecorder.isTypeSupported("audio/webm")) return "audio/webm"
+    if (MediaRecorder.isTypeSupported("audio/ogg")) return "audio/ogg"
     return undefined
   }
 
-  // --------- STT: послать накопленный звук в /api/stt ---------
-  // После отправки очищаем буфер, чтобы каждый вопрос обрабатывался отдельным чанком и таймеры не застревали.
+  function cleanupRecorder() {
+    const rec = mediaRecorderRef.current
+    if (rec && rec.state !== "inactive") {
+      try {
+        rec.stop()
+      } catch {}
+    }
+    mediaRecorderRef.current = null
+    audioChunksRef.current = []
+    isSttBusyRef.current = false
+    lastTranscriptRef.current = ""
+  }
 
   async function maybeSendStt() {
-    if (!isSessionActiveRef.current) return
+    if (!isCallActiveRef.current) return
     if (isAiSpeakingRef.current) return
     if (isMicMutedRef.current) return
+    if (isSttBusyRef.current) return
 
-    if (isSttBusyRef.current) {
-      logDebug("[STT] skip, request already in progress")
-      return
-    }
-    if (!audioChunksRef.current.length) return
+    const chunks = audioChunksRef.current
+    if (!chunks.length) return
 
-    const recMime = mediaRecorderRef.current?.mimeType || ""
-    const firstChunkMime = audioChunksRef.current[0]?.type || ""
-    const mimeType = (recMime || firstChunkMime || "audio/webm").toString()
+    const blob = new Blob(chunks, {
+      type: chunks[0]?.type || "audio/webm",
+    })
 
-    const blob = new Blob(audioChunksRef.current, { type: mimeType })
-    if (blob.size < 8000) return
+    if (blob.size < 6000) return
 
+    isSttBusyRef.current = true
     try {
-      isSttBusyRef.current = true
-      logDebug("[STT] sending blob size=", blob.size, "type=", blob.type)
-
       const res = await fetch("/api/stt", {
         method: "POST",
         headers: {
           "Content-Type": blob.type || "application/octet-stream",
           "X-STT-Hint": "auto",
-          "X-STT-Lang": sessionLangRef.current || computeLangCode(),
+          "X-STT-Lang": computeLangCode(),
         },
         body: blob,
       })
@@ -288,778 +441,1235 @@ export default function VideoCallDialog({
       }
 
       if (!res.ok || !data || data.success === false) {
-        console.error("[STT] error response:", res.status, raw)
+        console.error("[Video STT] bad response", res.status, raw)
         return
       }
 
-      const detectedLangCode = sttLangToLangCode((data as any)?.lang)
-      if (detectedLangCode && detectedLangCode !== sessionLangRef.current) {
-        setSessionLang(detectedLangCode)
+      if (data?.lang) {
+        sessionLangRef.current = sttLangToLocale(data.lang)
       }
 
       const fullText = (data.text || "").toString().trim()
-      logDebug('[STT] transcript full="' + fullText + '"')
       if (!fullText) return
 
+      let delta = fullText
       const prev = lastTranscriptRef.current
-      const delta = diffTranscript(prev, fullText)
-      lastTranscriptRef.current = fullText
+      if (prev && fullText.startsWith(prev)) {
+        delta = fullText.slice(prev.length).trim()
+      }
+
+      lastTranscriptRef.current = ""
+      const header = chunks[0]
+      audioChunksRef.current = header ? [header] : []
 
       if (!delta) return
 
-      const userMsg: VideoMessage = {
-        id: `${Date.now()}-user`,
-        role: "user",
-        text: delta,
-      }
-
-      setMessages((prevMsgs) => [...prevMsgs, userMsg])
-      await handleUserText(delta, detectedLangCode)
-      audioChunksRef.current = []
-      lastTranscriptRef.current = ""
-      const recorder = mediaRecorderRef.current
-      if (recorder && recorder.state === "recording") {
-        try {
-          recorder.requestData()
-        } catch {}
-      }
-    } catch (e) {
-      console.error("[STT] fatal error", e)
+      setMessages((prev) => [
+        ...prev,
+        { id: prev.length + 1, role: "user", text: delta },
+      ])
+      await handleUserText(delta, sessionLangRef.current)
+    } catch (error) {
+      console.error("[Video STT] fatal", error)
     } finally {
       isSttBusyRef.current = false
     }
   }
 
-  // --------- TTS через /api/tts ---------
+  function startRecorder(stream: MediaStream) {
+    const opts: MediaRecorderOptions = {}
+    const mime = pickRecorderMimeType()
+    if (mime) opts.mimeType = mime
 
-  function speakText(text: string) {
-    if (typeof window === "undefined") return
+    const rec = new MediaRecorder(stream, opts)
+    mediaRecorderRef.current = rec
+    audioChunksRef.current = []
+    lastTranscriptRef.current = ""
+    isSttBusyRef.current = false
 
-    const cleanText = text?.trim()
-    if (!cleanText) return
+    rec.onstart = () => {
+      setIsListening(true)
+    }
 
-    const langCode = sessionLangRef.current || computeLangCode()
-    const gender = getCurrentGender()
+    rec.onstop = () => {
+      setIsListening(false)
+    }
 
-    const beginSpeaking = () => {
-      setIsAiSpeaking(true)
-      isAiSpeakingRef.current = true
+    rec.onerror = (event: any) => {
+      console.error("[Video Recorder] error", event)
+    }
 
-      const rec = mediaRecorderRef.current
-      if (rec && rec.state === "recording") {
-        try {
-          rec.pause()
-        } catch (e) {
-          console.error("Recorder pause error", e)
-        }
+    rec.ondataavailable = (event: BlobEvent) => {
+      if (!isCallActiveRef.current) return
+      if (isAiSpeakingRef.current) return
+      if (isMicMutedRef.current) return
+      if (event.data && event.data.size > 0) {
+        audioChunksRef.current.push(event.data)
+        void maybeSendStt()
       }
     }
 
-    const finishSpeaking = () => {
+    rec.start(3000)
+  }
+
+  function cleanResponseText(text: string): string {
+    if (!text) return ""
+
+    if (text.startsWith('[{"output":')) {
+      try {
+        const parsed = JSON.parse(text)
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].output) {
+          return String(parsed[0].output).trim()
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    return text
+      .replace(/\n\n/g, " ")
+      .replace(/\*\*/g, "")
+      .replace(/```/g, "")
+      .replace(/[\n\r]/g, " ")
+      .trim()
+  }
+
+  function extractAnswer(data: any): string {
+    if (!data) return ""
+    if (typeof data === "string") return data.trim()
+
+    if (Array.isArray(data) && data.length > 0) {
+      const first = data[0] ?? {}
+      return (
+        first.output ||
+        first.response ||
+        first.text ||
+        first.message ||
+        first.content ||
+        first.result ||
+        JSON.stringify(first)
+      )
+        ?.toString()
+        .trim()
+    }
+
+    if (typeof data === "object") {
+      return (
+        data.output ||
+        data.response ||
+        data.text ||
+        data.message ||
+        data.content ||
+        data.result ||
+        JSON.stringify(data)
+      )
+        ?.toString()
+        .trim()
+    }
+
+    return ""
+  }
+
+  function getRefinedVoiceForLanguage(
+    langCode: string,
+    preferredGender: "female" | "male" = "female",
+  ): SpeechSynthesisVoice | null {
+    if (typeof window === "undefined" || !window.speechSynthesis) return null
+
+    const cacheKey = `${langCode}-${preferredGender}-${selectedCharacter.id}`
+    const cache = voiceCacheRef.current
+    if (cache.has(cacheKey)) {
+      return cache.get(cacheKey)!
+    }
+
+    const voices = window.speechSynthesis.getVoices()
+    if (!voices.length) return null
+
+    const nativeList =
+      nativeVoicePreferences[langCode]?.[preferredGender] || []
+
+    for (const name of nativeList) {
+      const v = voices.find((voice) => voice.name === name)
+      if (v) {
+        cache.set(cacheKey, v)
+        return v
+      }
+    }
+
+    const langVoices = voices.filter((v) =>
+      v.lang.toLowerCase().startsWith(langCode.toLowerCase()),
+    )
+    if (langVoices.length) {
+      cache.set(cacheKey, langVoices[0]!)
+      return langVoices[0]!
+    }
+
+    if (langCode !== "en") {
+      const en = getRefinedVoiceForLanguage("en", preferredGender)
+      if (en) {
+        cache.set(cacheKey, en)
+        return en
+      }
+    }
+
+    cache.set(cacheKey, voices[0]!)
+    return voices[0]!
+  }
+
+  function stopCurrentSpeech() {
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause()
+        currentAudioRef.current.currentTime = 0
+      } catch {}
+      currentAudioRef.current = null
+    }
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel()
+      } catch {}
+    }
+    currentUtteranceRef.current = null
+  }
+
+  function browserSpeak(
+    text: string,
+    gender: "male" | "female",
+    onDone: () => void,
+  ) {
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      onDone()
+      return
+    }
+
+    try {
+      window.speechSynthesis.cancel()
+    } catch {}
+
+    const utterance = new SpeechSynthesisUtterance(text)
+    const locale = getCurrentLocale()
+    const langShort = localeToShort(sessionLangRef.current || activeLanguage.code)
+    utterance.lang = locale
+
+    const voice = getRefinedVoiceForLanguage(langShort, gender)
+    if (voice) {
+      utterance.voice = voice
+    }
+
+    const speechParams = getNativeSpeechParameters(langShort, gender)
+    utterance.rate = speechParams.rate
+    utterance.pitch = speechParams.pitch
+    utterance.volume = speechParams.volume
+
+    currentUtteranceRef.current = utterance
+
+    utterance.onend = () => {
+      onDone()
+    }
+    utterance.onerror = () => {
+      onDone()
+    }
+
+    try {
+      window.speechSynthesis.speak(utterance)
+    } catch {
+      onDone()
+    }
+  }
+
+  async function speakText(text: string): Promise<void> {
+    if (!isCallActiveRef.current) return
+    if (!isSoundEnabled) return
+    const cleaned = cleanResponseText(text)
+    if (!cleaned) return
+
+    stopCurrentSpeech()
+
+    setIsAiSpeaking(true)
+    isAiSpeakingRef.current = true
+    setActivityStatus("speaking")
+    const recorder = mediaRecorderRef.current
+    if (recorder && recorder.state === "recording") {
+      try {
+        recorder.pause()
+      } catch {}
+      setIsListening(false)
+    }
+
+    if (
+      hasEnhancedVideo &&
+      speakingVideoRef.current &&
+      selectedCharacter.speakingVideo
+    ) {
+      try {
+        speakingVideoRef.current.currentTime = 0
+        await speakingVideoRef.current.play()
+      } catch {}
+    }
+
+    const gender: "male" | "female" = selectedCharacter.gender || "female"
+    const voiceLang = sessionLangRef.current || computeLangCode()
+    const locale = getCurrentLocale()
+
+    const finish = () => {
       setIsAiSpeaking(false)
       isAiSpeakingRef.current = false
 
-      const rec = mediaRecorderRef.current
+      if (hasEnhancedVideo && speakingVideoRef.current) {
+        try {
+          speakingVideoRef.current.pause()
+          speakingVideoRef.current.currentTime = 0
+        } catch {}
+      }
+
       if (
-        rec &&
-        rec.state === "paused" &&
-        isSessionActiveRef.current &&
+        hasEnhancedVideo &&
+        idleVideoRef.current &&
+        selectedCharacter.idleVideo &&
+        isCallActiveRef.current
+      ) {
+        try {
+          idleVideoRef.current.play().catch(() => {})
+        } catch {}
+      }
+
+      if (
+        recorder &&
+        recorder.state === "paused" &&
+        isCallActiveRef.current &&
         !isMicMutedRef.current
       ) {
         try {
-          rec.resume()
-        } catch (e) {
-          console.error("Recorder resume error", e)
-        }
+          recorder.resume()
+          setIsListening(true)
+        } catch {}
+      } else if (isCallActiveRef.current && !isMicMutedRef.current) {
+        setActivityStatus("listening")
       }
     }
-
-    ;(async () => {
-      try {
-        const res = await fetch("/api/tts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: cleanText, language: langCode, gender }),
-        })
-
-        const raw = await res.text()
-        let data: any = null
-        try {
-          data = raw ? JSON.parse(raw) : null
-        } catch {
-          data = null
-        }
-
-        if (!res.ok || !data || data.success === false || !data.audioContent) {
-          console.error("[TTS] API error", data || raw)
-          finishSpeaking()
-          return
-        }
-
-        const audioUrl = `data:audio/mp3;base64,${data.audioContent}`
-
-        if (ttsAudioRef.current) {
-          try {
-            ttsAudioRef.current.pause()
-          } catch {}
-          ttsAudioRef.current = null
-        }
-
-        const audio = new Audio(audioUrl)
-        ttsAudioRef.current = audio
-
-        // важно: ставим speaking ДО play(), чтобы не поймать кусок голоса ассистента в микрофон
-        beginSpeaking()
-
-        audio.onended = () => {
-          finishSpeaking()
-          ttsAudioRef.current = null
-        }
-        audio.onerror = () => {
-          finishSpeaking()
-          ttsAudioRef.current = null
-        }
-
-        try {
-          await audio.play()
-        } catch (e) {
-          console.error("[TTS] play() rejected", e)
-          finishSpeaking()
-        }
-      } catch (e) {
-        console.error("[TTS] fetch error", e)
-        finishSpeaking()
-      }
-    })()
-  }
-
-  // --------- отправка текста в n8n / OpenAI ---------
-
-  async function handleUserText(text: string, langCodeOverride?: string) {
-    const voiceLangCode =
-      langCodeOverride || sessionLangRef.current || computeLangCode()
-    if (voiceLangCode !== sessionLangRef.current) {
-      setSessionLang(voiceLangCode)
-    }
-    const langShort = langCodeToShort(voiceLangCode)
-    const resolvedWebhook =
-      (webhookUrl && webhookUrl.trim()) ||
-      TURBOTA_AGENT_WEBHOOK_URL.trim() ||
-      FALLBACK_CHAT_API
-
-    logDebug("[CHAT] send to", resolvedWebhook, "lang=", langShort)
 
     try {
-      const res = await fetch(resolvedWebhook, {
+      if (shouldUseGoogleTTS(voiceLang)) {
+        try {
+          const audioDataUrl = await generateGoogleTTS(
+            cleaned,
+            locale,
+            gender,
+            VIDEO_CALL_GOOGLE_TTS_CREDENTIALS,
+            VIDEO_CALL_VOICE_CONFIGS,
+          )
+
+          if (!audioDataUrl) {
+            throw new Error("No audio from Google TTS")
+          }
+
+          await new Promise<void>((resolve) => {
+            const audio = new Audio()
+            currentAudioRef.current = audio
+            audio.preload = "auto"
+            audio.volume = 1
+            audio.playsInline = true
+            audio.crossOrigin = "anonymous"
+            audio.src = audioDataUrl
+            audio.onended = () => {
+              resolve()
+            }
+            audio.onerror = () => {
+              resolve()
+            }
+            audio
+              .play()
+              .then(() => {})
+              .catch(() => resolve())
+          })
+        } catch (e) {
+          await new Promise<void>((resolve) => {
+            browserSpeak(cleaned, gender, resolve)
+          })
+        }
+      } else {
+        await new Promise<void>((resolve) => {
+          browserSpeak(cleaned, gender, resolve)
+        })
+      }
+    } finally {
+      finish()
+    }
+  }
+
+  async function handleUserText(text: string, langOverride?: string) {
+    const trimmed = text.trim()
+    if (!trimmed) return
+    if (!isCallActiveRef.current) return
+
+    if (langOverride) {
+      sessionLangRef.current = sttLangToLocale(langOverride)
+    }
+    const voiceLang = sessionLangRef.current || computeLangCode()
+    const langShort = localeToShort(voiceLang)
+
+    setMessages((prev) => [
+      ...prev,
+      { id: prev.length + 1, role: "user", text: trimmed },
+    ])
+    setActivityStatus("thinking")
+    setSpeechError(null)
+
+    try {
+      if (!VIDEO_ASSISTANT_WEBHOOK_URL) {
+        throw new Error("VIDEO_ASSISTANT_WEBHOOK_URL is not configured")
+      }
+
+      const res = await fetch(VIDEO_ASSISTANT_WEBHOOK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          query: text,
+          query: trimmed,
           language: langShort,
-          email: effectiveEmail,
+          email: user?.email || "guest@example.com",
           mode: "video",
-          gender: voiceGenderRef.current,
-          voiceLanguage: voiceLangCode,
+          characterId: selectedCharacter.id,
+          gender: selectedCharacter.gender,
+          voiceLanguage: voiceLang,
         }),
       })
 
-      if (!res.ok) throw new Error(`Chat API error: ${res.status}`)
+      if (!res.ok) {
+        throw new Error(`Webhook error: ${res.status}`)
+      }
 
       const raw = await res.text()
       let data: any = raw
       try {
         data = JSON.parse(raw)
       } catch {
-        // строка
+        // string
       }
 
-      let answer = extractAnswer(data)
-      if (!answer) {
-        answer = t("I'm sorry, I couldn't process your message. Please try again.")
+      const aiRaw = extractAnswer(data)
+      const cleaned = cleanResponseText(aiRaw)
+
+      if (!cleaned) {
+        throw new Error("Empty response received")
       }
 
-      const assistantMsg: VideoMessage = {
-        id: `${Date.now()}-assistant`,
-        role: "assistant",
-        text: answer,
-        gender: voiceGenderRef.current,
-      }
+      setMessages((prev) => [
+        ...prev,
+        { id: prev.length + 1, role: "assistant", text: cleaned },
+      ])
 
-      setMessages((prev) => [...prev, assistantMsg])
-      speakText(answer)
+      await speakText(cleaned)
     } catch (error: any) {
-      console.error("[CHAT] error:", error)
-      setNetworkError(t("Connection error. Please try again."))
-      if (onError && error instanceof Error) onError(error)
+      console.error("Video assistant error:", error)
+      let errorMessage = ""
+      if (error?.name === "AbortError") {
+        errorMessage = t("Connection timeout. Please try again.")
+      } else if (error?.message === "Empty response received") {
+        errorMessage = t(
+          "I received your message but couldn't generate a response. Could you try rephrasing?",
+        )
+      } else if (error?.message === "VIDEO_ASSISTANT_WEBHOOK_URL is not configured") {
+        errorMessage = t(
+          "The video assistant is temporarily unavailable. Please contact support.",
+        )
+      } else {
+        errorMessage = t(
+          "I couldn't process your message. Could you try again?",
+        )
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        { id: prev.length + 1, role: "assistant", text: errorMessage },
+      ])
+
+      if (onError && error instanceof Error) {
+        onError(error)
+      }
+    } finally {
+      if (isCallActiveRef.current && !isMicMutedRef.current) {
+        const rec = mediaRecorderRef.current
+        if (rec && rec.state === "paused") {
+          try {
+            rec.resume()
+            setIsListening(true)
+          } catch {}
+        } else if (rec && rec.state === "inactive" && audioStreamRef.current) {
+          startRecorder(audioStreamRef.current)
+        }
+        setActivityStatus("listening")
+      }
     }
   }
 
-  // --------- управление сессией ---------
+  function startSpeechRecognition() {
+    if (typeof window === "undefined") return
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      setSpeechError(
+        t(
+          "Your browser does not support voice recognition. Please use Chrome or another modern browser.",
+        ),
+      )
+      return
+    }
 
-  const startSession = async (gender: "female" | "male") => {
-    voiceGenderRef.current = gender
-    setIsConnecting(true)
-    setNetworkError(null)
-    setSessionLang(computeLangCode())
-
-    // по умолчанию — всё включено
-    setIsMicMuted(false)
-    isMicMutedRef.current = false
-    setIsCameraOff(false)
-
-    try {
-      if (
-        typeof navigator === "undefined" ||
-        !navigator.mediaDevices ||
-        !navigator.mediaDevices.getUserMedia
-      ) {
-        setNetworkError(
-          t(
-            "Camera/microphone access is not supported in this browser. Please use the latest version of Chrome, Edge or Safari.",
-          ),
-        )
-        setIsConnecting(false)
-        return
-      }
-
-      // 1) пытаемся взять и audio и video
-      let stream: MediaStream | null = null
+    if (recognitionRef.current) {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-          video: {
-            facingMode: "user",
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-        })
-      } catch (e) {
-        // 2) если камера не дала — пробуем хотя бы аудио, но UI покажет что камера выключена
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-          video: false,
-        })
-        setIsCameraOff(true)
+        recognitionRef.current.stop()
+      } catch {}
+      recognitionRef.current = null
+    }
+
+    const recognition = new SpeechRecognition()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = getCurrentLocale()
+    recognitionStopReasonRef.current = "none"
+
+    recognition.onstart = () => {
+      setIsListening(true)
+      setSpeechError(null)
+      setActivityStatus("listening")
+      if (!lastSpeechActivityRef.current) {
+        lastSpeechActivityRef.current = Date.now()
       }
+    }
 
-      mediaStreamRef.current = stream
+    recognition.onresult = (event: any) => {
+      let finalTranscript = ""
+      let interim = ""
+      let hadAnySpeech = false
 
-      // прикрепляем видео (если есть)
-      if (stream.getVideoTracks().length > 0) {
-        const vTrack = stream.getVideoTracks()[0]
-        vTrack.enabled = true
-        attachUserVideo(stream)
-      }
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i]
+        const text = result[0]?.transcript || ""
+        if (!text) continue
 
-      // audio-only stream для MediaRecorder
-      const aTracks = stream.getAudioTracks()
-      const audioOnly = new MediaStream(aTracks)
-      audioStreamRef.current = audioOnly
+        hadAnySpeech = true
 
-      if (typeof MediaRecorder === "undefined") {
-        setNetworkError(
-          t(
-            "Voice recognition is not supported in this browser. Please use the latest Chrome/Edge/Safari on iOS 14+.",
-          ),
-        )
-        setIsConnecting(false)
-        return
-      }
-
-      const options: MediaRecorderOptions = {}
-      const mime = pickRecorderMimeType()
-      if (mime) options.mimeType = mime
-
-      const recorder = new MediaRecorder(audioOnly, options)
-      mediaRecorderRef.current = recorder
-
-      audioChunksRef.current = []
-      isSttBusyRef.current = false
-      lastTranscriptRef.current = ""
-
-      recorder.onstart = () => {
-        setIsListening(true)
-      }
-
-      recorder.ondataavailable = (event: BlobEvent) => {
-        // важно: никаких "миганий" — только два режима (mic on / mic off).
-        if (!isSessionActiveRef.current) return
-        if (isAiSpeakingRef.current) return
-        if (isMicMutedRef.current) return
-
-        if (event.data && event.data.size > 0) {
-          audioChunksRef.current.push(event.data)
-          void maybeSendStt()
+        if (result.isFinal) {
+          finalTranscript += text + " "
+        } else {
+          interim += text
         }
       }
 
-      recorder.onstop = () => {
+      if (hadAnySpeech) {
+        lastSpeechActivityRef.current = Date.now()
+      }
+
+      if (interim) {
+        setInterimTranscript(interim)
+      }
+
+      if (finalTranscript.trim()) {
+        const text = finalTranscript.trim()
+        setInterimTranscript("")
+        recognitionStopReasonRef.current = "finalResult"
+        recognition.stop()
         setIsListening(false)
+        handleUserText(text)
       }
+    }
 
-      recorder.onerror = (event: any) => {
-        console.error("[Recorder] error", event)
-      }
+        recognition.onerror = (event: any) => {
+      console.log("Speech recognition error:", event)
 
-      recorder.start(4000)
-
-      isSessionActiveRef.current = true
-      setIsSessionActive(true)
-      setIsConnecting(false)
-    } catch (error: any) {
-      console.error("[VideoCall] startSession error:", error)
-
-      const name = error?.name
-      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
-        setNetworkError(
+      // 1) Пользователь явно заблокировал микрофон для сайта
+      if (event.error === "not-allowed") {
+        setSpeechError(
           t(
-            "Camera or microphone is blocked for this site in the browser. Please allow access in the address bar and reload the page.",
+            "Microphone access was blocked. Please allow it in your browser settings and restart the call.",
           ),
         )
-      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
-        setNetworkError(
-          t(
-            "No camera or microphone was found on this device. Please check your hardware.",
-          ),
-        )
-      } else {
-        setNetworkError(
-          t(
-            "Could not start camera/microphone. Check permissions in the browser and system settings, then try again.",
-          ),
-        )
+        setIsMicMuted(true)
+        isMicMutedRef.current = true
+        setActivityStatus("listening")
+        return
       }
 
-      setIsConnecting(false)
-      isSessionActiveRef.current = false
-      setIsSessionActive(false)
+      // 2) Браузер / ОС не разрешает сервис распознавания речи
+      if (event.error === "service-not-allowed") {
+        setSpeechError(
+          t(
+            "Your browser does not support voice recognition. Please use Chrome or another modern browser.",
+          ),
+        )
+        setIsMicMuted(true)
+        isMicMutedRef.current = true
+        setActivityStatus("listening")
+        return
+      }
+
+      // 3) Временная проблема с аудиоканалом (audio-capture)
+      if (event.error === "audio-capture") {
+        setSpeechError(t("Error while listening. Please try again."))
+        // Не глушим микрофон навсегда — даём шанс попробовать ещё раз
+        setActivityStatus("listening")
+        return
+      }
+
+      // 4) Не услышали речи — просто молча игнорим, onend перезапустит
+      if (event.error === "no-speech") {
+        return
+      }
+
+      // 5) Запасной вариант на всё остальное
+      setSpeechError(t("Error while listening. Please try again."))
+      setActivityStatus("listening")
+    }
+
+
+    recognition.onend = () => {
+      recognitionRef.current = null
+      setIsListening(false)
+
+      if (
+        recognitionStopReasonRef.current === "none" &&
+        isCallActiveRef.current &&
+        !isMicMutedRef.current
+      ) {
+        const now = Date.now()
+        const lastActivity = lastSpeechActivityRef.current ?? now
+        if (!lastSpeechActivityRef.current) {
+          lastSpeechActivityRef.current = now
+        }
+        const inactiveFor = now - lastActivity
+
+        if (inactiveFor < AUTO_MUTE_AFTER_MS) {
+          try {
+            recognitionStopReasonRef.current = "none"
+            recognition.start()
+            recognitionRef.current = recognition
+            setIsListening(true)
+          } catch (err) {
+            console.log("Error auto-restarting recognition:", err)
+          }
+        } else {
+          setIsMicMuted(true)
+          isMicMutedRef.current = true
+        }
+      }
+    }
+
+    try {
+      recognition.start()
+      recognitionRef.current = recognition
+    } catch (error) {
+      console.log("Error starting recognition:", error)
     }
   }
 
-  const endSession = () => {
-    isSessionActiveRef.current = false
-    setIsSessionActive(false)
-
+  function stopSpeechRecognition() {
+    if (recognitionRef.current) {
+      recognitionStopReasonRef.current = "manual"
+      try {
+        recognitionRef.current.stop()
+      } catch {}
+      recognitionRef.current = null
+    }
     setIsListening(false)
-    setIsMicMuted(false)
-    isMicMutedRef.current = false
+  }
 
-    setIsCameraOff(false)
+  async function startCall() {
+    setIsConnecting(true)
+    setSpeechError(null)
+
+    try {
+      const micOk = await requestMicrophoneAccess()
+      if (!micOk) {
+        setIsConnecting(false)
+        return
+      }
+
+      sessionLangRef.current = computeLangCode()
+
+      if (typeof MediaRecorder === "undefined") {
+        setSpeechError(
+          t(
+            "Voice recognition is not supported in this browser. Please use the latest version of Chrome, Edge or Safari.",
+          ),
+        )
+        setIsConnecting(false)
+        return
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        audioStreamRef.current = stream
+        startRecorder(stream)
+      } catch (err) {
+        console.error("[Video] could not start recorder stream", err)
+        setSpeechError(
+          t(
+            "Could not start microphone. Check permissions in the browser and system settings, then try again.",
+          ),
+        )
+        setIsConnecting(false)
+        return
+      }
+
+      setIsCallActive(true)
+      isCallActiveRef.current = true
+
+      setMessages([])
+      setInterimTranscript("")
+      setIsMicMuted(false)
+      isMicMutedRef.current = false
+      lastSpeechActivityRef.current = Date.now()
+      recognitionStopReasonRef.current = "none"
+
+      if (
+        hasEnhancedVideo &&
+        idleVideoRef.current &&
+        selectedCharacter.idleVideo
+      ) {
+        try {
+          idleVideoRef.current.play().catch(() => {})
+        } catch {}
+      }
+
+    } catch (error: any) {
+      console.error("Failed to start call:", error)
+      setSpeechError(
+        error?.message ||
+          t(
+            "Failed to start the call. Please check your microphone and camera permissions.",
+          ),
+      )
+      setIsCallActive(false)
+      isCallActiveRef.current = false
+    } finally {
+      setIsConnecting(false)
+    }
+  }
+
+  function endCall() {
+    setIsCallActive(false)
+    isCallActiveRef.current = false
+
+    stopSpeechRecognition()
+    cleanupRecorder()
+    stopCurrentSpeech()
 
     setIsAiSpeaking(false)
-    isAiSpeakingRef.current = false
+    setActivityStatus("listening")
+    setInterimTranscript("")
+    setMessages([])
+    setSpeechError(null)
+    lastSpeechActivityRef.current = null
+    recognitionStopReasonRef.current = "manual"
+    sessionLangRef.current = computeLangCode()
 
-    setNetworkError(null)
-    setSessionLang(computeLangCode())
-
-    audioChunksRef.current = []
-    lastTranscriptRef.current = ""
-    isSttBusyRef.current = false
-
-    const rec = mediaRecorderRef.current
-    if (rec && rec.state !== "inactive") {
-      try {
-        rec.stop()
-      } catch {}
-    }
-    mediaRecorderRef.current = null
-
-    const s = mediaStreamRef.current
-    if (s) {
-      s.getTracks().forEach((tr) => {
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach((track) => {
         try {
-          tr.stop()
+          track.stop()
         } catch {}
       })
+      audioStreamRef.current = null
     }
-    mediaStreamRef.current = null
 
-    const as = audioStreamRef.current
-    if (as) {
-      as.getTracks().forEach((tr) => {
+    if (idleVideoRef.current) {
+      try {
+        idleVideoRef.current.pause()
+        idleVideoRef.current.currentTime = 0
+      } catch {}
+    }
+    if (speakingVideoRef.current) {
+      try {
+        speakingVideoRef.current.pause()
+        speakingVideoRef.current.currentTime = 0
+      } catch {}
+    }
+
+    if (userVideoRef.current?.srcObject) {
+      const stream = userVideoRef.current.srcObject as MediaStream
+      stream.getTracks().forEach((track) => {
         try {
-          tr.stop()
+          track.stop()
         } catch {}
       })
-    }
-    audioStreamRef.current = null
-
-    const vEl = userVideoRef.current
-    if (vEl) {
-      try {
-        vEl.srcObject = null
-      } catch {}
-    }
-
-    if (ttsAudioRef.current) {
-      try {
-        ttsAudioRef.current.pause()
-      } catch {}
-      ttsAudioRef.current = null
-    }
-
-    if (typeof window !== "undefined" && (window as any).speechSynthesis) {
-      try {
-        ;(window as any).speechSynthesis.cancel()
-      } catch {}
+      userVideoRef.current.srcObject = null
     }
   }
 
-  const toggleMic = () => {
-    const next = !isMicMuted
-    setIsMicMuted(next)
-    isMicMutedRef.current = next
+  function toggleMicrophone() {
+    if (!isCallActiveRef.current) return
 
-    // аудиотрек тоже выключаем/включаем (доп. страховка)
-    const s = mediaStreamRef.current
-    const aTrack = s?.getAudioTracks?.()?.[0]
-    if (aTrack) aTrack.enabled = !next
-
-    const rec = mediaRecorderRef.current
-    if (!rec) return
-
-    if (next) {
-      if (rec.state === "recording") {
+    if (isMicMuted) {
+      setIsMicMuted(false)
+      isMicMutedRef.current = false
+      lastSpeechActivityRef.current = Date.now()
+      setSpeechError(null)
+      const rec = mediaRecorderRef.current
+      if (rec && rec.state === "paused") {
+        try {
+          rec.resume()
+          setIsListening(true)
+        } catch {}
+      }
+    } else {
+      setIsMicMuted(true)
+      isMicMutedRef.current = true
+      const rec = mediaRecorderRef.current
+      if (rec && rec.state === "recording") {
         try {
           rec.pause()
         } catch {}
       }
+      setIsListening(false)
+      setInterimTranscript("")
+    }
+  }
+
+
+  function toggleCamera() {
+    if (isCameraOff) {
+      setIsCameraOff(false)
     } else {
-      if (
-        rec.state === "paused" &&
-        isSessionActiveRef.current &&
-        !isAiSpeakingRef.current
-      ) {
-        try {
-          rec.resume()
-        } catch {}
+      setIsCameraOff(true)
+      if (userVideoRef.current?.srcObject) {
+        const stream = userVideoRef.current.srcObject as MediaStream
+        stream.getTracks().forEach((track) => track.stop())
+        userVideoRef.current.srcObject = null
       }
     }
   }
 
-  const toggleCamera = () => {
-    const next = !isCameraOff
-    setIsCameraOff(next)
+  function toggleSound() {
+    const next = !isSoundEnabled
+    setIsSoundEnabled(next)
 
-    const s = mediaStreamRef.current
-    const vTrack = s?.getVideoTracks?.()?.[0]
-    if (!vTrack) return
-
-    vTrack.enabled = next
-
-    // если включили камеру — форсим play(), чтобы превью сразу появилось
-    if (next && s) {
-      attachUserVideo(s)
-      const el = userVideoRef.current
-      if (el) {
-        const p = el.play()
-        if (p && typeof (p as any).catch === "function") {
-          ;(p as any).catch(() => {})
-        }
-      }
+    if (!next) {
+      stopCurrentSpeech()
+      setIsAiSpeaking(false)
     }
   }
 
-  useEffect(() => {
-    if (!isOpen) {
-      endSession()
-      setMessages([])
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen])
+  if (!isOpen) return null
 
-  useEffect(() => {
-    return () => {
-      endSession()
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const micOn = isCallActive && !isMicMuted && isListening
 
-  const statusText = !isSessionActive
-    ? t(
-        "In crisis situations, please contact local emergency services immediately.",
+  const statusText = (() => {
+    if (!isCallActive)
+      return t(
+        "Choose an AI psychologist and press “Start video call” to begin.",
       )
-    : isAiSpeaking
-      ? t("Assistant is speaking...")
-      : isMicMuted
-        ? t("Paused. Turn on microphone to continue.")
-        : isListening
-          ? t("Listening… you can speak.")
-          : t("Waiting... you can start speaking at any moment.")
+    if (isAiSpeaking) return t("Assistant is speaking. Please wait a moment.")
+    if (micOn) return t("Listening… you can speak.")
+    return t("Paused. Turn on microphone to continue.")
+  })()
 
   return (
-    <Dialog
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          endSession()
-          onClose()
-        }
-      }}
-    >
-      <DialogContent className="max-w-5xl border-none bg-transparent p-0">
-        <div className="overflow-hidden rounded-3xl bg-white shadow-xl shadow-slate-900/10">
-          <DialogHeader className="border-b border-indigo-100 bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 px-6 pt-5 pb-4 text-white">
-            <div className="flex items-start justify-between gap-3 pr-10">
-              <div>
-                <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
-                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10">
-                    <Video className="h-4 w-4" />
-                  </span>
-                  {t("Video session with AI-psychologist")}
-                </DialogTitle>
-                <DialogDescription className="mt-1 text-xs text-indigo-100">
-                  {t(
-                    "You can talk out loud, the assistant will listen, answer and voice the reply.",
-                  )}
-                </DialogDescription>
-              </div>
-            </div>
-          </DialogHeader>
-
-          <div className="flex h-[600px] flex-col md:h-[620px] md:flex-row">
-            {/* LEFT: video stage */}
-            <div className="relative flex min-h-[260px] flex-1 flex-col bg-slate-950 md:min-h-0">
-              <div className="relative flex-1">
-                {/* AI stage */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="flex h-full w-full flex-col items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
-                    <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/90">
-                      <Brain className="h-3.5 w-3.5" />
-                      {t("AI Psychologist")}
-                    </div>
-                    <div className="text-center text-xs text-white/70">
-                      {isAiSpeaking
-                        ? t("Assistant is speaking...")
-                        : t("You can speak when the microphone is on.")}
-                    </div>
-                  </div>
-                </div>
-
-                {/* User video preview */}
-                <div className="absolute right-3 bottom-3 h-32 w-24 overflow-hidden rounded-2xl border border-white/15 bg-black/40 shadow-lg md:h-40 md:w-28">
-                  {!isCameraOff && (
-                    <video
-                      ref={userVideoRef}
-                      className="h-full w-full object-cover"
-                      muted
-                      playsInline
-                      autoPlay
-                    />
-                  )}
-
-                  {isCameraOff && (
-                    <div className="flex h-full w-full items-center justify-center text-[11px] text-white/70">
-                      {t("Camera off")}
-                    </div>
-                  )}
-                </div>
-
-                {/* Controls overlay */}
-                <div className="absolute left-3 right-3 bottom-3 flex items-center justify-between gap-2">
-                  <div className="hidden items-center gap-2 rounded-full bg-black/35 px-3 py-1.5 text-[11px] text-white/80 md:flex">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    {statusText}
-                  </div>
-
-                  {isSessionActive && (
-                    <div className="ml-auto flex items-center gap-2 rounded-full bg-black/35 p-2">
-                      {/* Mic: ДВА режима, БЕЗ мигания */}
-                      <Button
-                        type="button"
-                        size="icon"
-                        onClick={toggleMic}
-                        className={`h-9 w-9 rounded-full border ${
-                          isMicMuted
-                            ? "border-rose-500/40 bg-rose-600 text-white hover:bg-rose-700"
-                            : "border-white/20 bg-white/10 text-white hover:bg-white/15"
-                        }`}
-                      >
-                        {isMicMuted ? (
-                          <MicOff className="h-4 w-4" />
-                        ) : (
-                          <Mic className="h-4 w-4" />
-                        )}
-                      </Button>
-
-                      <Button
-                        type="button"
-                        size="icon"
-                        onClick={toggleCamera}
-                        className={`h-9 w-9 rounded-full border ${
-                          isCameraOff
-                            ? "border-rose-500/40 bg-rose-600 text-white hover:bg-rose-700"
-                            : "border-white/20 bg-white/10 text-white hover:bg-white/15"
-                        }`}
-                      >
-                        {isCameraOff ? (
-                          <VideoOff className="h-4 w-4" />
-                        ) : (
-                          <Video className="h-4 w-4" />
-                        )}
-                      </Button>
-
-                      <Button
-                        type="button"
-                        size="icon"
-                        onClick={endSession}
-                        className="h-9 w-9 rounded-full bg-rose-600 text-white hover:bg-rose-700"
-                      >
-                        <Phone className="h-4 w-4 rotate-[135deg]" />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* mobile status */}
-              <div className="border-t border-white/10 bg-slate-950 px-4 py-2 text-[11px] text-white/70 md:hidden">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  {statusText}
-                </div>
-              </div>
-            </div>
-
-            {/* RIGHT: chat */}
-            <div className="flex w-full flex-col border-t border-slate-100 md:w-[420px] md:border-t-0 md:border-l">
-              <ScrollArea className="flex-1 px-5 pt-4 pb-2">
-                <div
-                  ref={scrollRef}
-                  className="max-h-full space-y-3 pr-1 text-xs md:text-sm"
-                  data-notranslate
-                >
-                  {!isSessionActive && messages.length === 0 && (
-                    <div className="rounded-2xl bg-indigo-50/70 px-3 py-3 text-slate-700">
-                      <p className="mb-1 font-medium text-slate-900">
-                        {t("How it works")}
-                      </p>
-                      <p className="mb-2">
-                        {t(
-                          "Choose a voice and start the session. The assistant will listen to you and answer like a real psychologist.",
-                        )}
-                      </p>
-                      <p className="text-[11px] text-slate-500">
-                        {t(
-                          "For best experience allow camera and microphone. You can mute the microphone or turn off the camera anytime.",
-                        )}
-                      </p>
-                    </div>
-                  )}
-
-                  {messages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`flex ${
-                        msg.role === "user" ? "justify-end" : "justify-start"
-                      }`}
-                    >
-                      <div
-                        className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 shadow-sm ${
-                          msg.role === "user"
-                            ? "rounded-br-sm bg-slate-900 text-white"
-                            : "rounded-bl-sm bg-emerald-50 text-slate-900"
-                        }`}
-                      >
-                        {msg.role === "assistant" && (
-                          <div className="mb-1 flex items-center gap-1 text-[10px] font-medium text-emerald-700">
-                            <Brain className="h-3 w-3" />
-                            {t("AI Psychologist")}
-                            {msg.gender && (
-                              <span className="ml-1 rounded-full bg-emerald-100 px-2 py-[1px] text-[9px] font-semibold uppercase tracking-wide text-emerald-700">
-                                {msg.gender === "female"
-                                  ? t("Female voice")
-                                  : t("Male voice")}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        <p className="text-xs md:text-sm">{msg.text}</p>
-                      </div>
-                    </div>
-                  ))}
-
-                  {networkError && (
-                    <div className="rounded-2xl bg-rose-50 px-3 py-3 text-xs text-rose-700">
-                      {networkError}
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
-
-              {!isSessionActive && (
-                <div className="border-t border-slate-100 px-5 py-4">
-                  <div className="mb-3 text-center text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                    {t("Choose voice for this session")}
-                  </div>
-
-                  <div className="flex w-full flex-col gap-2 sm:flex-row">
-                    <Button
-                      type="button"
-                      onClick={() => void startSession("female")}
-                      disabled={isConnecting}
-                      className={`h-11 flex-1 rounded-full px-5 text-xs font-semibold shadow-sm ${
-                        voiceGenderRef.current === "female"
-                          ? "bg-pink-600 text-white hover:bg-pink-700"
-                          : "bg-pink-50 text-pink-700 hover:bg-pink-100"
-                      }`}
-                    >
-                      {isConnecting && voiceGenderRef.current === "female" ? (
-                        <>
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                          {t("Connecting")}
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-3 w-3" />
-                          {t("Start with female voice")}
-                        </>
-                      )}
-                    </Button>
-
-                    <Button
-                      type="button"
-                      onClick={() => void startSession("male")}
-                      disabled={isConnecting}
-                      className={`h-11 flex-1 rounded-full px-5 text-xs font-semibold shadow-sm ${
-                        voiceGenderRef.current === "male"
-                          ? "bg-sky-600 text-white hover:bg-sky-700"
-                          : "bg-sky-50 text-sky-700 hover:bg-sky-100"
-                      }`}
-                    >
-                      {isConnecting && voiceGenderRef.current === "male" ? (
-                        <>
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                          {t("Connecting")}
-                        </>
-                      ) : (
-                        <>
-                          <Brain className="h-3 w-3" />
-                          {t("Start with male voice")}
-                        </>
-                      )}
-                    </Button>
-                  </div>
-
-                  <div className="mt-3 text-center text-[11px] text-slate-500">
-                    {t(
-                      "If the camera does not start, allow permissions for this site and reopen the session.",
-                    )}
-                  </div>
-                </div>
-              )}
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl flex flex-col h-[100dvh] sm:h-[90vh] max-h-none sm:max-h-[860px] overflow-hidden">
+        {/* HEADER */}
+        <div className="p-3 sm:p-4 border-b flex justify-between items-center rounded-t-xl relative bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 text-white">
+          <div className="flex flex-col flex-1 min-w-0 pr-2">
+            <h3 className="font-semibold text-base sm:text-lg truncate flex items-center gap-2">
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/10">
+                <Phone className="h-4 w-4" />
+              </span>
+              {t("AI Psychologist Video Call")}
+            </h3>
+            <div className="text-xs text-indigo-100 mt-1 truncate">
+              {t("Video session in {{language}}", {
+                language: languageDisplayName,
+              })}{" "}
+              · {activeLanguage.flag}
             </div>
           </div>
+
+          <div className="flex flex-col items-end gap-1 mr-2">
+            <div className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-medium text-indigo-50">
+              {APP_NAME} · {t("Video assistant online")}
+            </div>
+          </div>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              endCall()
+              onClose()
+            }}
+            className="text-white hover:bg-indigo-500/60 min-w-[44px] min-h-[44px] flex-shrink-0"
+          >
+            <X className="h-5 w-5" />
+          </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+
+        {/* BODY */}
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 flex flex-col touch-pan-y">
+          {!isCallActive ? (
+            // PRE-CALL SCREEN
+            <div className="flex-1 flex flex-col items-center justify-center">
+              <div className="text-center mb-6 sm:mb-8 px-2">
+                <h3 className="text-xl sm:text-2xl font-semibold mb-2 sm:mb-3">
+                  {t("Choose Your AI Psychologist")}
+                </h3>
+                <p className="text-sm sm:text-base text-gray-600 max-w-md mx-auto">
+                  {t(
+                    "Select the AI psychologist you'd like to speak with during your video call.",
+                  )}
+                </p>
+              </div>
+
+              <div className="mb-6 bg-blue-50 p-4 rounded-lg w-full max-w-xs text-center mx-2">
+                <p className="text-sm font-medium text-blue-700 mb-1">
+                  {t("Video call language")}:
+                </p>
+                <div className="text-lg font-semibold text-blue-800 flex items-center justify-center">
+                  <span className="mr-2">{activeLanguage.flag}</span>
+                  {languageDisplayName}
+                </div>
+                <p className="text-xs text-blue-600 mt-2">
+                  {shouldUseGoogleTTS(activeLanguage.code)
+                    ? t(
+                        "All characters use Google TTS for authentic native accent.",
+                      )
+                    : t(
+                        "AI will understand and respond in this language with native accent",
+                      )}
+                </p>
+              </div>
+
+              <div className="w-full max-w-4xl px-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {AI_CHARACTERS.map((character) => (
+                    <button
+                      key={character.id}
+                      type="button"
+                      onClick={() => setSelectedCharacter(character)}
+                      className={`relative bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border-2 ${
+                        selectedCharacter.id === character.id
+                          ? "border-primary-600"
+                          : "border-transparent"
+                      }`}
+                    >
+                      <div className="p-4 sm:p-5 flex flex-col h-full">
+                        <div className="relative w-full aspect-square mb-3 sm:mb-4 overflow-hidden rounded-lg bg-black">
+                          {character.idleVideo ? (
+                            <video
+                              className="absolute inset-0 w-full h-full object-cover scale-[1.08]"
+                              muted
+                              loop
+                              playsInline
+                              autoPlay
+                              preload="auto"
+                            >
+                              <source
+                                src={character.idleVideo}
+                                type="video/mp4"
+                              />
+                            </video>
+                          ) : (
+                            <Image
+                              src={character.avatar || "/placeholder.svg"}
+                              alt={character.name}
+                              fill
+                              className="object-cover"
+                              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                              priority={character.id === selectedCharacter.id}
+                            />
+                          )}
+                        </div>
+                        <h4 className="font-semibold text-base sm:text-lg text-center mb-1 sm:mb-2">
+                          {character.name}
+                        </h4>
+                        <p className="text-xs sm:text-sm text-gray-600 text-center mb-3 sm:mb-4">
+                          {character.description}
+                        </p>
+                        <div className="mt-auto text-center">
+                          <span
+                            className={`inline-flex px-3 py-1 rounded-full text-[11px] font-medium ${
+                              selectedCharacter.id === character.id
+                                ? "bg-primary-600 text-white"
+                                : "bg-gray-100 text-gray-700"
+                            }`}
+                          >
+                            {selectedCharacter.id === character.id
+                              ? t("Selected")
+                              : t("Select")}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-6 sm:mt-8 w-full max-w-md px-2">
+                <Button
+                  className="w-full bg-primary-600 hover:bg-primary-700 text-white text-base sm:text-lg py-4 sm:py-6 min-h-[56px]"
+                  onClick={startCall}
+                  disabled={isConnecting}
+                >
+                  {isConnecting ? t("Connecting...") : t("Start Video Call")}
+                </Button>
+                {speechError && (
+                  <p className="mt-3 text-xs text-center text-rose-600">
+                    {speechError}
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+            // IN-CALL SCREEN
+            <div className="flex-1 flex flex-col sm:flex-row gap-3 sm:gap-4">
+              {/* LEFT: VIDEO */}
+              <div className="w-full sm:w-2/3 flex flex-col">
+                <div className="relative w-full aspect-video sm:flex-1 bg-white rounded-lg overflow-hidden">
+                  <div className="absolute inset-0 bg-white overflow-hidden">
+                    {hasEnhancedVideo ? (
+                      <>
+                        {selectedCharacter.idleVideo && (
+                          <video
+                            ref={idleVideoRef}
+                            className="absolute inset-0 w-full h-full object-cover scale-[1.08]"
+                            muted
+                            loop
+                            playsInline
+                            autoPlay
+                            preload="auto"
+                          >
+                            <source
+                              src={selectedCharacter.idleVideo}
+                              type="video/mp4"
+                            />
+                          </video>
+                        )}
+
+                        {selectedCharacter.speakingVideo && (
+                          <video
+                            ref={speakingVideoRef}
+                            className={`absolute inset-0 w-full h-full object-cover scale-[1.08] transition-opacity duration-700 ease-in-out ${
+                              isAiSpeaking ? "opacity-100" : "opacity-0"
+                            }`}
+                            muted
+                            loop
+                            playsInline
+                            autoPlay
+                            preload="auto"
+                          >
+                            <source
+                              src={selectedCharacter.speakingVideo}
+                              type="video/mp4"
+                            />
+                          </video>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {selectedCharacter && !isAiSpeaking && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-white">
+                            <div className="w-40 h-40 sm:w-56 sm:h-56 relative">
+                              <Image
+                                src={
+                                  selectedCharacter.avatar ||
+                                  "/placeholder.svg"
+                                }
+                                alt={selectedCharacter.name}
+                                fill
+                                className="object-cover rounded-full"
+                                sizes="224px"
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {selectedCharacter.speakingVideo && (
+                          <video
+                            ref={speakingVideoRef}
+                            className={`absolute inset-0 w-full h-full object-cover scale-[1.08] transition-opacity duration-700 ease-in-out ${
+                              isAiSpeaking ? "opacity-100" : "opacity-0"
+                            }`}
+                            muted
+                            loop
+                            playsInline
+                            autoPlay
+                            preload="auto"
+                          >
+                            <source
+                              src={selectedCharacter.speakingVideo}
+                              type="video/mp4"
+                            />
+                          </video>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  <div
+                    className={`absolute top-2 sm:top-4 right-2 sm:right-4 px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium ${
+                      activityStatus === "listening"
+                        ? "bg-green-100 text-green-800"
+                        : activityStatus === "thinking"
+                        ? "bg-blue-100 text-blue-800"
+                        : "bg-purple-100 text-purple-800"
+                    }`}
+                  >
+                    {activityStatus === "listening"
+                      ? t("Listening...")
+                      : activityStatus === "thinking"
+                      ? t("Thinking...")
+                      : t("Speaking...")}
+                  </div>
+
+                  {!isCameraOff && (
+                    <div className="absolute bottom-2 sm:bottom-4 right-2 sm:right-4 w-20 sm:w-40 aspect-video bg-gray-800 rounded overflow-hidden shadow-lg">
+                      <video
+                        ref={userVideoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover transform scale-x-[-1]"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* RIGHT: CHAT */}
+              <div className="w-full sm:w-1/3 flex flex-col bg-gray-50 rounded-lg border overflow-hidden">
+                <div className="px-3 pt-3 pb-2 border-b flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                    <Brain className="h-4 w-4 text-emerald-700" />
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <div className="text-xs font-semibold text-slate-800 truncate">
+                      {selectedCharacter.name}
+                    </div>
+                    <div className="text-[11px] text-slate-500 truncate">
+                      {statusText}
+                    </div>
+                  </div>
+                </div>
+
+                <div
+                  className="flex-1 px-3 py-3 sm:px-4 sm:py-4 space-y-3 sm:space-y-4 overflow-y-auto notranslate"
+                  data-notranslate="true"
+                  translate="no"
+                >
+                  {messages.length === 0 && (
+                    <div className="bg-primary-50 rounded-2xl p-3 sm:p-4 text-xs sm:text-sm text-slate-800">
+                      {t(
+                        "You can start speaking when you're ready. The assistant will answer with voice and text here.",
+                      )}
+                    </div>
+                  )}
+
+                  {messages.map((msg) =>
+                    msg.role === "user" ? (
+                      <div
+                        key={msg.id}
+                        className="ml-auto max-w-[85%] rounded-2xl bg-blue-50 px-3 py-3 text-xs sm:text-sm text-slate-900"
+                      >
+                        <p>{msg.text}</p>
+                      </div>
+                    ) : (
+                      <div
+                        key={msg.id}
+                        className="max-w-[85%] rounded-2xl bg-emerald-50 px-3 py-3 text-xs sm:text-sm text-slate-900"
+                      >
+                        <p className="mb-1 flex items-center gap-1 text-[11px] font-medium text-emerald-800">
+                          <Brain className="h-3.5 w-3.5" />
+                          {selectedCharacter.name}
+                        </p>
+                        <p>{msg.text}</p>
+                      </div>
+                    ),
+                  )}
+
+                  {interimTranscript && (
+                    <div className="bg-gray-50 rounded-lg p-3 italic text-xs sm:text-sm text-gray-500 break-words">
+                      {interimTranscript}...
+                    </div>
+                  )}
+
+                  {speechError && (
+                    <div className="bg-rose-50 rounded-lg p-3 text-xs sm:text-sm text-rose-700 break-words">
+                      {speechError}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* BOTTOM BAR */}
+        {isCallActive && (
+          <div className="p-3 sm:p-4 border-t bg-gray-50 flex flex-col safe-area-bottom">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+              <div className="flex items-center gap-2 text-[11px] sm:text-xs text-slate-500">
+                <Sparkles className="h-3 w-3" />
+                {statusText}
+              </div>
+            </div>
+
+          <div className="flex justify-center space-x-3 sm:space-x-4">
+              <Button
+                variant="outline"
+                size="icon"
+                className={`rounded-full h-14 w-14 sm:h-12 sm:w-12 touch-manipulation ${
+                  isMicMuted
+                    ? "bg-red-100 text-red-600"
+                    : micOn
+                    ? "bg-green-100 text-green-600 animate-pulse"
+                    : "bg-gray-100"
+                }`}
+                onClick={toggleMicrophone}
+              >
+                {isMicMuted ? (
+                  <MicOff className="h-6 w-6 sm:h-5 sm:w-5" />
+                ) : (
+                  <Mic className="h-6 w-6 sm:h-5 sm:w-5" />
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className={`rounded-full h-14 w-14 sm:h-12 sm:w-12 touch-manipulation ${
+                  isCameraOff ? "bg-red-100 text-red-600" : "bg-gray-100"
+                }`}
+                onClick={toggleCamera}
+              >
+                {isCameraOff ? (
+                  <CameraOff className="h-6 w-6 sm:h-5 sm:w-5" />
+                ) : (
+                  <Camera className="h-6 w-6 sm:h-5 sm:w-5" />
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                className={`rounded-full h-14 w-14 sm:h-12 sm:w-12 touch-manipulation ${
+                  isSoundEnabled ? "bg-gray-100" : "bg-red-100 text-red-600"
+                }`}
+                onClick={toggleSound}
+              >
+                {isSoundEnabled ? (
+                  <Volume2 className="h-6 w-6 sm:h-5 sm:w-5" />
+                ) : (
+                  <VolumeX className="h-6 w-6 sm:h-5 sm:w-5" />
+                )}
+              </Button>
+              <Button
+                variant="destructive"
+                size="icon"
+                className="rounded-full h-14 w-14 sm:h-12 sm:w-12 bg-red-600 hover:bg-red-700 text-white touch-manipulation"
+                onClick={endCall}
+              >
+                <Phone className="h-6 w-6 sm:h-5 sm:w-5" />
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
