@@ -1,7 +1,8 @@
 // @ts-nocheck
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import {
   X,
@@ -15,7 +16,6 @@ import {
   Brain,
   Video,
 } from "lucide-react"
-import Image from "next/image"
 import { useLanguage } from "@/lib/i18n/language-context"
 import { useAuth } from "@/lib/auth/auth-context"
 import {
@@ -23,29 +23,11 @@ import {
   getNativeSpeechParameters,
   getNativeVoicePreferences,
 } from "@/lib/i18n/translation-utils"
-import { shouldUseGoogleTTS, generateGoogleTTS } from "@/lib/google-tts"
 
 const VIDEO_ASSISTANT_WEBHOOK_URL =
   process.env.NEXT_PUBLIC_TURBOTA_AI_VIDEO_ASSISTANT_WEBHOOK_URL ||
   process.env.NEXT_PUBLIC_TURBOTA_AGENT_WEBHOOK_URL ||
   "/api/turbotaai-agent"
-
-const VIDEO_CALL_GOOGLE_TTS_CREDENTIALS: any = {}
-
-const VIDEO_CALL_VOICE_CONFIGS = {
-  uk: {
-    female: { languageCode: "uk-UA", name: "uk-UA-Standard-A", ssmlGender: "FEMALE" },
-    male: { languageCode: "uk-UA", name: "uk-UA-Chirp3-HD-Schedar", ssmlGender: "MALE" },
-  },
-  ru: {
-    female: { languageCode: "ru-RU", name: "ru-RU-Standard-A", ssmlGender: "FEMALE" },
-    male: { languageCode: "ru-RU", name: "ru-RU-Standard-B", ssmlGender: "MALE" },
-  },
-  en: {
-    female: { languageCode: "en-US", name: "en-US-Neural2-F", ssmlGender: "FEMALE" },
-    male: { languageCode: "en-US", name: "en-US-Neural2-D", ssmlGender: "MALE" },
-  },
-}
 
 interface AICharacter {
   id: string
@@ -53,7 +35,6 @@ interface AICharacter {
   gender: "male" | "female"
   description: string
   avatar: string
-  voice: string
   animated?: boolean
   idleVideo?: string
   speakingVideo?: string
@@ -68,7 +49,6 @@ const AI_CHARACTERS: AICharacter[] = [
       "Senior psychologist specializing in cognitive behavioral therapy with 15+ years of experience",
     avatar:
       "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/photo_2025-10-31_22-27-18-BmxDH7DCv7e3p0y8HobTyoPkQw1COM.jpg",
-    voice: "en-US-GuyNeural",
     animated: true,
     idleVideo:
       "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_7660-2BvRYFiYOwNRwDjKtBtSCtEGUbLMEh.MP4",
@@ -83,7 +63,6 @@ const AI_CHARACTERS: AICharacter[] = [
       "Clinical psychologist specializing in anxiety, depression, and workplace stress management",
     avatar:
       "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/photo_2025-10-31_22-27-ds8y3Pe7RedqJBqZMDPltEeFI149ki.jpg",
-    voice: "en-US-JennyNeural",
     animated: true,
     idleVideo:
       "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_9962-fVXHRSVmzv64cpPJf4FddeCDXqxdGE.MP4",
@@ -98,7 +77,6 @@ const AI_CHARACTERS: AICharacter[] = [
       "Psychotherapist specializing in emotional regulation, trauma recovery, and relationship counseling",
     avatar:
       "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/photo_2025-10-31_22-27-19%D1%83-iWDrUd3gH9sLBeOjmIvu8wX3yxwBuq.jpg",
-    voice: "en-US-JennyNeural",
     animated: true,
     idleVideo:
       "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_9963-sneJ4XhoEuemkYgVb425Mscu7X9OC6.MP4",
@@ -109,11 +87,9 @@ const AI_CHARACTERS: AICharacter[] = [
 
 declare global {
   interface Window {
-    SpeechRecognition?: any
-    webkitSpeechRecognition?: any
+    speechSynthesis?: SpeechSynthesis
     AudioContext?: any
     webkitAudioContext?: any
-    speechSynthesis?: SpeechSynthesis
   }
 }
 
@@ -130,36 +106,94 @@ type ChatMessage = {
   text: string
 }
 
-function pickRecorderMimeType(): string {
-  if (typeof window === "undefined") return "audio/webm"
-  const MR: any = (window as any).MediaRecorder
-  if (!MR || typeof MR.isTypeSupported !== "function") return "audio/webm"
+function pickMime(): string | null {
+  const MR: any = typeof MediaRecorder !== "undefined" ? MediaRecorder : null
+  if (!MR || !MR.isTypeSupported) return null
 
   const candidates = [
     "audio/webm;codecs=opus",
     "audio/webm",
-    "audio/mp4",
     "audio/ogg;codecs=opus",
-    "audio/ogg",
-    "audio/wav",
+    "audio/mp4;codecs=mp4a.40.2",
+    "audio/mp4",
   ]
 
-  for (const t of candidates) {
+  for (const c of candidates) {
     try {
-      if (MR.isTypeSupported(t)) return t
+      if (MR.isTypeSupported(c)) return c
     } catch {}
   }
-  return "audio/webm"
+  return null
 }
 
-function extFromMime(mime: string): string {
-  const m = (mime || "").toLowerCase()
-  if (m.includes("webm")) return "webm"
-  if (m.includes("mp4")) return "mp4"
-  if (m.includes("mpeg") || m.includes("mp3")) return "mp3"
-  if (m.includes("wav")) return "wav"
-  if (m.includes("ogg")) return "ogg"
-  return "webm"
+function isGarbageTranscript(text: string): boolean {
+  const t = (text || "").trim()
+  if (!t) return true
+  if (t.length > 420) return true
+  if (/(\b\w+\b)(?:\s+\1){5,}/i.test(t)) return true
+  const words = t.toLowerCase().split(/\s+/).filter(Boolean)
+  if (words.length >= 12) {
+    const freq = new Map<string, number>()
+    for (const w of words) freq.set(w, (freq.get(w) || 0) + 1)
+    let mx = 0
+    for (const v of freq.values()) mx = Math.max(mx, v)
+    if (mx / words.length > 0.38) return true
+  }
+  return false
+}
+
+function cleanResponseText(text: string): string {
+  if (!text) return ""
+  if (text.startsWith('[{"output":')) {
+    try {
+      const parsed = JSON.parse(text)
+      if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].output) {
+        return String(parsed[0].output).trim()
+      }
+    } catch {}
+  }
+  return text
+    .replace(/\n\n/g, " ")
+    .replace(/\*\*/g, "")
+    .replace(/```/g, "")
+    .replace(/[\n\r]/g, " ")
+    .trim()
+}
+
+function extractAnswer(data: any): string {
+  if (!data) return ""
+  if (typeof data === "string") return data.trim()
+
+  if (Array.isArray(data) && data.length > 0) {
+    const first = data[0] ?? {}
+    return (
+      first.output ||
+      first.response ||
+      first.text ||
+      first.message ||
+      first.content ||
+      first.result ||
+      JSON.stringify(first)
+    )
+      ?.toString()
+      .trim()
+  }
+
+  if (typeof data === "object") {
+    return (
+      data.output ||
+      data.response ||
+      data.text ||
+      data.message ||
+      data.content ||
+      data.result ||
+      JSON.stringify(data)
+    )
+      ?.toString()
+      .trim()
+  }
+
+  return ""
 }
 
 export default function VideoCallDialog({
@@ -203,9 +237,9 @@ export default function VideoCallDialog({
   const [speechError, setSpeechError] = useState<string | null>(null)
 
   const [isAiSpeaking, setIsAiSpeaking] = useState(false)
-  
+
   const isAiSpeakingRef = useRef(false)
-const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [interimTranscript, setInterimTranscript] = useState("")
 
   const userVideoRef = useRef<HTMLVideoElement | null>(null)
@@ -219,31 +253,47 @@ const [messages, setMessages] = useState<ChatMessage[]>([])
   const isCallActiveRef = useRef(false)
   const isMicMutedRef = useRef(false)
 
-  // --- MediaRecorder STT (как в голосовом) ---
-  const micStreamRef = useRef<MediaStream | null>(null)
-  const recorderRef = useRef<any>(null)
-  const recorderChunksRef = useRef<BlobPart[]>([])
-  const audioCtxRef = useRef<any>(null)
-  const analyserRef = useRef<any>(null)
-  const sourceNodeRef = useRef<any>(null)
-  const vadTimerRef = useRef<any>(null)
+  const rawStreamRef = useRef<MediaStream | null>(null)
+  const bridgedStreamRef = useRef<MediaStream | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const recorderCfgRef = useRef<{ mimeType: string; sliceMs: number } | null>(null)
+  const reqTimerRef = useRef<number | null>(null)
+
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const rafRef = useRef<number | null>(null)
+
+  const keepAudioElRef = useRef<HTMLAudioElement | null>(null)
+
+  const audioChunksRef = useRef<Blob[]>([])
   const recordStartedAtRef = useRef<number>(0)
-  const lastLoudAtRef = useRef<number>(0)
-  const hadSpeechRef = useRef<boolean>(false)
-  const isStoppingRecorderRef = useRef<boolean>(false)
+  const hadSpeechRef = useRef(false)
 
-  
-  const restartAfterTtsRef = useRef(false)
-  const startListeningInFlightRef = useRef(false)
-const VAD_POLL_MS = 120
-  const VAD_THRESHOLD = 0.018
-  const SILENCE_MS_TO_STOP = 3500
+  const pendingSttReasonRef = useRef<string | null>(null)
+  const pendingSttTimerRef = useRef<number | null>(null)
+  const ttsCooldownUntilRef = useRef(0)
+  const isSttBusyRef = useRef(false)
+
+  const vad = useRef({
+    noiseFloor: 0,
+    rms: 0,
+    thr: 0.008,
+    voice: false,
+    voiceUntilTs: 0,
+    utteranceStartTs: 0,
+  })
+
+  const isMobile = useMemo(() => {
+    if (typeof navigator === "undefined") return false
+    return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+  }, [])
+
+  const MIN_UTTERANCE_MS = 450
   const MIN_BLOB_BYTES = 2500
-  const MIN_RECORD_MS = 450
-  const MAX_RECORD_MS = 20000
+  const hangoverMs = 3500
+  const maxUtteranceMs = 20000
 
-  const hasEnhancedVideo =
-    !!selectedCharacter?.idleVideo && !!selectedCharacter?.speakingVideo
+  const startListeningInFlightRef = useRef(false)
 
   useEffect(() => {
     isCallActiveRef.current = isCallActive
@@ -257,8 +307,6 @@ const VAD_POLL_MS = 120
     isAiSpeakingRef.current = isAiSpeaking
   }, [isAiSpeaking])
 
-
-  // preload voices
   useEffect(() => {
     if (typeof window === "undefined" || !window.speechSynthesis) return
     const load = () => {
@@ -276,19 +324,14 @@ const VAD_POLL_MS = 120
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // camera PIP
   useEffect(() => {
     if (isCallActive && !isCameraOff && userVideoRef.current) {
       navigator.mediaDevices
         .getUserMedia({ video: true })
         .then((stream) => {
-          if (userVideoRef.current) {
-            userVideoRef.current.srcObject = stream
-          }
+          if (userVideoRef.current) userVideoRef.current.srcObject = stream
         })
-        .catch(() => {
-          setIsCameraOff(true)
-        })
+        .catch(() => setIsCameraOff(true))
     }
 
     return () => {
@@ -301,13 +344,24 @@ const VAD_POLL_MS = 120
     }
   }, [isCallActive, isCameraOff])
 
-  // close modal -> стоп звонок
   useEffect(() => {
-    if (!isOpen && isCallActive) {
-      endCall()
-    }
+    if (!isOpen && isCallActive) endCall()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
+
+  function computeLangCode(): string {
+    const code = String(activeLanguage.code || "uk").toLowerCase()
+    if (code.startsWith("ru")) return "ru-RU"
+    if (code.startsWith("en")) return "en-US"
+    return "uk-UA"
+  }
+
+  function computeHint3(): "uk" | "ru" | "en" {
+    const code = String(activeLanguage.code || "uk").toLowerCase()
+    if (code.startsWith("ru")) return "ru"
+    if (code.startsWith("en")) return "en"
+    return "uk"
+  }
 
   async function requestMicrophoneStream(): Promise<MediaStream | null> {
     if (typeof navigator === "undefined") {
@@ -341,7 +395,7 @@ const VAD_POLL_MS = 120
         },
       })
       setSpeechError(null)
-      micStreamRef.current = stream
+      rawStreamRef.current = stream
       return stream
     } catch (error: any) {
       console.log("[Video] getUserMedia error:", error)
@@ -354,9 +408,7 @@ const VAD_POLL_MS = 120
           ),
         )
       } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
-        setSpeechError(
-          t("No microphone was found on this device. Please check your hardware."),
-        )
+        setSpeechError(t("No microphone was found on this device. Please check your hardware."))
       } else {
         setSpeechError(
           t(
@@ -369,91 +421,320 @@ const VAD_POLL_MS = 120
     }
   }
 
-  function stopMicStream() {
-    const s = micStreamRef.current
-    if (s) {
+  function stopKeepAlive() {
+    const a = keepAudioElRef.current
+    if (a) {
       try {
-        s.getTracks().forEach((tr) => tr.stop())
+        a.pause()
       } catch {}
+      try {
+        ;(a as any).srcObject = null
+      } catch {}
+      keepAudioElRef.current = null
     }
-    micStreamRef.current = null
   }
 
-  function cleanupVAD() {
-    if (vadTimerRef.current) {
+  function stopAudioGraph() {
+    if (rafRef.current) {
       try {
-        clearInterval(vadTimerRef.current)
+        cancelAnimationFrame(rafRef.current)
       } catch {}
-      vadTimerRef.current = null
+      rafRef.current = null
     }
-    if (sourceNodeRef.current) {
+
+    analyserRef.current = null
+
+    const ctx = audioCtxRef.current
+    if (ctx) {
       try {
-        sourceNodeRef.current.disconnect()
-      } catch {}
-      sourceNodeRef.current = null
-    }
-    if (analyserRef.current) {
-      try {
-        analyserRef.current.disconnect()
-      } catch {}
-      analyserRef.current = null
-    }
-    if (audioCtxRef.current) {
-      try {
-        audioCtxRef.current.close?.()
+        ctx.close()
       } catch {}
       audioCtxRef.current = null
     }
   }
 
-  function stopRecorderOnly() {
-    const r: any = recorderRef.current
-    if (r) {
+  function stopStreams() {
+    const raw = rawStreamRef.current
+    if (raw) {
       try {
-        isStoppingRecorderRef.current = true
-        try {
-          if (r.state === "recording") r.requestData?.()
-        } catch {}
-        r.stop()
+        raw.getTracks().forEach((tr) => tr.stop())
       } catch {}
-      recorderRef.current = null
+      rawStreamRef.current = null
     }
-    cleanupVAD()
-    recorderChunksRef.current = []
+    bridgedStreamRef.current = null
+  }
+
+  function stopRecorderOnly() {
+    const rec: any = mediaRecorderRef.current
+    if (reqTimerRef.current) {
+      try {
+        window.clearInterval(reqTimerRef.current)
+      } catch {}
+      reqTimerRef.current = null
+    }
+    if (rec) {
+      try {
+        rec.ondataavailable = null
+      } catch {}
+      try {
+        rec.onstop = null
+      } catch {}
+      try {
+        rec.onerror = null
+      } catch {}
+      try {
+        if (rec.state !== "inactive") rec.stop()
+      } catch {}
+    }
+    mediaRecorderRef.current = null
+    recorderCfgRef.current = null
+    audioChunksRef.current = []
+    hadSpeechRef.current = false
     setIsListening(false)
   }
 
-  function isGarbageTranscript(text: string): boolean {
-  const t = (text || "").trim()
-  if (!t) return true
-  if (t.length > 420) return true
-  // повтор одного слова много раз: "четвертая четвертая четвертая..."
-  if (/(\b\w+\b)(?:\s+\1){5,}/i.test(t)) return true
-  // доминирующее слово > 38%
-  const words = t.toLowerCase().split(/\s+/).filter(Boolean)
-  if (words.length >= 12) {
-    const freq = new Map<string, number>()
-    for (const w of words) freq.set(w, (freq.get(w) || 0) + 1)
-    let mx = 0
-    for (const v of freq.values()) mx = Math.max(mx, v)
-    if (mx / words.length > 0.38) return true
+  function resetVadState() {
+    vad.current = {
+      noiseFloor: 0,
+      rms: 0,
+      thr: 0.008,
+      voice: false,
+      voiceUntilTs: 0,
+      utteranceStartTs: 0,
+    }
+    hadSpeechRef.current = false
+    recordStartedAtRef.current = Date.now()
   }
-  return false
-}
 
-async function sendBlobToSTT(blob: Blob, mime: string): Promise<string> {
-    // router app/api/stt/route.ts expects RAW audio body (not FormData)
-    const typeFull = (mime || blob.type || "audio/webm").toLowerCase()
-    const type = typeFull.split(";")[0].trim()// hint for ru/uk/en (server reads x-stt-hint)
-    const code = String(activeLanguage.code || "uk").toLowerCase()
-    const hint = code.startsWith("ru") ? "ru" : code.startsWith("en") ? "en" : "uk"
+  async function ensureAudioGraphStarted() {
+    const raw = rawStreamRef.current
+    if (!raw) return
+
+    try {
+      const a = new Audio()
+      a.muted = true
+      ;(a as any).playsInline = true
+      ;(a as any).srcObject = raw
+      keepAudioElRef.current = a
+      await a.play().catch(() => {})
+    } catch {}
+
+    if (audioCtxRef.current && analyserRef.current && bridgedStreamRef.current) return
+
+    const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext
+    const ctx: AudioContext = new AC()
+    audioCtxRef.current = ctx
+    try {
+      await ctx.resume()
+    } catch {}
+
+    const src = ctx.createMediaStreamSource(raw)
+    const gain = ctx.createGain()
+    gain.gain.value = 1.0
+
+    const analyser = ctx.createAnalyser()
+    analyser.fftSize = 2048
+    analyserRef.current = analyser
+
+    const dest = ctx.createMediaStreamDestination()
+
+    src.connect(gain)
+    gain.connect(analyser)
+    gain.connect(dest)
+
+    bridgedStreamRef.current = dest.stream
+  }
+
+  function startVadLoop() {
+    const analyser = analyserRef.current
+    if (!analyser) return
+
+    const data = new Uint8Array(analyser.fftSize)
+    const baseThr = isMobile ? 0.010 : 0.008
+
+    const tick = () => {
+      rafRef.current = requestAnimationFrame(tick)
+
+      if (!isCallActiveRef.current) return
+      if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive") return
+
+      if (isAiSpeakingRef.current || isMicMutedRef.current || Date.now() < ttsCooldownUntilRef.current) {
+        const st = vad.current
+        st.voice = false
+        st.voiceUntilTs = 0
+        st.utteranceStartTs = 0
+        return
+      }
+
+      analyser.getByteTimeDomainData(data)
+
+      let sum = 0
+      for (let i = 0; i < data.length; i++) {
+        const v = (data[i] - 128) / 128
+        sum += v * v
+      }
+      const rms = Math.sqrt(sum / data.length)
+      const now = Date.now()
+      const st = vad.current
+
+      if (!st.voice) {
+        st.noiseFloor = st.noiseFloor * 0.995 + rms * 0.005
+      }
+
+      const thr = Math.max(baseThr, st.noiseFloor * 3.0)
+      const voiceNow = rms > thr
+
+      st.rms = rms
+      st.thr = thr
+
+      if (voiceNow) {
+        hadSpeechRef.current = true
+        st.voiceUntilTs = now + hangoverMs
+        if (!st.voice) {
+          st.voice = true
+          st.utteranceStartTs = now
+        }
+      } else {
+        if (st.voice && now > st.voiceUntilTs) {
+          const voiceMs = st.utteranceStartTs ? now - st.utteranceStartTs : 0
+          st.voice = false
+          st.utteranceStartTs = 0
+          if (voiceMs >= MIN_UTTERANCE_MS) {
+            void finishUtteranceAndTranscribe("vad_end")
+          }
+        }
+      }
+
+      if (st.voice && st.utteranceStartTs && now - st.utteranceStartTs > maxUtteranceMs) {
+        st.voice = false
+        st.utteranceStartTs = 0
+        void finishUtteranceAndTranscribe("max_utt")
+      }
+    }
+
+    rafRef.current = requestAnimationFrame(tick)
+  }
+
+  async function startRecorder() {
+    if (!isCallActiveRef.current) return
+    if (isMicMutedRef.current) return
+    if (isAiSpeakingRef.current) return
+
+    const stream = bridgedStreamRef.current || rawStreamRef.current
+    if (!stream) return
+    const audioTracks = stream.getAudioTracks?.() || []
+    if (!audioTracks.length) {
+      setSpeechError(t("Microphone is not available."))
+      return
+    }
+
+    stopRecorderOnly()
+
+    audioChunksRef.current = []
+    resetVadState()
+    setInterimTranscript("")
+    setSpeechError(null)
+
+    const mime = pickMime()
+    const opts: MediaRecorderOptions = {}
+    if (mime) opts.mimeType = mime
+
+    let rec: any = null
+    try {
+      rec = new MediaRecorder(stream, opts)
+    } catch {
+      try {
+        rec = new MediaRecorder(stream)
+      } catch (e) {
+        setSpeechError(
+          t("Your browser does not support voice recording. Please use Chrome or another modern browser."),
+        )
+        return
+      }
+    }
+
+    mediaRecorderRef.current = rec
+    recorderCfgRef.current = { mimeType: rec.mimeType || mime || "audio/webm", sliceMs: isMobile ? 1200 : 1000 }
+
+    rec.ondataavailable = (ev: any) => {
+      if (ev?.data && ev.data.size > 0) audioChunksRef.current.push(ev.data)
+
+      const pending = pendingSttReasonRef.current
+      if (pending) {
+        pendingSttReasonRef.current = null
+        if (pendingSttTimerRef.current) {
+          try {
+            window.clearTimeout(pendingSttTimerRef.current)
+          } catch {}
+          pendingSttTimerRef.current = null
+        }
+        void finishUtteranceAndTranscribe(pending)
+      }
+    }
+
+    rec.onerror = () => {
+      setSpeechError(t("Error while listening. Please try again."))
+      stopRecorderOnly()
+    }
+
+    rec.onstop = () => {
+      setIsListening(false)
+    }
+
+    try {
+      rec.start()
+      setIsListening(true)
+      setActivityStatus("listening")
+    } catch (e) {
+      console.log("MediaRecorder start error:", e)
+      setSpeechError(t("Error while listening. Please try again."))
+      stopRecorderOnly()
+      return
+    }
+
+    const sliceMs = recorderCfgRef.current?.sliceMs || 1000
+    reqTimerRef.current = window.setInterval(() => {
+      try {
+        const r = mediaRecorderRef.current
+        if (r && r.state === "recording" && typeof (r as any).requestData === "function") {
+          ;(r as any).requestData()
+        }
+      } catch {}
+    }, sliceMs)
+
+    if (!rafRef.current) startVadLoop()
+  }
+
+  function safeStartListening() {
+    if (startListeningInFlightRef.current) return
+    startListeningInFlightRef.current = true
+    Promise.resolve()
+      .then(async () => {
+        await ensureAudioGraphStarted()
+        if (!isCallActiveRef.current || isMicMutedRef.current) return
+        const r = mediaRecorderRef.current
+        if (r && (r.state === "recording" || r.state === "paused")) return
+        await startRecorder()
+      })
+      .catch(() => {})
+      .finally(() => {
+        startListeningInFlightRef.current = false
+      })
+  }
+
+  async function sendBlobToSTT(blob: Blob): Promise<string> {
+    const typeFull = (blob.type || "audio/webm").toLowerCase()
+    const type = typeFull.split(";")[0].trim()
+    const hint = computeHint3()
+    const langCode = computeLangCode()
 
     const res = await fetch("/api/stt", {
       method: "POST",
       headers: {
-        "Content-Type": type,
-        "x-stt-hint": hint,
-      },
+        "Content-Type": type || "application/octet-stream",
+        "X-STT-Hint": hint,
+        "X-STT-Lang": langCode,
+      } as any,
       body: blob,
     })
 
@@ -465,7 +746,6 @@ async function sendBlobToSTT(blob: Blob, mime: string): Promise<string> {
       data = JSON.parse(raw)
     } catch {}
 
-    // server format: { success:true, text:"...", lang:"uk|ru|en", ... }
     if (typeof data === "string") return data.trim()
     if (data?.success === false) return ""
     if (typeof data?.text === "string") return data.text.trim()
@@ -473,279 +753,146 @@ async function sendBlobToSTT(blob: Blob, mime: string): Promise<string> {
     if (typeof data?.result?.text === "string") return data.result.text.trim()
     return ""
   }
-  function safeStartListening() {
-    if (startListeningInFlightRef.current) return
-    startListeningInFlightRef.current = true
-    Promise.resolve()
-      .then(() => startListening())
-      .catch(() => {})
-      .finally(() => {
-        startListeningInFlightRef.current = false
-      })
-  }
 
+  function flushRecorder(reason: string) {
+    const rec: any = mediaRecorderRef.current
+    if (!rec || rec.state !== "recording" || typeof rec.requestData !== "function") return false
 
-
-
-  async function startListening() {
-    if (!isCallActiveRef.current) return
-    if (isMicMutedRef.current) return
-    if (isAiSpeakingRef.current) return
-
-    setSpeechError(null)
-    setInterimTranscript("")
-
-    // stop previous
-    stopRecorderOnly()
-    recorderChunksRef.current = []
-    isStoppingRecorderRef.current = false
-
-    const stream = micStreamRef.current || (await requestMicrophoneStream())
-    if (!stream) {
-      setIsMicMuted(true)
-      isMicMutedRef.current = true
-      setActivityStatus("listening")
-      return
-    }
-
-    const mimeType = pickRecorderMimeType()
-
-    const safeMimeType = (mimeType || "audio/webm").startsWith("video/") ? ("audio/" + (mimeType || "audio/webm").slice("video/".length)) : (mimeType || "audio/webm")
-    const sttStream = new MediaStream(stream.getAudioTracks())
-    if (!sttStream.getAudioTracks().length) {
-      setSpeechError(t("Microphone is not available."))
-      setIsMicMuted(true)
-      isMicMutedRef.current = true
-      setActivityStatus("listening")
-      return
-    }
-
-    let recorder: any
-    try {
-      recorder = new (window as any).MediaRecorder(sttStream, { mimeType: safeMimeType })
-    } catch {
-      try {
-        recorder = new (window as any).MediaRecorder(sttStream)
-      } catch (e) {
-        setSpeechError(
-          t("Your browser does not support voice recording. Please use Chrome or another modern browser."),
-        )
-        setIsMicMuted(true)
-        isMicMutedRef.current = true
-        setActivityStatus("listening")
-        return
-      }
-    }
-
-    recorderRef.current = recorder
-    recorderChunksRef.current = []
-
-    recordStartedAtRef.current = Date.now()
-    lastLoudAtRef.current = Date.now()
-    hadSpeechRef.current = false
-
-    recorder.ondataavailable = (e: any) => {
-      if (e?.data && e.data.size > 0) {
-        recorderChunksRef.current.push(e.data)
-      }
-    }
-
-    recorder.onerror = () => {
-      stopRecorderOnly()
-      if (isCallActiveRef.current && !isMicMutedRef.current) {
-        setSpeechError(t("Error while listening. Please try again."))
-      }
-    }
-
-    recorder.onstop = async () => {
-      const stoppedByUs = isStoppingRecorderRef.current
-      recorderRef.current = null
-      cleanupVAD()
-      setIsListening(false)
-
-      if (!isCallActiveRef.current || isMicMutedRef.current) return
-      if (isAiSpeakingRef.current) {
-        restartAfterTtsRef.current = true
-        return
-      }const chunks = recorderChunksRef.current || []
-      recorderChunksRef.current = []
-
-      const blob = new Blob(chunks, { type: String(recorder.mimeType || mimeType || "audio/webm").split(";")[0].trim().replace(/^video\//, "audio/") })
-      const dur = Date.now() - (recordStartedAtRef.current || Date.now())
-
-      // защита от пустых/нулевых записей (seconds:0 / invalid format)
-      if (!hadSpeechRef.current || blob.size < MIN_BLOB_BYTES || dur < MIN_RECORD_MS) {
-        if (!stoppedByUs) {
-          // recorder сам оборвался — просто перезапуск
-          startListening().catch(() => {})
-        } else {
-          // остановили по тишине, но записи нет — перезапуск
-          startListening().catch(() => {})
-        }
-        return
-      }
-
-      setActivityStatus("thinking")
-
-      try {
-        const transcript = await sendBlobToSTT(blob)
-        const text = (transcript || "").trim()
-
-        if (!text || isGarbageTranscript(text)) {
-          setActivityStatus("listening")
-          startListening().catch(() => {})
-          return
-        }
-
-        await handleUserText(text)
-      } catch (err: any) {
-        console.error("STT failed:", err)
-        setSpeechError(t("I couldn't recognize speech. Please try again."))
-        setActivityStatus("listening")
-        // перезапуск слушания
-        startListening().catch(() => {})
-      }
-    }
-
-    // VAD
-    try {
-      const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext
-      const ctx = new AC()
-      audioCtxRef.current = ctx
-      const src = ctx.createMediaStreamSource(sttStream)
-      sourceNodeRef.current = src
-      const analyser = ctx.createAnalyser()
-      analyser.fftSize = 2048
-      analyserRef.current = analyser
-      src.connect(analyser)
-
-      const buf = new Uint8Array(analyser.fftSize)
-      const startAt = Date.now()
-
-      vadTimerRef.current = setInterval(() => {
-        if (!isCallActiveRef.current || isMicMutedRef.current || isAiSpeaking) return
-        if (!recorderRef.current) return
-
-        const now = Date.now()
-        analyser.getByteTimeDomainData(buf)
-        let sum = 0
-        for (let i = 0; i < buf.length; i++) {
-          const v = (buf[i] - 128) / 128
-          sum += v * v
-        }
-        const rms = Math.sqrt(sum / buf.length)
-
-        if (rms > VAD_THRESHOLD) {
-          hadSpeechRef.current = true
-          lastLoudAtRef.current = now
-        }
-
-        const elapsed = now - startAt
-        const sinceLoud = now - (lastLoudAtRef.current || now)
-
-        if (elapsed > MAX_RECORD_MS) {
-          try {
-            isStoppingRecorderRef.current = true
-            try { recorderRef.current.requestData?.() } catch {}
-            recorderRef.current.stop()
-          } catch {}
-          return
-        }
-
-        // стоп по тишине только после того как реально была речь
-        if (hadSpeechRef.current && sinceLoud > SILENCE_MS_TO_STOP) {
-          try {
-            isStoppingRecorderRef.current = true
-            try { recorderRef.current.requestData?.() } catch {}
-            recorderRef.current.stop()
-          } catch {}
-        }
-      }, VAD_POLL_MS)
-    } catch {
-      // без VAD — всё равно запишем, остановим только по MAX_RECORD_MS
-      const startAt = Date.now()
-      vadTimerRef.current = setInterval(() => {
-        if (!recorderRef.current) return
-        if (Date.now() - startAt > MAX_RECORD_MS) {
-          try {
-            isStoppingRecorderRef.current = true
-            try { recorderRef.current.requestData?.() } catch {}
-            recorderRef.current.stop()
-          } catch {}
-        }
-      }, VAD_POLL_MS)
-    }
+    if (pendingSttReasonRef.current) return true
+    pendingSttReasonRef.current = reason
 
     try {
-      setIsListening(true)
-      setActivityStatus("listening")
-      recorder.start(250)
-    } catch (e) {
-      console.log("MediaRecorder start error:", e)
-      stopRecorderOnly()
-      setSpeechError(t("Error while listening. Please try again."))
-    }
-  }
+      rec.requestData()
+    } catch {}
 
-  function stopListening() {
-    stopRecorderOnly()
-    setInterimTranscript("")
-  }
-
-  function cleanResponseText(text: string): string {
-    if (!text) return ""
-
-    if (text.startsWith('[{"output":')) {
+    if (pendingSttTimerRef.current) {
       try {
-        const parsed = JSON.parse(text)
-        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].output) {
-          return String(parsed[0].output).trim()
-        }
+        window.clearTimeout(pendingSttTimerRef.current)
       } catch {}
     }
+    pendingSttTimerRef.current = window.setTimeout(() => {
+      const r = pendingSttReasonRef.current
+      pendingSttReasonRef.current = null
+      pendingSttTimerRef.current = null
+      if (r) void finishUtteranceAndTranscribe(r)
+    }, 250)
 
-    return text
-      .replace(/\n\n/g, " ")
-      .replace(/\*\*/g, "")
-      .replace(/```/g, "")
-      .replace(/[\n\r]/g, " ")
-      .trim()
+    return true
   }
 
-  function extractAnswer(data: any): string {
-    if (!data) return ""
-    if (typeof data === "string") return data.trim()
+  async function stopRecorderAndWait(): Promise<void> {
+    const rec: any = mediaRecorderRef.current
+    if (!rec) return
 
-    if (Array.isArray(data) && data.length > 0) {
-      const first = data[0] ?? {}
-      return (
-        first.output ||
-        first.response ||
-        first.text ||
-        first.message ||
-        first.content ||
-        first.result ||
-        JSON.stringify(first)
-      )
-        ?.toString()
-        .trim()
+    if (reqTimerRef.current) {
+      try {
+        window.clearInterval(reqTimerRef.current)
+      } catch {}
+      reqTimerRef.current = null
     }
 
-    if (typeof data === "object") {
-      return (
-        data.output ||
-        data.response ||
-        data.text ||
-        data.message ||
-        data.content ||
-        data.result ||
-        JSON.stringify(data)
-      )
-        ?.toString()
-        .trim()
-    }
+    await new Promise<void>((resolve) => {
+      let done = false
+      const finish = () => {
+        if (done) return
+        done = true
+        resolve()
+      }
 
-    return ""
+      try {
+        rec.addEventListener("stop", () => finish(), { once: true })
+      } catch {}
+
+      try {
+        if (rec.state !== "inactive") rec.stop()
+      } catch {
+        finish()
+        return
+      }
+
+      window.setTimeout(() => finish(), 900)
+    })
+
+    mediaRecorderRef.current = null
+    setIsListening(false)
+  }
+
+  async function finishUtteranceAndTranscribe(reason: string) {
+    if (!isCallActiveRef.current) return
+    if (isSttBusyRef.current) return
+    if (isAiSpeakingRef.current) return
+    if (isMicMutedRef.current) return
+    if (Date.now() < ttsCooldownUntilRef.current) return
+
+    const rec: any = mediaRecorderRef.current
+    if (!rec) return
+    if (!hadSpeechRef.current) return
+
+    try {
+      isSttBusyRef.current = true
+      setActivityStatus("thinking")
+
+      flushRecorder(reason)
+      await new Promise((r) => setTimeout(r, 220))
+
+      await stopRecorderAndWait()
+
+      const chunks = audioChunksRef.current || []
+      audioChunksRef.current = []
+
+      const mime =
+        recorderCfgRef.current?.mimeType ||
+        chunks?.[0]?.type ||
+        "audio/webm"
+
+      const baseMime = String(mime).split(";")[0].trim().toLowerCase()
+      const blob = new Blob(chunks, { type: baseMime.replace(/^video\//, "audio/") })
+
+      const dur = Date.now() - (recordStartedAtRef.current || Date.now())
+      if (blob.size < MIN_BLOB_BYTES || dur < MIN_UTTERANCE_MS) {
+        resetVadState()
+        setActivityStatus("listening")
+        if (isCallActiveRef.current && !isMicMutedRef.current) safeStartListening()
+        return
+      }
+
+      const transcript = await sendBlobToSTT(blob)
+      const text = (transcript || "").trim()
+
+      if (!text || isGarbageTranscript(text)) {
+        resetVadState()
+        setActivityStatus("listening")
+        if (isCallActiveRef.current && !isMicMutedRef.current) safeStartListening()
+        return
+      }
+
+      setMessages((prev) => [...prev, { id: prev.length + 1, role: "user", text }])
+      await handleUserText(text)
+    } catch (err: any) {
+      console.error("STT failed:", err)
+      setSpeechError(t("I couldn't recognize speech. Please try again."))
+      setActivityStatus("listening")
+      resetVadState()
+      if (isCallActiveRef.current && !isMicMutedRef.current) safeStartListening()
+    } finally {
+      isSttBusyRef.current = false
+    }
+  }
+
+  function stopCurrentSpeech() {
+    if (currentAudioRef.current) {
+      try {
+        currentAudioRef.current.pause()
+        currentAudioRef.current.currentTime = 0
+      } catch {}
+      currentAudioRef.current = null
+    }
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel()
+      } catch {}
+    }
+    currentUtteranceRef.current = null
   }
 
   function getRefinedVoiceForLanguage(
@@ -791,27 +938,7 @@ async function sendBlobToSTT(blob: Blob, mime: string): Promise<string> {
     return voices[0]!
   }
 
-  function stopCurrentSpeech() {
-    if (currentAudioRef.current) {
-      try {
-        currentAudioRef.current.pause()
-        currentAudioRef.current.currentTime = 0
-      } catch {}
-      currentAudioRef.current = null
-    }
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      try {
-        window.speechSynthesis.cancel()
-      } catch {}
-    }
-    currentUtteranceRef.current = null
-  }
-
-  function browserSpeak(
-    text: string,
-    gender: "male" | "female",
-    onDone: () => void,
-  ) {
+  function browserSpeak(text: string, gender: "male" | "female", onDone: () => void) {
     if (typeof window === "undefined" || !window.speechSynthesis) {
       onDone()
       return
@@ -844,6 +971,36 @@ async function sendBlobToSTT(blob: Blob, mime: string): Promise<string> {
     }
   }
 
+  async function speakViaServerTTS(text: string, gender: "male" | "female") {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text,
+        language: activeLanguage.code,
+        gender,
+      }),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok || !json?.success || !json?.audioContent) {
+      throw new Error(json?.error || `TTS error: ${res.status}`)
+    }
+    const contentType = json.contentType || "audio/mpeg"
+    const dataUrl = `data:${contentType};base64,${json.audioContent}`
+
+    await new Promise<void>((resolve) => {
+      const audio = new Audio()
+      currentAudioRef.current = audio
+      audio.preload = "auto"
+      audio.volume = 1
+      audio.playsInline = true
+      audio.src = dataUrl
+      audio.onended = () => resolve()
+      audio.onerror = () => resolve()
+      audio.play().catch(() => resolve())
+    })
+  }
+
   async function speakText(text: string): Promise<void> {
     if (!isCallActiveRef.current) return
     if (!isSoundEnabled) return
@@ -851,25 +1008,16 @@ async function sendBlobToSTT(blob: Blob, mime: string): Promise<string> {
     const cleaned = cleanResponseText(text)
     if (!cleaned) return
 
-    // пауза слушания на время озвучки
-    stopListening()
-
-    
-
-    // prevent self-listening while TTS/video plays
-    try {
-      micStreamRef.current?.getAudioTracks?.().forEach((tr) => (tr.enabled = false))
-    } catch {}
-
+    stopRecorderOnly()
     stopCurrentSpeech()
+
     setIsAiSpeaking(true)
     setActivityStatus("speaking")
 
-    if (
-      hasEnhancedVideo &&
-      speakingVideoRef.current &&
-      selectedCharacter.speakingVideo
-    ) {
+    ttsCooldownUntilRef.current = Date.now() + 450
+    resetVadState()
+
+    if (hasEnhancedVideo && speakingVideoRef.current && selectedCharacter.speakingVideo) {
       try {
         speakingVideoRef.current.currentTime = 0
         await speakingVideoRef.current.play()
@@ -879,12 +1027,11 @@ async function sendBlobToSTT(blob: Blob, mime: string): Promise<string> {
     const gender: "male" | "female" = selectedCharacter.gender || "female"
 
     const finish = () => {
+      ttsCooldownUntilRef.current = Date.now() + 450
+
       setIsAiSpeaking(false)
 
-      
-
-      try { micStreamRef.current?.getAudioTracks?.().forEach((tr) => (tr.enabled = true)) } catch {}
-if (hasEnhancedVideo && speakingVideoRef.current) {
+      if (hasEnhancedVideo && speakingVideoRef.current) {
         try {
           speakingVideoRef.current.pause()
           speakingVideoRef.current.currentTime = 0
@@ -904,61 +1051,27 @@ if (hasEnhancedVideo && speakingVideoRef.current) {
 
       if (isCallActiveRef.current && !isMicMutedRef.current) {
         setActivityStatus("listening")
-        startListening().catch(() => {})
-      }
-    
-      try { micStreamRef.current?.getAudioTracks?.().forEach((tr) => (tr.enabled = true)) } catch {}
-      if (restartAfterTtsRef.current) {
-        restartAfterTtsRef.current = false
-        if (isCallActiveRef.current && !isMicMutedRef.current) safeStartListening()
+        resetVadState()
+        safeStartListening()
+      } else {
+        setActivityStatus("listening")
       }
     }
 
     try {
-      if (shouldUseGoogleTTS(activeLanguage.code)) {
-        try {
-          const audioDataUrl = await generateGoogleTTS(
-            cleaned,
-            currentLocale,
-            gender,
-            VIDEO_CALL_GOOGLE_TTS_CREDENTIALS,
-            VIDEO_CALL_VOICE_CONFIGS,
-          )
-
-          if (!audioDataUrl) throw new Error("No audio from Google TTS")
-
-          await new Promise<void>((resolve) => {
-            const audio = new Audio()
-            currentAudioRef.current = audio
-            audio.preload = "auto"
-            audio.volume = 1
-            audio.playsInline = true
-            audio.crossOrigin = "anonymous"
-            audio.src = audioDataUrl
-            audio.onended = () => resolve()
-            audio.onerror = () => resolve()
-            audio.play().catch(() => resolve())
-          })
-        } catch {
-          await new Promise<void>((resolve) => browserSpeak(cleaned, gender, resolve))
-        }
-      } else {
-        await new Promise<void>((resolve) => browserSpeak(cleaned, gender, resolve))
-      }
+      await speakViaServerTTS(cleaned, gender)
+    } catch {
+      await new Promise<void>((resolve) => browserSpeak(cleaned, gender, resolve))
     } finally {
       finish()
     }
   }
 
-    async function handleUserText(text: string) {
+  async function handleUserText(text: string) {
     const trimmed = (text || "").trim()
     if (!trimmed) return
     if (!isCallActiveRef.current) return
 
-    setMessages((prev) => [
-      ...prev,
-      { id: prev.length + 1, role: "user", text: trimmed },
-    ])
     setActivityStatus("thinking")
     setSpeechError(null)
 
@@ -987,9 +1100,7 @@ if (hasEnhancedVideo && speakingVideoRef.current) {
         }),
       })
 
-      if (!res.ok) {
-        throw new Error(`Webhook error: ${res.status}`)
-      }
+      if (!res.ok) throw new Error(`Webhook error: ${res.status}`)
 
       const raw = await res.text()
       let data: any = raw
@@ -1000,9 +1111,7 @@ if (hasEnhancedVideo && speakingVideoRef.current) {
       const aiRaw = extractAnswer(data)
       const cleaned = cleanResponseText(aiRaw)
 
-      if (!cleaned) {
-        throw new Error("Empty response received")
-      }
+      if (!cleaned) throw new Error("Empty response received")
 
       setMessages((prev) => [
         ...prev,
@@ -1012,33 +1121,22 @@ if (hasEnhancedVideo && speakingVideoRef.current) {
       await speakText(cleaned)
     } catch (error: any) {
       console.error("Video assistant error:", error)
-      let errorMessage = ""
-      if (error?.name === "AbortError") {
-        errorMessage = t("Connection timeout. Please try again.")
-      } else if (error?.message === "Empty response received") {
-        errorMessage = t(
-          "I received your message but couldn't generate a response. Could you try rephrasing?",
-        )
-      } else if (error?.message === "VIDEO_ASSISTANT_WEBHOOK_URL is not configured") {
-        errorMessage = t(
-          "The video assistant is temporarily unavailable. Please contact support.",
-        )
-      } else {
-        errorMessage = t("I couldn't process your message. Could you try again?")
-      }
+      const errorMessage =
+        error?.message === "Empty response received"
+          ? t("I received your message but couldn't generate a response. Could you try rephrasing?")
+          : t("I couldn't process your message. Could you try again?")
 
       setMessages((prev) => [
         ...prev,
         { id: prev.length + 1, role: "assistant", text: errorMessage },
       ])
 
-      if (onError && error instanceof Error) {
-        onError(error)
-      }
-    } finally {
-      if (isCallActiveRef.current && !isMicMutedRef.current && !isAiSpeaking) {
+      if (onError && error instanceof Error) onError(error)
+
+      if (isCallActiveRef.current && !isMicMutedRef.current && !isAiSpeakingRef.current) {
         setActivityStatus("listening")
-        startListening().catch(() => {})
+        resetVadState()
+        safeStartListening()
       } else {
         setActivityStatus("listening")
       }
@@ -1056,6 +1154,8 @@ if (hasEnhancedVideo && speakingVideoRef.current) {
         return
       }
 
+      await ensureAudioGraphStarted()
+
       setIsCallActive(true)
       isCallActiveRef.current = true
 
@@ -1071,17 +1171,20 @@ if (hasEnhancedVideo && speakingVideoRef.current) {
       }
 
       setActivityStatus("listening")
-      await startListening()
+      resetVadState()
+      safeStartListening()
     } catch (error: any) {
       console.error("Failed to start call:", error)
       setSpeechError(
         error?.message ||
-          t(
-            "Failed to start the call. Please check your microphone and camera permissions.",
-          ),
+          t("Failed to start the call. Please check your microphone and camera permissions."),
       )
       setIsCallActive(false)
       isCallActiveRef.current = false
+      stopRecorderOnly()
+      stopAudioGraph()
+      stopKeepAlive()
+      stopStreams()
     } finally {
       setIsConnecting(false)
     }
@@ -1091,7 +1194,7 @@ if (hasEnhancedVideo && speakingVideoRef.current) {
     setIsCallActive(false)
     isCallActiveRef.current = false
 
-    stopListening()
+    stopRecorderOnly()
     stopCurrentSpeech()
 
     setIsAiSpeaking(false)
@@ -1123,8 +1226,9 @@ if (hasEnhancedVideo && speakingVideoRef.current) {
       userVideoRef.current.srcObject = null
     }
 
-    cleanupVAD()
-    stopMicStream()
+    stopAudioGraph()
+    stopKeepAlive()
+    stopStreams()
   }
 
   function toggleMicrophone() {
@@ -1133,16 +1237,14 @@ if (hasEnhancedVideo && speakingVideoRef.current) {
     if (isMicMuted) {
       setIsMicMuted(false)
       isMicMutedRef.current = false
-      
-      try { micStreamRef.current?.getAudioTracks?.().forEach((tr) => (tr.enabled = true)) } catch {}
-setSpeechError(null)
+      setSpeechError(null)
       setActivityStatus("listening")
-      startListening().catch(() => {})
+      resetVadState()
+      safeStartListening()
     } else {
       setIsMicMuted(true)
       isMicMutedRef.current = true
-      stopListening()
-      stopMicStream()
+      stopRecorderOnly()
       setInterimTranscript("")
       setActivityStatus("listening")
     }
@@ -1164,20 +1266,21 @@ setSpeechError(null)
   function toggleSound() {
     const next = !isSoundEnabled
     setIsSoundEnabled(next)
-
     if (!next) {
       stopCurrentSpeech()
       setIsAiSpeaking(false)
     }
   }
 
+  const hasEnhancedVideo =
+    !!selectedCharacter?.idleVideo && !!selectedCharacter?.speakingVideo
+
   if (!isOpen) return null
 
   const micOn = isCallActive && !isMicMuted && isListening && !isAiSpeaking
 
   const statusText = (() => {
-    if (!isCallActive)
-      return t("Choose an AI psychologist and press “Start video call” to begin.")
+    if (!isCallActive) return t("Choose an AI psychologist and press “Start video call” to begin.")
     if (isAiSpeakingRef.current) return t("Assistant is speaking. Please wait a moment.")
     if (micOn) return t("Listening… you can speak.")
     return t("Paused. Turn on microphone to continue.")
@@ -1190,7 +1293,6 @@ setSpeechError(null)
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl flex flex-col h-[100dvh] sm:h-[90vh] max-h-none sm:max-h-[860px] overflow-hidden">
-        {/* HEADER */}
         <div className="p-3 sm:p-4 border-b flex items-center justify-between rounded-t-xl relative bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 text-white">
           <div className="flex flex-col flex-1 min-w-0 pr-2">
             <h3 className="font-semibold text-base sm:text-lg truncate flex items-center gap-2">
@@ -1218,19 +1320,15 @@ setSpeechError(null)
           </Button>
         </div>
 
-        {/* BODY */}
         <div className={bodyClass}>
           {!isCallActive ? (
-            // PRE-CALL SCREEN
             <div className="flex-1 flex flex-col items-center justify-center">
               <div className="text-center mb-6 sm:mb-8 px-2">
                 <h3 className="text-xl sm:text-2xl font-semibold mb-2 sm:mb-3">
                   {t("Choose Your AI Psychologist")}
                 </h3>
                 <p className="text-sm sm:text-base text-gray-600 max-w-md mx-auto">
-                  {t(
-                    "Select the AI psychologist you'd like to speak with during your video call.",
-                  )}
+                  {t("Select the AI psychologist you'd like to speak with during your video call.")}
                 </p>
               </div>
 
@@ -1243,9 +1341,7 @@ setSpeechError(null)
                   {languageDisplayName}
                 </div>
                 <p className="text-xs text-blue-600 mt-2">
-                  {shouldUseGoogleTTS(activeLanguage.code)
-                    ? t("All characters use Google TTS for authentic native accent.")
-                    : t("AI will understand and respond in this language with native accent")}
+                  {t("AI will understand and respond in this language with voice and text.")}
                 </p>
               </div>
 
@@ -1323,9 +1419,7 @@ setSpeechError(null)
               </div>
             </div>
           ) : (
-            // IN-CALL SCREEN
             <div className="flex-1 min-h-0 flex flex-col sm:flex-row gap-3 sm:gap-4">
-              {/* LEFT: VIDEO (статичный) */}
               <div className="w-full sm:w-2/3 flex flex-col min-h-0">
                 <div className="relative w-full aspect-video sm:aspect-auto sm:flex-1 bg-white rounded-lg overflow-hidden">
                   <div className="absolute inset-0 bg-white overflow-hidden">
@@ -1426,7 +1520,6 @@ setSpeechError(null)
                 </div>
               </div>
 
-              {/* RIGHT: CHAT (скролл внутри) */}
               <div className="w-full sm:w-1/3 flex flex-col min-h-0 bg-gray-50 rounded-lg border overflow-hidden">
                 <div className="px-3 pt-3 pb-2 border-b flex items-center gap-2">
                   <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
@@ -1488,7 +1581,6 @@ setSpeechError(null)
           )}
         </div>
 
-        {/* BOTTOM BAR */}
         {isCallActive && (
           <div className="p-3 sm:p-4 border-t bg-gray-50 flex flex-col safe-area-bottom">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
