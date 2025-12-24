@@ -423,7 +423,25 @@ const VAD_POLL_MS = 120
     setIsListening(false)
   }
 
-  async function sendBlobToSTT(blob: Blob, mime: string): Promise<string> {
+  function isGarbageTranscript(text: string): boolean {
+  const t = (text || "").trim()
+  if (!t) return true
+  if (t.length > 420) return true
+  // повтор одного слова много раз: "четвертая четвертая четвертая..."
+  if (/(\b\w+\b)(?:\s+\1){5,}/i.test(t)) return true
+  // доминирующее слово > 38%
+  const words = t.toLowerCase().split(/\s+/).filter(Boolean)
+  if (words.length >= 12) {
+    const freq = new Map<string, number>()
+    for (const w of words) freq.set(w, (freq.get(w) || 0) + 1)
+    let mx = 0
+    for (const v of freq.values()) mx = Math.max(mx, v)
+    if (mx / words.length > 0.38) return true
+  }
+  return false
+}
+
+async function sendBlobToSTT(blob: Blob, mime: string): Promise<string> {
     // router app/api/stt/route.ts expects RAW audio body (not FormData)
     const typeFull = (mime || blob.type || "audio/webm").toLowerCase()
     const type = typeFull.split(";")[0].trim()// hint for ru/uk/en (server reads x-stt-hint)
@@ -492,12 +510,22 @@ const VAD_POLL_MS = 120
 
     const mimeType = pickRecorderMimeType()
 
+    const safeMimeType = (mimeType || "audio/webm").startsWith("video/") ? ("audio/" + (mimeType || "audio/webm").slice("video/".length)) : (mimeType || "audio/webm")
+    const sttStream = new MediaStream(stream.getAudioTracks())
+    if (!sttStream.getAudioTracks().length) {
+      setSpeechError(t("Microphone is not available."))
+      setIsMicMuted(true)
+      isMicMutedRef.current = true
+      setActivityStatus("listening")
+      return
+    }
+
     let recorder: any
     try {
-      recorder = new (window as any).MediaRecorder(stream, { mimeType })
+      recorder = new (window as any).MediaRecorder(sttStream, { mimeType: safeMimeType })
     } catch {
       try {
-        recorder = new (window as any).MediaRecorder(stream)
+        recorder = new (window as any).MediaRecorder(sttStream)
       } catch (e) {
         setSpeechError(
           t("Your browser does not support voice recording. Please use Chrome or another modern browser."),
@@ -542,7 +570,7 @@ const VAD_POLL_MS = 120
       }const chunks = recorderChunksRef.current || []
       recorderChunksRef.current = []
 
-      const blob = new Blob(chunks, { type: String(recorder.mimeType || mimeType || "audio/webm").split(";")[0].trim() })
+      const blob = new Blob(chunks, { type: String(recorder.mimeType || mimeType || "audio/webm").split(";")[0].trim().replace(/^video\//, "audio/") })
       const dur = Date.now() - (recordStartedAtRef.current || Date.now())
 
       // защита от пустых/нулевых записей (seconds:0 / invalid format)
@@ -563,7 +591,7 @@ const VAD_POLL_MS = 120
         const transcript = await sendBlobToSTT(blob)
         const text = (transcript || "").trim()
 
-        if (!text) {
+        if (!text || isGarbageTranscript(text)) {
           setActivityStatus("listening")
           startListening().catch(() => {})
           return
@@ -584,7 +612,7 @@ const VAD_POLL_MS = 120
       const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext
       const ctx = new AC()
       audioCtxRef.current = ctx
-      const src = ctx.createMediaStreamSource(stream)
+      const src = ctx.createMediaStreamSource(sttStream)
       sourceNodeRef.current = src
       const analyser = ctx.createAnalyser()
       analyser.fftSize = 2048
