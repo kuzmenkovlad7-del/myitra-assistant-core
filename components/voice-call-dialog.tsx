@@ -146,11 +146,13 @@ export default function VoiceCallDialog({
   const isSttBusyRef = useRef(false)
   const lastTranscriptRef = useRef("")
 
-  const lastSttHintRef = useRef<"uk" | "ru" | "en">("uk")
   const isCallActiveRef = useRef(false)
   const isAiSpeakingRef = useRef(false)
   const isMicMutedRef = useRef(false)
   const ttsCooldownUntilRef = useRef(0)
+
+  const lastUserSentNormRef = useRef("")
+  const lastUserSentTsRef = useRef(0)
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null)
@@ -335,7 +337,73 @@ export default function VoiceCallDialog({
     try {
       a.src = ""
     } catch {}
-    // keep ttsAudioRef.current (iOS unlock)
+  }
+
+  function normalizeUtterance(s: string): string {
+    return (s || "")
+      .toLowerCase()
+      .replace(/[.,!?;:«»"“”‚‘’…]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  }
+
+  function isLikelyGarbageOrNoise(text: string): boolean {
+    const norm = normalizeUtterance(text)
+    if (!norm) return true
+
+    // считаем "буквы" (латиница + кириллица + укр)
+    const letters = norm.match(/[a-zа-яёієїґ]/gi)?.length || 0
+    const nonSpace = norm.replace(/\s+/g, "").length
+    const ratio = nonSpace > 0 ? letters / nonSpace : 0
+
+    const words = norm.split(" ").filter(Boolean)
+    const wc = words.length
+
+    // если мало букв — почти всегда шум/обрывки
+    if (letters < 3) return true
+    if (ratio < 0.55) return true
+
+    // очень короткие одиночные слова чаще всего мусор
+    if (wc === 1) {
+      const w = words[0]
+      const allow = new Set([
+        "да",
+        "нет",
+        "так",
+        "ні",
+        "ок",
+        "okay",
+        "ага",
+        "угу",
+        "yes",
+        "no",
+      ])
+      if (!allow.has(w) && w.length < 6) return true
+
+      // анти-повтор приветствия: если уже было приветствие недавно — игнор
+      const greetings = new Set(["вітаю", "привіт", "привет", "hello", "алло"])
+      const last = lastUserSentNormRef.current || ""
+      const dt = Date.now() - (lastUserSentTsRef.current || 0)
+      if (greetings.has(w) && dt < 30000 && last.startsWith(w)) return true
+    }
+
+    return false
+  }
+
+  function shouldDedup(text: string): boolean {
+    const norm = normalizeUtterance(text)
+    if (!norm) return true
+
+    const last = lastUserSentNormRef.current || ""
+    const dt = Date.now() - (lastUserSentTsRef.current || 0)
+
+    // точный дубль
+    if (last && norm === last && dt < 15000) return true
+
+    // очень короткий хвост, который дублирует уже сказанное
+    if (last && norm.length <= 8 && dt < 20000 && last.includes(norm)) return true
+
+    return false
   }
 
   async function maybeSendStt(reason: string) {
@@ -398,6 +466,13 @@ export default function VoiceCallDialog({
 
       if (!delta) return
 
+      // КЛЮЧ: фильтруем шум/мусор и повторы
+      if (isLikelyGarbageOrNoise(delta)) return
+      if (shouldDedup(delta)) return
+
+      lastUserSentNormRef.current = normalizeUtterance(delta)
+      lastUserSentTsRef.current = Date.now()
+
       const userMsg: VoiceMessage = {
         id: `${Date.now()}-user`,
         role: "user",
@@ -453,17 +528,15 @@ export default function VoiceCallDialog({
 
     const begin = () => {
       setIsAiSpeaking(true)
-
-      // чуть больше cooldown, чтобы хвост TTS не улетал в STT
       ttsCooldownUntilRef.current = Date.now() + 700
 
-      // режем буфер, чтобы старые куски не переиспользовались
+      // режем буфер, чтобы хвосты не улетали в STT
       const hdr = audioChunksRef.current?.[0]
       audioChunksRef.current = hdr ? [hdr] : []
       sentIdxRef.current = hdr ? 1 : 0
       lastTranscriptRef.current = ""
 
-      // сброс VAD (эхо/шум во время TTS часто ломает состояние)
+      // сброс VAD
       vad.current.voice = false
       vad.current.voiceUntilTs = 0
       vad.current.utteranceStartTs = 0
@@ -479,12 +552,8 @@ export default function VoiceCallDialog({
     const finish = () => {
       if (ttsWatchdog) window.clearTimeout(ttsWatchdog)
       ttsWatchdog = null
-
       ttsCooldownUntilRef.current = Date.now() + 700
       setIsAiSpeaking(false)
-
-      // ВАЖНО: НЕ pause/resume MediaRecorder на iOS/Safari — часто “умирает”
-      // Мы просто не копим чанки в буфер, пока AI говорит.
     }
 
     ;(async () => {
@@ -518,12 +587,8 @@ export default function VoiceCallDialog({
         ttsAudioRef.current = a
 
         a.onplay = begin
-        a.onended = () => {
-          finish()
-        }
-        a.onerror = () => {
-          finish()
-        }
+        a.onended = () => finish()
+        a.onerror = () => finish()
 
         try {
           await a.play()
@@ -690,7 +755,14 @@ export default function VoiceCallDialog({
         return
       }
 
-      const raw = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // ВАЖНО: системные фильтры (без наушников это must-have)
+      const raw = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        } as any,
+      } as any)
       rawStreamRef.current = raw
 
       try {
@@ -732,6 +804,9 @@ export default function VoiceCallDialog({
       sentIdxRef.current = 1
       isSttBusyRef.current = false
       lastTranscriptRef.current = ""
+      lastUserSentNormRef.current = ""
+      lastUserSentTsRef.current = 0
+
       vad.current = {
         noiseFloor: 0,
         rms: 0,
@@ -761,11 +836,11 @@ export default function VoiceCallDialog({
         const b = ev.data
         const size = b?.size || 0
         if (size > 0) {
-          // всегда забираем первый chunk как "header"
+          // первый chunk сохраняем всегда как header
           if (audioChunksRef.current.length === 0) {
             audioChunksRef.current.push(b)
           } else {
-            // анти-эхо/анти-мусор: пока AI говорит или микрофон выключен — не копим
+            // пока AI говорит или микрофон выключен — не копим
             if (!isAiSpeakingRef.current && !isMicMutedRef.current) {
               audioChunksRef.current.push(b)
             }
