@@ -554,7 +554,7 @@ export default function VoiceCallDialog({
       return isMobile ? 0.010 : 0.008
     })()
 
-    const hangoverMs = 3500
+    const hangoverMs = 1800
     const maxUtteranceMs = 20000
 
     const tick = () => {

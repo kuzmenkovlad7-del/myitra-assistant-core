@@ -293,7 +293,7 @@ const rawStreamRef = useRef<MediaStream | null>(null)
 
   const MIN_UTTERANCE_MS = 450
   const MIN_BLOB_BYTES = 2500
-  const hangoverMs = 3500
+  const hangoverMs = 1800
   const maxUtteranceMs = 20000
 
   const startListeningInFlightRef = useRef(false)
