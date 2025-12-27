@@ -253,10 +253,9 @@ export default function VideoCallDialog({
   const isCallActiveRef = useRef(false)
   const isMicMutedRef = useRef(false)
 
-  
-
   const stopReasonRef = useRef<"silence" | "tts" | "manual" | "end" | null>(null)
-const rawStreamRef = useRef<MediaStream | null>(null)
+
+  const rawStreamRef = useRef<MediaStream | null>(null)
   const bridgedStreamRef = useRef<MediaStream | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const recorderCfgRef = useRef<{ mimeType: string; sliceMs: number } | null>(null)
@@ -275,7 +274,20 @@ const rawStreamRef = useRef<MediaStream | null>(null)
   const pendingSttReasonRef = useRef<string | null>(null)
   const pendingSttTimerRef = useRef<number | null>(null)
   const ttsCooldownUntilRef = useRef(0)
+
+  // keep a single audio element for iOS unlock + reuse
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null)
+
+  // ---- FIX: lock body scroll while modal is open (prevents "jumping" and background scroll on iOS)
+  useEffect(() => {
+    if (!isOpen) return
+    if (typeof document === "undefined") return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [isOpen])
 
   // iOS/Safari: prime audio playback on first user gesture to reduce NotAllowedError on later async plays
   useEffect(() => {
@@ -285,31 +297,38 @@ const rawStreamRef = useRef<MediaStream | null>(null)
       done = true
       try {
         const a = ttsAudioRef.current ?? new Audio()
-        a.playsInline = true
+        ;(a as any).playsInline = true
         ;(a as any).preload = "auto"
         a.muted = true
-        a.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA="
+        a.src =
+          "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA="
         ttsAudioRef.current = a
+
         const p = a.play()
         ;(p as any)?.catch?.(() => {})
+
         try {
           a.pause()
           a.currentTime = 0
           a.muted = false
           a.src = ""
-        } catch (e) {}
+        } catch {}
       } catch (e) {
         console.warn("[TTS] prime failed", e)
       }
     }
 
-    window.addEventListener("touchstart", prime as any, { passive: true, once: true } as any)
+    window.addEventListener("touchstart", prime as any, {
+      passive: true,
+      once: true,
+    } as any)
     window.addEventListener("mousedown", prime as any, { once: true } as any)
     return () => {
       window.removeEventListener("touchstart", prime as any)
       window.removeEventListener("mousedown", prime as any)
     }
   }, [])
+
   const isSttBusyRef = useRef(false)
 
   const vad = useRef({
@@ -596,7 +615,11 @@ const rawStreamRef = useRef<MediaStream | null>(null)
       if (!isCallActiveRef.current) return
       if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive") return
 
-      if (isAiSpeakingRef.current || isMicMutedRef.current || Date.now() < ttsCooldownUntilRef.current) {
+      if (
+        isAiSpeakingRef.current ||
+        isMicMutedRef.current ||
+        Date.now() < ttsCooldownUntilRef.current
+      ) {
         const st = vad.current
         st.voice = false
         st.voiceUntilTs = 0
@@ -692,7 +715,10 @@ const rawStreamRef = useRef<MediaStream | null>(null)
     }
 
     mediaRecorderRef.current = rec
-    recorderCfgRef.current = { mimeType: rec.mimeType || mime || "audio/webm", sliceMs: isMobile ? 1200 : 1000 }
+    recorderCfgRef.current = {
+      mimeType: rec.mimeType || mime || "audio/webm",
+      sliceMs: isMobile ? 1200 : 1000,
+    }
 
     rec.ondataavailable = (ev: any) => {
       if (ev?.data && ev.data.size > 0) audioChunksRef.current.push(ev.data)
@@ -744,7 +770,7 @@ const rawStreamRef = useRef<MediaStream | null>(null)
   }
 
   function safeStartListening() {
-      stopReasonRef.current = null
+    stopReasonRef.current = null
     if (startListeningInFlightRef.current) return
     startListeningInFlightRef.current = true
     Promise.resolve()
@@ -809,6 +835,7 @@ const rawStreamRef = useRef<MediaStream | null>(null)
         window.clearTimeout(pendingSttTimerRef.current)
       } catch {}
     }
+
     pendingSttTimerRef.current = window.setTimeout(() => {
       const r = pendingSttReasonRef.current
       pendingSttReasonRef.current = null
@@ -857,8 +884,8 @@ const rawStreamRef = useRef<MediaStream | null>(null)
   }
 
   async function finishUtteranceAndTranscribe(reason: string) {
-      const stopReason = stopReasonRef.current
-      if (stopReason === "tts" || stopReason === "manual" || stopReason === "end") return
+    const stopReason = stopReasonRef.current
+    if (stopReason === "tts" || stopReason === "manual" || stopReason === "end") return
 
     if (!isCallActiveRef.current) return
     if (isSttBusyRef.current) return
@@ -882,11 +909,7 @@ const rawStreamRef = useRef<MediaStream | null>(null)
       const chunks = audioChunksRef.current || []
       audioChunksRef.current = []
 
-      const mime =
-        recorderCfgRef.current?.mimeType ||
-        chunks?.[0]?.type ||
-        "audio/webm"
-
+      const mime = recorderCfgRef.current?.mimeType || chunks?.[0]?.type || "audio/webm"
       const baseMime = String(mime).split(";")[0].trim().toLowerCase()
       const blob = new Blob(chunks, { type: baseMime.replace(/^video\//, "audio/") })
 
@@ -1023,10 +1046,12 @@ const rawStreamRef = useRef<MediaStream | null>(null)
         gender,
       }),
     })
+
     const json = await res.json().catch(() => null)
     if (!res.ok || !json?.success || !json?.audioContent) {
       throw new Error(json?.error || `TTS error: ${res.status}`)
     }
+
     const contentType = json.contentType || "audio/mpeg"
     const dataUrl = `data:${contentType};base64,${json.audioContent}`
 
@@ -1035,12 +1060,20 @@ const rawStreamRef = useRef<MediaStream | null>(null)
       currentAudioRef.current = audio
       audio.preload = "auto"
       audio.volume = 1
-      audio.playsInline = true
+      ;(audio as any).playsInline = true
       ttsAudioRef.current = audio
+
       audio.src = dataUrl
       audio.onended = () => resolve()
       audio.onerror = () => resolve()
-      audio.play().then(() => resolve()).catch((err) => { console.warn('[TTS] play blocked', err); resolve() })
+
+      audio
+        .play()
+        .then(() => resolve())
+        .catch((err) => {
+          console.warn("[TTS] play blocked", err)
+          resolve()
+        })
     })
   }
 
@@ -1050,6 +1083,9 @@ const rawStreamRef = useRef<MediaStream | null>(null)
 
     const cleaned = cleanResponseText(text)
     if (!cleaned) return
+
+    // ---- mark stop reason as TTS to avoid any STT finalize racing
+    stopReasonRef.current = "tts"
 
     stopRecorderOnly()
     stopCurrentSpeech()
@@ -1081,16 +1117,14 @@ const rawStreamRef = useRef<MediaStream | null>(null)
         } catch {}
       }
 
-      if (
-        hasEnhancedVideo &&
-        idleVideoRef.current &&
-        selectedCharacter.idleVideo &&
-        isCallActiveRef.current
-      ) {
+      if (hasEnhancedVideo && idleVideoRef.current && selectedCharacter.idleVideo && isCallActiveRef.current) {
         try {
           idleVideoRef.current.play().catch(() => {})
         } catch {}
       }
+
+      // ---- allow STT again
+      stopReasonRef.current = null
 
       if (isCallActiveRef.current && !isMicMutedRef.current) {
         setActivityStatus("listening")
@@ -1156,11 +1190,7 @@ const rawStreamRef = useRef<MediaStream | null>(null)
 
       if (!cleaned) throw new Error("Empty response received")
 
-      setMessages((prev) => [
-        ...prev,
-        { id: prev.length + 1, role: "assistant", text: cleaned },
-      ])
-
+      setMessages((prev) => [...prev, { id: prev.length + 1, role: "assistant", text: cleaned }])
       await speakText(cleaned)
     } catch (error: any) {
       console.error("Video assistant error:", error)
@@ -1169,10 +1199,7 @@ const rawStreamRef = useRef<MediaStream | null>(null)
           ? t("I received your message but couldn't generate a response. Could you try rephrasing?")
           : t("I couldn't process your message. Could you try again?")
 
-      setMessages((prev) => [
-        ...prev,
-        { id: prev.length + 1, role: "assistant", text: errorMessage },
-      ])
+      setMessages((prev) => [...prev, { id: prev.length + 1, role: "assistant", text: errorMessage }])
 
       if (onError && error instanceof Error) onError(error)
 
@@ -1207,6 +1234,8 @@ const rawStreamRef = useRef<MediaStream | null>(null)
       setIsMicMuted(false)
       isMicMutedRef.current = false
 
+      stopReasonRef.current = null
+
       if (hasEnhancedVideo && idleVideoRef.current && selectedCharacter.idleVideo) {
         try {
           idleVideoRef.current.play().catch(() => {})
@@ -1234,7 +1263,8 @@ const rawStreamRef = useRef<MediaStream | null>(null)
   }
 
   function endCall() {
-      stopReasonRef.current = "end"
+    stopReasonRef.current = "end"
+
     setIsCallActive(false)
     isCallActiveRef.current = false
 
@@ -1281,6 +1311,7 @@ const rawStreamRef = useRef<MediaStream | null>(null)
     if (isMicMuted) {
       setIsMicMuted(false)
       isMicMutedRef.current = false
+      stopReasonRef.current = null
       setSpeechError(null)
       setActivityStatus("listening")
       resetVadState()
@@ -1288,7 +1319,7 @@ const rawStreamRef = useRef<MediaStream | null>(null)
     } else {
       setIsMicMuted(true)
       isMicMutedRef.current = true
-        stopReasonRef.current = "manual"
+      stopReasonRef.current = "manual"
       stopRecorderOnly()
       setInterimTranscript("")
       setActivityStatus("listening")
@@ -1331,13 +1362,18 @@ const rawStreamRef = useRef<MediaStream | null>(null)
     return t("Paused. Turn on microphone to continue.")
   })()
 
-  const bodyClass = isCallActive
-    ? "flex-1 min-h-0 overflow-hidden p-3 sm:p-4 flex flex-col touch-pan-y"
-    : "flex-1 overflow-y-auto p-3 sm:p-4 flex flex-col touch-pan-y"
-
+  // ---- FIX: stable layout — outer container fixed height, internal scroll only
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl flex flex-col h-[100dvh] sm:h-[90vh] max-h-none sm:max-h-[860px] overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4 overscroll-contain">
+      <div
+        className="
+          bg-white rounded-xl shadow-xl w-full max-w-5xl flex flex-col overflow-hidden
+          h-[calc(100svh-16px)] max-h-[900px]
+          sm:h-[calc(100vh-64px)] sm:max-h-[860px]
+        "
+        role="dialog"
+        aria-modal="true"
+      >
         <div className="p-3 sm:p-4 border-b flex items-center justify-between rounded-t-xl relative bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 text-white">
           <div className="flex flex-col flex-1 min-w-0 pr-2">
             <h3 className="font-semibold text-base sm:text-lg truncate flex items-center gap-2">
@@ -1365,102 +1401,104 @@ const rawStreamRef = useRef<MediaStream | null>(null)
           </Button>
         </div>
 
-        <div className={bodyClass}>
+        <div className="flex-1 min-h-0 overflow-hidden p-3 sm:p-4 flex flex-col touch-pan-y">
           {!isCallActive ? (
-            <div className="flex-1 flex flex-col items-center justify-center">
-              <div className="text-center mb-6 sm:mb-8 px-2">
-                <h3 className="text-xl sm:text-2xl font-semibold mb-2 sm:mb-3">
-                  {t("Choose Your AI Psychologist")}
-                </h3>
-                <p className="text-sm sm:text-base text-gray-600 max-w-md mx-auto">
-                  {t("Select the AI psychologist you'd like to speak with during your video call.")}
-                </p>
-              </div>
-
-              <div className="mb-6 bg-blue-50 p-4 rounded-lg w-full max-w-xs text-center mx-2">
-                <p className="text-sm font-medium text-blue-700 mb-1">
-                  {t("Video call language")}:
-                </p>
-                <div className="text-lg font-semibold text-blue-800 flex items-center justify-center">
-                  <span className="mr-2">{activeLanguage.flag}</span>
-                  {languageDisplayName}
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <div className="min-h-full flex flex-col items-center justify-center py-3">
+                <div className="text-center mb-6 sm:mb-8 px-2">
+                  <h3 className="text-xl sm:text-2xl font-semibold mb-2 sm:mb-3">
+                    {t("Choose Your AI Psychologist")}
+                  </h3>
+                  <p className="text-sm sm:text-base text-gray-600 max-w-md mx-auto">
+                    {t("Select the AI psychologist you'd like to speak with during your video call.")}
+                  </p>
                 </div>
-                <p className="text-xs text-blue-600 mt-2">
-                  {t("AI will understand and respond in this language with voice and text.")}
-                </p>
-              </div>
 
-              <div className="w-full max-w-4xl px-2">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {AI_CHARACTERS.map((character) => (
-                    <button
-                      key={character.id}
-                      type="button"
-                      onClick={() => setSelectedCharacter(character)}
-                      className={`relative bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border-2 ${
-                        selectedCharacter.id === character.id
-                          ? "border-primary-600"
-                          : "border-transparent"
-                      }`}
-                    >
-                      <div className="p-4 sm:p-5 flex flex-col h-full">
-                        <div className="relative w-full aspect-square mb-3 sm:mb-4 overflow-hidden rounded-lg bg-black">
-                          {character.idleVideo ? (
-                            <video
-                              className="absolute inset-0 w-full h-full object-cover scale-[1.08]"
-                              muted
-                              loop
-                              playsInline
-                              autoPlay
-                              preload="auto"
+                <div className="mb-6 bg-blue-50 p-4 rounded-lg w-full max-w-xs text-center mx-2">
+                  <p className="text-sm font-medium text-blue-700 mb-1">
+                    {t("Video call language")}:
+                  </p>
+                  <div className="text-lg font-semibold text-blue-800 flex items-center justify-center">
+                    <span className="mr-2">{activeLanguage.flag}</span>
+                    {languageDisplayName}
+                  </div>
+                  <p className="text-xs text-blue-600 mt-2">
+                    {t("AI will understand and respond in this language with voice and text.")}
+                  </p>
+                </div>
+
+                <div className="w-full max-w-4xl px-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {AI_CHARACTERS.map((character) => (
+                      <button
+                        key={character.id}
+                        type="button"
+                        onClick={() => setSelectedCharacter(character)}
+                        className={`relative bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border-2 ${
+                          selectedCharacter.id === character.id
+                            ? "border-primary-600"
+                            : "border-transparent"
+                        }`}
+                      >
+                        <div className="p-4 sm:p-5 flex flex-col h-full">
+                          <div className="relative w-full aspect-square mb-3 sm:mb-4 overflow-hidden rounded-lg bg-black">
+                            {character.idleVideo ? (
+                              <video
+                                className="absolute inset-0 w-full h-full object-cover scale-[1.08]"
+                                muted
+                                loop
+                                playsInline
+                                autoPlay
+                                preload="auto"
+                              >
+                                <source src={character.idleVideo} type="video/mp4" />
+                              </video>
+                            ) : (
+                              <Image
+                                src={character.avatar || "/placeholder.svg"}
+                                alt={character.name}
+                                fill
+                                className="object-cover"
+                                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                                priority={character.id === selectedCharacter.id}
+                              />
+                            )}
+                          </div>
+                          <h4 className="font-semibold text-base sm:text-lg text-center mb-1 sm:mb-2">
+                            {character.name}
+                          </h4>
+                          <p className="text-xs sm:text-sm text-gray-600 text-center mb-3 sm:mb-4">
+                            {character.description}
+                          </p>
+                          <div className="mt-auto text-center">
+                            <span
+                              className={`inline-flex px-3 py-1 rounded-full text-[11px] font-medium ${
+                                selectedCharacter.id === character.id
+                                  ? "bg-primary-600 text-white"
+                                  : "bg-gray-100 text-gray-700"
+                              }`}
                             >
-                              <source src={character.idleVideo} type="video/mp4" />
-                            </video>
-                          ) : (
-                            <Image
-                              src={character.avatar || "/placeholder.svg"}
-                              alt={character.name}
-                              fill
-                              className="object-cover"
-                              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                              priority={character.id === selectedCharacter.id}
-                            />
-                          )}
+                              {selectedCharacter.id === character.id ? t("Selected") : t("Select")}
+                            </span>
+                          </div>
                         </div>
-                        <h4 className="font-semibold text-base sm:text-lg text-center mb-1 sm:mb-2">
-                          {character.name}
-                        </h4>
-                        <p className="text-xs sm:text-sm text-gray-600 text-center mb-3 sm:mb-4">
-                          {character.description}
-                        </p>
-                        <div className="mt-auto text-center">
-                          <span
-                            className={`inline-flex px-3 py-1 rounded-full text-[11px] font-medium ${
-                              selectedCharacter.id === character.id
-                                ? "bg-primary-600 text-white"
-                                : "bg-gray-100 text-gray-700"
-                            }`}
-                          >
-                            {selectedCharacter.id === character.id ? t("Selected") : t("Select")}
-                          </span>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div className="mt-6 sm:mt-8 w-full max-w-md px-2">
-                <Button
-                  className="w-full bg-primary-600 hover:bg-primary-700 text-white text-base sm:text-lg py-4 sm:py-6 min-h-[56px]"
-                  onClick={startCall}
-                  disabled={isConnecting}
-                >
-                  {isConnecting ? t("Connecting...") : t("Start Video Call")}
-                </Button>
-                {speechError && (
-                  <p className="mt-3 text-xs text-center text-rose-600">{speechError}</p>
-                )}
+                <div className="mt-6 sm:mt-8 w-full max-w-md px-2 pb-2">
+                  <Button
+                    className="w-full bg-primary-600 hover:bg-primary-700 text-white text-base sm:text-lg py-4 sm:py-6 min-h-[56px]"
+                    onClick={startCall}
+                    disabled={isConnecting}
+                  >
+                    {isConnecting ? t("Connecting...") : t("Start Video Call")}
+                  </Button>
+                  {speechError && (
+                    <p className="mt-3 text-xs text-center text-rose-600">{speechError}</p>
+                  )}
+                </div>
               </div>
             </div>
           ) : (
@@ -1627,7 +1665,7 @@ const rawStreamRef = useRef<MediaStream | null>(null)
         </div>
 
         {isCallActive && (
-          <div className="p-3 sm:p-4 border-t bg-gray-50 flex flex-col safe-area-bottom">
+          <div className="p-3 sm:p-4 border-t bg-gray-50 flex flex-col pb-[calc(env(safe-area-inset-bottom)+0.75rem)]">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
               <div className="flex items-center gap-2 text-[11px] sm:text-xs text-slate-500">
                 <Sparkles className="h-3 w-3" />
@@ -1654,6 +1692,7 @@ const rawStreamRef = useRef<MediaStream | null>(null)
                   <Mic className="h-6 w-6 sm:h-5 sm:w-5" />
                 )}
               </Button>
+
               <Button
                 variant="outline"
                 size="icon"
@@ -1668,6 +1707,7 @@ const rawStreamRef = useRef<MediaStream | null>(null)
                   <Camera className="h-6 w-6 sm:h-5 sm:w-5" />
                 )}
               </Button>
+
               <Button
                 variant="outline"
                 size="icon"
@@ -1682,6 +1722,7 @@ const rawStreamRef = useRef<MediaStream | null>(null)
                   <VolumeX className="h-6 w-6 sm:h-5 sm:w-5" />
                 )}
               </Button>
+
               <Button
                 variant="destructive"
                 size="icon"
