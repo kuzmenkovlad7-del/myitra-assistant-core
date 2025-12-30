@@ -126,19 +126,140 @@ function pickMime(): string | null {
   return null
 }
 
-function isGarbageTranscript(text: string): boolean {
+function normalizeUtterance(s: string): string {
+  return (s || "")
+    .toLowerCase()
+    .replace(/[.,!?;:«»"“”‚‘’…]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+}
+
+function collapseLeadingWordRepeats(text: string): string {
+  let t = (text || "").trim()
+  if (!t) return t
+  for (let i = 0; i < 6; i++) {
+    const parts = t.split(/\s+/)
+    if (parts.length < 2) break
+    const a = normalizeUtterance(parts[0])
+    const b = normalizeUtterance(parts[1])
+    if (a && b && a === b) {
+      t = parts.slice(1).join(" ").trim()
+      continue
+    }
+    break
+  }
+  return t
+}
+
+function stripLeadingEchoOfPrev(delta: string, prevSentNorm: string, prevSentTs: number): string {
+  let t = (delta || "").trim()
+  if (!t) return t
+  const dt = Date.now() - (prevSentTs || 0)
+  if (!prevSentNorm || dt > 15000) return t
+
+  const prevWords = prevSentNorm.split(" ").filter(Boolean)
+  if (prevWords.length === 0 || prevWords.length > 2) return t
+
+  const firstWord = normalizeUtterance(t.split(/\s+/)[0] || "")
+  const prevLast = prevWords[prevWords.length - 1] || ""
+  if (firstWord && prevLast && firstWord === prevLast) {
+    const parts = t.split(/\s+/)
+    if (parts.length >= 2) return parts.slice(1).join(" ").trim()
+  }
+  return t
+}
+
+function diffTranscript(prev: string, full: string): string {
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/[.,!?;:«»"“”‚‘’…]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+
+  full = (full || "").trim()
+  if (!full) return ""
+  if (!prev) return full
+
+  const prevNorm = normalize(prev)
+  const fullNorm = normalize(full)
+
+  if (!prevNorm || !fullNorm) return full
+
+  const prevWords = prevNorm.split(" ")
+  const fullWords = fullNorm.split(" ")
+
+  const maxCommon = Math.min(prevWords.length, fullWords.length)
+  let common = 0
+  while (common < maxCommon && prevWords[common] === fullWords[common]) common++
+
+  if (common === 0) return full
+
+  const rawTokens = full.split(/\s+/)
+  if (common >= rawTokens.length) return ""
+  return rawTokens.slice(common).join(" ").trim()
+}
+
+function isMostlyGarbage(text: string): boolean {
   const t = (text || "").trim()
   if (!t) return true
-  if (t.length > 420) return true
-  if (/(\b\w+\b)(?:\s+\1){5,}/i.test(t)) return true
-  const words = t.toLowerCase().split(/\s+/).filter(Boolean)
-  if (words.length >= 12) {
-    const freq = new Map<string, number>()
-    for (const w of words) freq.set(w, (freq.get(w) || 0) + 1)
-    let mx = 0
-    for (const v of freq.values()) mx = Math.max(mx, v)
-    if (mx / words.length > 0.38) return true
+  const norm = normalizeUtterance(t)
+  if (!norm) return true
+
+  if (norm.length < 3) return true
+
+  const toks = norm.split(" ")
+  if (toks.length === 1 && toks[0].length <= 2) return true
+
+  const letters = (t.match(/[A-Za-zА-Яа-яЇїІіЄєҐґ]/g) || []).length
+  const total = t.length
+  if (total > 0 && letters / total < 0.45) return true
+
+  const bannedSub = [
+    "обратите внимание",
+    "зверніть увагу",
+    "звернить увагу",
+    "на экран",
+    "на екрані",
+    "на екрані",
+    "подпиш",
+    "подписывай",
+    "лайк",
+    "ставьте",
+    "на канал",
+    "в описании",
+    "ссылка",
+    "спонсор",
+    "реклама",
+    "промокод",
+    "фотография",
+    "скриншот",
+    "нажмите",
+    "кнопк",
+  ]
+  for (const b of bannedSub) {
+    if (norm.includes(b)) return true
   }
+
+  const bannedExact = new Set([
+    "угу",
+    "ага",
+    "мм",
+    "м",
+    "а",
+    "ну",
+    "так",
+    "ок",
+    "okay",
+    "yes",
+    "no",
+    "hello",
+    "hi",
+  ])
+  if (toks.length === 1 && bannedExact.has(toks[0])) return true
+
+  if (/(\b\w+\b)(?:\s+\1){5,}/i.test(norm)) return true
+
   return false
 }
 
@@ -196,6 +317,17 @@ function extractAnswer(data: any): string {
   return ""
 }
 
+function b64ToBlobUrl(b64: string, mime: string): { url: string; revoke: () => void } {
+  const clean = (b64 || "").trim()
+  const binary = typeof atob === "function" ? atob(clean) : ""
+  const len = binary.length
+  const bytes = new Uint8Array(len)
+  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i)
+  const blob = new Blob([bytes], { type: mime || "audio/mpeg" })
+  const url = URL.createObjectURL(blob)
+  return { url, revoke: () => URL.revokeObjectURL(url) }
+}
+
 export default function VideoCallDialog({
   isOpen,
   onClose,
@@ -206,7 +338,7 @@ export default function VideoCallDialog({
   const { user } = useAuth()
 
   const activeLanguage =
-    currentLanguage || ({ code: "en", name: "English", flag: "🇺🇸" } as any)
+    currentLanguage || ({ code: "en", name: "English", flag: "🇺��" } as any)
 
   const languageDisplayName =
     activeLanguage.name ||
@@ -258,8 +390,6 @@ export default function VideoCallDialog({
   const rawStreamRef = useRef<MediaStream | null>(null)
   const bridgedStreamRef = useRef<MediaStream | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const recorderCfgRef = useRef<{ mimeType: string; sliceMs: number } | null>(null)
-  const reqTimerRef = useRef<number | null>(null)
 
   const audioCtxRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
@@ -267,17 +397,29 @@ export default function VideoCallDialog({
 
   const keepAudioElRef = useRef<HTMLAudioElement | null>(null)
 
+  // recorder chunking (как в voice-assistant)
   const audioChunksRef = useRef<Blob[]>([])
-  const recordStartedAtRef = useRef<number>(0)
-  const hadSpeechRef = useRef(false)
+  const sentIdxRef = useRef(0)
 
   const pendingSttReasonRef = useRef<string | null>(null)
   const pendingSttTimerRef = useRef<number | null>(null)
 
+  const isSttBusyRef = useRef(false)
+  const lastTranscriptRef = useRef("") // ВАЖНО: не сбрасывать на TTS
+  const lastUserSentNormRef = useRef("")
+  const lastUserSentTsRef = useRef(0)
+
   const ttsCooldownUntilRef = useRef(0)
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null)
+  const ttsObjectUrlRef = useRef<string | null>(null)
 
-  // iOS/Safari: prime audio playback on first user gesture to reduce NotAllowedError on later async plays
+  const MIN_UTTERANCE_MS = 450
+  const hangoverMs = 1800
+  const maxUtteranceMs = 20000
+
+  const startListeningInFlightRef = useRef(false)
+
+  // iOS/Safari: prime audio playback on first user gesture
   useEffect(() => {
     let done = false
     const prime = () => {
@@ -315,11 +457,8 @@ export default function VideoCallDialog({
     }
   }, [])
 
-  const isSttBusyRef = useRef(false)
-
   const vad = useRef({
     noiseFloor: 0,
-    rms: 0,
     thr: 0.008,
     voice: false,
     voiceUntilTs: 0,
@@ -330,13 +469,6 @@ export default function VideoCallDialog({
     if (typeof navigator === "undefined") return false
     return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
   }, [])
-
-  const MIN_UTTERANCE_MS = 450
-  const MIN_BLOB_BYTES = 2500
-  const hangoverMs = 1800
-  const maxUtteranceMs = 20000
-
-  const startListeningInFlightRef = useRef(false)
 
   useEffect(() => {
     isCallActiveRef.current = isCallActive
@@ -404,6 +536,20 @@ export default function VideoCallDialog({
     if (code.startsWith("ru")) return "ru"
     if (code.startsWith("en")) return "en"
     return "uk"
+  }
+
+  function shouldDedupUser(text: string): boolean {
+    const norm = normalizeUtterance(text)
+    if (!norm) return true
+    const last = lastUserSentNormRef.current || ""
+    const dt = Date.now() - (lastUserSentTsRef.current || 0)
+    if (last && norm === last && dt < 12000) return true
+    if (last && dt < 3500) {
+      const a = norm.slice(0, 25)
+      const b = last.slice(0, 25)
+      if (a && b && a === b) return true
+    }
+    return false
   }
 
   async function requestMicrophoneStream(): Promise<MediaStream | null> {
@@ -507,46 +653,33 @@ export default function VideoCallDialog({
     bridgedStreamRef.current = null
   }
 
-  function stopRecorderOnly() {
+  function stopRecorder() {
     const rec: any = mediaRecorderRef.current
-    if (reqTimerRef.current) {
+    if (rec && rec._reqTimer) {
       try {
-        window.clearInterval(reqTimerRef.current)
+        clearInterval(rec._reqTimer)
       } catch {}
-      reqTimerRef.current = null
+      rec._reqTimer = null
     }
     if (rec) {
-      try {
-        rec.ondataavailable = null
-      } catch {}
-      try {
-        rec.onstop = null
-      } catch {}
-      try {
-        rec.onerror = null
-      } catch {}
       try {
         if (rec.state !== "inactive") rec.stop()
       } catch {}
     }
     mediaRecorderRef.current = null
-    recorderCfgRef.current = null
     audioChunksRef.current = []
-    hadSpeechRef.current = false
+    sentIdxRef.current = 0
     setIsListening(false)
   }
 
   function resetVadState() {
     vad.current = {
       noiseFloor: 0,
-      rms: 0,
       thr: 0.008,
       voice: false,
       voiceUntilTs: 0,
       utteranceStartTs: 0,
     }
-    hadSpeechRef.current = false
-    recordStartedAtRef.current = Date.now()
   }
 
   async function ensureAudioGraphStarted() {
@@ -593,13 +726,15 @@ export default function VideoCallDialog({
     if (!analyser) return
 
     const data = new Uint8Array(analyser.fftSize)
-    const baseThr = isMobile ? 0.010 : 0.008
+    const baseThr = isMobile ? 0.012 : 0.008
 
     const tick = () => {
       rafRef.current = requestAnimationFrame(tick)
 
       if (!isCallActiveRef.current) return
-      if (!mediaRecorderRef.current || mediaRecorderRef.current.state === "inactive") return
+
+      const rec: any = mediaRecorderRef.current
+      if (!rec || rec.state !== "recording") return
 
       if (
         isAiSpeakingRef.current ||
@@ -622,21 +757,15 @@ export default function VideoCallDialog({
         sum += v * v
       }
       const rms = Math.sqrt(sum / data.length)
+
       const now = Date.now()
       const st = vad.current
 
-      if (!st.voice) {
-        st.noiseFloor = st.noiseFloor * 0.995 + rms * 0.005
-      }
-
-      const thr = Math.max(baseThr, st.noiseFloor * 3.0)
+      if (!st.voice) st.noiseFloor = st.noiseFloor * 0.995 + rms * 0.005
+      const thr = Math.max(baseThr, st.noiseFloor * 3.6)
       const voiceNow = rms > thr
 
-      st.rms = rms
-      st.thr = thr
-
       if (voiceNow) {
-        hadSpeechRef.current = true
         st.voiceUntilTs = now + hangoverMs
         if (!st.voice) {
           st.voice = true
@@ -647,16 +776,13 @@ export default function VideoCallDialog({
           const voiceMs = st.utteranceStartTs ? now - st.utteranceStartTs : 0
           st.voice = false
           st.utteranceStartTs = 0
-          if (voiceMs >= MIN_UTTERANCE_MS) {
-            void finishUtteranceAndTranscribe("vad_end")
-          }
+          if (voiceMs >= MIN_UTTERANCE_MS) void flushAndSendStt("vad_end")
         }
       }
 
       if (st.voice && st.utteranceStartTs && now - st.utteranceStartTs > maxUtteranceMs) {
-        st.voice = false
-        st.utteranceStartTs = 0
-        void finishUtteranceAndTranscribe("max_utt")
+        st.utteranceStartTs = now
+        void flushAndSendStt("max_utt")
       }
     }
 
@@ -666,8 +792,6 @@ export default function VideoCallDialog({
   async function startRecorder() {
     if (!isCallActiveRef.current) return
     if (isMicMutedRef.current) return
-    if (isAiSpeakingRef.current) return
-    if (stopReasonRef.current === "tts") return
 
     const stream = bridgedStreamRef.current || rawStreamRef.current
     if (!stream) return
@@ -677,9 +801,13 @@ export default function VideoCallDialog({
       return
     }
 
-    stopRecorderOnly()
+    // уже есть рекордер
+    const existing: any = mediaRecorderRef.current
+    if (existing && (existing.state === "recording" || existing.state === "paused")) return
 
+    // сброс буфера, но НЕ lastTranscript (он нужен для delta-дедупа в рамках сессии)
     audioChunksRef.current = []
+    sentIdxRef.current = 1 // ждём header + body
     resetVadState()
     setInterimTranscript("")
     setSpeechError(null)
@@ -703,13 +831,20 @@ export default function VideoCallDialog({
     }
 
     mediaRecorderRef.current = rec
-    recorderCfgRef.current = {
-      mimeType: rec.mimeType || mime || "audio/webm",
-      sliceMs: isMobile ? 1200 : 1000,
+
+    rec.onstart = () => {
+      setIsListening(true)
+      setActivityStatus("listening")
     }
 
     rec.ondataavailable = (ev: any) => {
-      if (ev?.data && ev.data.size > 0) audioChunksRef.current.push(ev.data)
+      const b = ev?.data
+      const size = b?.size || 0
+      if (size > 0) {
+        if (!isAiSpeakingRef.current && !isMicMutedRef.current) {
+          audioChunksRef.current.push(b)
+        }
+      }
 
       const pending = pendingSttReasonRef.current
       if (pending) {
@@ -720,13 +855,13 @@ export default function VideoCallDialog({
           } catch {}
           pendingSttTimerRef.current = null
         }
-        void finishUtteranceAndTranscribe(pending)
+        void maybeSendStt(pending)
       }
     }
 
     rec.onerror = () => {
       setSpeechError(t("Error while listening. Please try again."))
-      stopRecorderOnly()
+      stopRecorder()
     }
 
     rec.onstop = () => {
@@ -740,12 +875,12 @@ export default function VideoCallDialog({
     } catch (e) {
       console.log("MediaRecorder start error:", e)
       setSpeechError(t("Error while listening. Please try again."))
-      stopRecorderOnly()
+      stopRecorder()
       return
     }
 
-    const sliceMs = recorderCfgRef.current?.sliceMs || 1000
-    reqTimerRef.current = window.setInterval(() => {
+    const sliceMs = isMobile ? 1200 : 1000
+    ;(rec as any)._reqTimer = window.setInterval(() => {
       try {
         const r = mediaRecorderRef.current
         if (r && r.state === "recording" && typeof (r as any).requestData === "function") {
@@ -765,8 +900,20 @@ export default function VideoCallDialog({
         await ensureAudioGraphStarted()
         if (!isCallActiveRef.current || isMicMutedRef.current) return
         if (isAiSpeakingRef.current || stopReasonRef.current === "tts") return
-        const r = mediaRecorderRef.current
-        if (r && (r.state === "recording" || r.state === "paused")) return
+
+        const r: any = mediaRecorderRef.current
+        if (r) {
+          if (r.state === "paused") {
+            try {
+              r.resume()
+            } catch {}
+            setIsListening(true)
+            setActivityStatus("listening")
+            return
+          }
+          if (r.state === "recording") return
+        }
+
         await startRecorder()
       })
       .catch(() => {})
@@ -775,43 +922,14 @@ export default function VideoCallDialog({
       })
   }
 
-  async function sendBlobToSTT(blob: Blob): Promise<string> {
-    const typeFull = (blob.type || "audio/webm").toLowerCase()
-    const type = typeFull.split(";")[0].trim()
-    const hint = computeHint3()
-    const langCode = computeLangCode()
-
-    const res = await fetch("/api/stt", {
-      method: "POST",
-      headers: {
-        "Content-Type": type || "application/octet-stream",
-        "X-STT-Hint": hint,
-        "X-STT-Lang": langCode,
-      } as any,
-      body: blob,
-    })
-
-    const raw = await res.text()
-    if (!res.ok) throw new Error(raw || `STT error: ${res.status}`)
-
-    let data: any = raw
-    try {
-      data = JSON.parse(raw)
-    } catch {}
-
-    if (typeof data === "string") return data.trim()
-    if (data?.success === false) return ""
-    if (typeof data?.text === "string") return data.text.trim()
-    if (typeof data?.transcript === "string") return data.transcript.trim()
-    if (typeof data?.result?.text === "string") return data.result.text.trim()
-    return ""
-  }
-
-  function flushRecorder(reason: string) {
+  function flushAndSendStt(reason: string) {
     const rec: any = mediaRecorderRef.current
-    if (!rec || rec.state !== "recording" || typeof rec.requestData !== "function") return false
+    if (!rec || rec.state !== "recording" || typeof rec.requestData !== "function") {
+      void maybeSendStt(reason)
+      return
+    }
 
-    if (pendingSttReasonRef.current) return true
+    if (pendingSttReasonRef.current) return
     pendingSttReasonRef.current = reason
 
     try {
@@ -827,107 +945,103 @@ export default function VideoCallDialog({
       const r = pendingSttReasonRef.current
       pendingSttReasonRef.current = null
       pendingSttTimerRef.current = null
-      if (r) void finishUtteranceAndTranscribe(r)
+      if (r) void maybeSendStt(r)
     }, 250)
-
-    return true
   }
 
-  async function stopRecorderAndWait(): Promise<void> {
-    const rec: any = mediaRecorderRef.current
-    if (!rec) return
-
-    if (reqTimerRef.current) {
-      try {
-        window.clearInterval(reqTimerRef.current)
-      } catch {}
-      reqTimerRef.current = null
-    }
-
-    await new Promise<void>((resolve) => {
-      let done = false
-      const finish = () => {
-        if (done) return
-        done = true
-        resolve()
-      }
-
-      try {
-        rec.addEventListener("stop", () => finish(), { once: true })
-      } catch {}
-
-      try {
-        if (rec.state !== "inactive") rec.stop()
-      } catch {
-        finish()
-        return
-      }
-
-      window.setTimeout(() => finish(), 900)
-    })
-
-    mediaRecorderRef.current = null
-    setIsListening(false)
-  }
-
-  async function finishUtteranceAndTranscribe(reason: string) {
-    const stopReason = stopReasonRef.current
-    if (stopReason === "tts" || stopReason === "manual" || stopReason === "end") return
-
+  async function maybeSendStt(reason: string) {
     if (!isCallActiveRef.current) return
-    if (isSttBusyRef.current) return
     if (isAiSpeakingRef.current) return
-    if (isMicMutedRef.current) return
     if (Date.now() < ttsCooldownUntilRef.current) return
+    if (isMicMutedRef.current) return
+    if (isSttBusyRef.current) return
 
-    const rec: any = mediaRecorderRef.current
-    if (!rec) return
-    if (!hadSpeechRef.current) return
+    const chunks = audioChunksRef.current
+    if (!chunks || chunks.length < 2) return
+
+    const header = chunks[0]
+    const sentIdx = sentIdxRef.current
+    const body = chunks.slice(Math.max(1, sentIdx))
+    if (!header || body.length === 0) return
+
+    const roughSize = body.reduce((acc, b) => acc + (b?.size || 0), 0)
+    if (roughSize < 7000) return
+
+    const blob = new Blob([header, ...body], { type: header.type || body[0]?.type || "audio/webm" })
+    if (blob.size < 6000) return
 
     try {
       isSttBusyRef.current = true
       setActivityStatus("thinking")
 
-      flushRecorder(reason)
-      await new Promise((r) => setTimeout(r, 220))
+      const res = await fetch("/api/stt", {
+        method: "POST",
+        headers: {
+          "Content-Type": blob.type || "application/octet-stream",
+          "X-STT-Hint": "auto",
+          "X-STT-Lang": computeLangCode(),
+        } as any,
+        body: blob,
+      })
 
-      await stopRecorderAndWait()
+      const raw = await res.text()
+      let data: any = null
+      try {
+        data = raw ? JSON.parse(raw) : null
+      } catch {
+        data = null
+      }
 
-      const chunks = audioChunksRef.current || []
-      audioChunksRef.current = []
-
-      const mime = recorderCfgRef.current?.mimeType || chunks?.[0]?.type || "audio/webm"
-      const baseMime = String(mime).split(";")[0].trim().toLowerCase()
-      const blob = new Blob(chunks, { type: baseMime.replace(/^video\//, "audio/") })
-
-      const dur = Date.now() - (recordStartedAtRef.current || Date.now())
-      if (blob.size < MIN_BLOB_BYTES || dur < MIN_UTTERANCE_MS) {
-        resetVadState()
+      if (!res.ok || !data || data.success === false) {
+        console.error("[STT] bad response", res.status, raw)
         setActivityStatus("listening")
-        if (isCallActiveRef.current && !isMicMutedRef.current) safeStartListening()
         return
       }
 
-      const transcript = await sendBlobToSTT(blob)
-      const text = (transcript || "").trim()
+      // чистим буфер: оставляем header, чтобы webm не ломался
+      const keep = audioChunksRef.current?.[0]
+      audioChunksRef.current = keep ? [keep] : []
+      sentIdxRef.current = keep ? 1 : 0
 
-      if (!text || isGarbageTranscript(text)) {
-        resetVadState()
+      const fullText = (data.text || "").toString().trim()
+      if (!fullText) {
         setActivityStatus("listening")
-        if (isCallActiveRef.current && !isMicMutedRef.current) safeStartListening()
         return
       }
 
-      setMessages((prev) => [...prev, { id: prev.length + 1, role: "user", text }])
-      await handleUserText(text)
+      const prev = lastTranscriptRef.current
+      let delta = diffTranscript(prev, fullText)
+      lastTranscriptRef.current = fullText
+
+      delta = stripLeadingEchoOfPrev(delta, lastUserSentNormRef.current, lastUserSentTsRef.current)
+      delta = collapseLeadingWordRepeats(delta).trim()
+
+      if (!delta) {
+        setActivityStatus("listening")
+        return
+      }
+      if (isMostlyGarbage(delta)) {
+        setActivityStatus("listening")
+        return
+      }
+      if (shouldDedupUser(delta)) {
+        setActivityStatus("listening")
+        return
+      }
+
+      lastUserSentNormRef.current = normalizeUtterance(delta)
+      lastUserSentTsRef.current = Date.now()
+
+      setMessages((prevMsgs) => [...prevMsgs, { id: prevMsgs.length + 1, role: "user", text: delta }])
+      await handleUserText(delta)
     } catch (err: any) {
-      console.error("STT failed:", err)
+      console.error("[STT] fatal", err)
       setSpeechError(t("I couldn't recognize speech. Please try again."))
-      setActivityStatus("listening")
-      resetVadState()
-      if (isCallActiveRef.current && !isMicMutedRef.current) safeStartListening()
     } finally {
       isSttBusyRef.current = false
+      if (isCallActiveRef.current && !isMicMutedRef.current && !isAiSpeakingRef.current) {
+        setActivityStatus("listening")
+      }
     }
   }
 
@@ -936,6 +1050,10 @@ export default function VideoCallDialog({
     const a = currentAudioRef.current
     if (a) {
       try {
+        a.onended = null
+        a.onerror = null
+      } catch {}
+      try {
         a.pause()
         a.currentTime = 0
       } catch {}
@@ -943,6 +1061,13 @@ export default function VideoCallDialog({
         a.src = ""
       } catch {}
       currentAudioRef.current = null
+    }
+
+    if (ttsObjectUrlRef.current) {
+      try {
+        URL.revokeObjectURL(ttsObjectUrlRef.current)
+      } catch {}
+      ttsObjectUrlRef.current = null
     }
 
     // stop browser speech synthesis
@@ -1031,13 +1156,16 @@ export default function VideoCallDialog({
   }
 
   async function speakViaServerTTS(text: string, gender: "male" | "female") {
+    const ttsGender = gender === "male" ? "MALE" : "FEMALE"
+    const langCode = computeLangCode()
+
     const res = await fetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         text,
-        language: activeLanguage.code,
-        gender,
+        language: langCode,
+        gender: ttsGender,
       }),
     })
     const json = await res.json().catch(() => null)
@@ -1045,8 +1173,8 @@ export default function VideoCallDialog({
       throw new Error(json?.error || `TTS error: ${res.status}`)
     }
 
-    const contentType = json.contentType || "audio/mpeg"
-    const dataUrl = `data:${contentType};base64,${json.audioContent}`
+    const contentType = (json.contentType || "audio/mpeg").toString()
+    const audioB64 = String(json.audioContent || "")
 
     await new Promise<void>((resolve) => {
       const audio = ttsAudioRef.current ?? new Audio()
@@ -1085,15 +1213,29 @@ export default function VideoCallDialog({
       audio.onended = () => done()
       audio.onerror = () => done()
 
-      audio.src = dataUrl
-
+      // ВАЖНО: не data:base64 (на iOS может “обрезать”), а blob URL
       try {
+        if (ttsObjectUrlRef.current) {
+          try {
+            URL.revokeObjectURL(ttsObjectUrlRef.current)
+          } catch {}
+          ttsObjectUrlRef.current = null
+        }
+        const { url, revoke } = b64ToBlobUrl(audioB64, contentType)
+        ttsObjectUrlRef.current = url
+        audio.src = url
+
         const p = audio.play()
         ;(p as any)?.catch?.((err: any) => {
           console.warn("[TTS] play blocked", err)
+          try {
+            revoke()
+          } catch {}
+          ttsObjectUrlRef.current = null
           done()
         })
-      } catch {
+      } catch (e) {
+        console.warn("[TTS] blob decode failed", e)
         done()
       }
     })
@@ -1106,24 +1248,44 @@ export default function VideoCallDialog({
     const cleaned = cleanResponseText(text)
     if (!cleaned) return
 
-    // mark TTS phase (block STT/listen)
     stopReasonRef.current = "tts"
 
-    // stop listening + any previous audio
-    stopRecorderOnly()
+    // стопаем только текущую озвучку, запись НЕ убиваем — просто пауза
     stopCurrentSpeech()
 
+    const rec: any = mediaRecorderRef.current
+    if (rec && rec.state === "recording") {
+      try {
+        rec.pause()
+      } catch {}
+    }
+
+    // очистка чанков, но сохраняем header чтобы не ловить webm-баги
+    const hdr = audioChunksRef.current?.[0]
+    audioChunksRef.current = hdr ? [hdr] : []
+    sentIdxRef.current = hdr ? 1 : 0
+
     setIsAiSpeaking(true)
+    isAiSpeakingRef.current = true
     setActivityStatus("speaking")
 
-    ttsCooldownUntilRef.current = Date.now() + 450
+    ttsCooldownUntilRef.current = Date.now() + 700
     resetVadState()
 
     const gender: "male" | "female" = selectedCharacter.gender || "female"
 
+    let ttsWatchdog: any = null
     const finish = () => {
-      ttsCooldownUntilRef.current = Date.now() + 450
+      if (ttsWatchdog) {
+        try {
+          clearTimeout(ttsWatchdog)
+        } catch {}
+        ttsWatchdog = null
+      }
+
+      ttsCooldownUntilRef.current = Date.now() + 700
       setIsAiSpeaking(false)
+      isAiSpeakingRef.current = false
 
       // return to idle video
       if (hasEnhancedVideo && speakingVideoRef.current) {
@@ -1138,25 +1300,39 @@ export default function VideoCallDialog({
         } catch {}
       }
 
-      // allow listening again
       stopReasonRef.current = null
+
+      // resume recorder
+      const r: any = mediaRecorderRef.current
+      if (r && r.state === "paused" && isCallActiveRef.current && !isMicMutedRef.current) {
+        window.setTimeout(() => {
+          try {
+            r.resume()
+          } catch {}
+          setIsListening(true)
+        }, 250)
+      }
 
       if (isCallActiveRef.current && !isMicMutedRef.current) {
         setActivityStatus("listening")
         resetVadState()
-        safeStartListening()
       } else {
         setActivityStatus("listening")
       }
     }
 
-    // start speaking animation/video
+    // speaking video
     if (hasEnhancedVideo && speakingVideoRef.current && selectedCharacter.speakingVideo) {
       try {
         speakingVideoRef.current.currentTime = 0
         await speakingVideoRef.current.play()
       } catch {}
     }
+
+    ttsWatchdog = setTimeout(() => {
+      console.warn("[TTS] watchdog fired")
+      finish()
+    }, 20000)
 
     try {
       await speakViaServerTTS(cleaned, gender)
@@ -1208,7 +1384,8 @@ export default function VideoCallDialog({
         data = JSON.parse(raw)
       } catch {}
 
-      const aiRaw = extractAnswer(data)
+      let aiRaw = extractAnswer(data)
+      aiRaw = collapseLeadingWordRepeats(aiRaw)
       const cleaned = cleanResponseText(aiRaw)
 
       if (!cleaned) throw new Error("Empty response received")
@@ -1233,7 +1410,6 @@ export default function VideoCallDialog({
 
       if (onError && error instanceof Error) onError(error)
 
-      // allow listening again
       stopReasonRef.current = null
 
       if (isCallActiveRef.current && !isMicMutedRef.current && !isAiSpeakingRef.current) {
@@ -1267,7 +1443,18 @@ export default function VideoCallDialog({
       setIsMicMuted(false)
       isMicMutedRef.current = false
 
+      // сброс дедупа на новую сессию
+      lastTranscriptRef.current = ""
+      lastUserSentNormRef.current = ""
+      lastUserSentTsRef.current = 0
+
       stopReasonRef.current = null
+      ttsCooldownUntilRef.current = 0
+
+      // сброс буфера
+      audioChunksRef.current = []
+      sentIdxRef.current = 1
+      resetVadState()
 
       if (hasEnhancedVideo && idleVideoRef.current && selectedCharacter.idleVideo) {
         try {
@@ -1276,7 +1463,6 @@ export default function VideoCallDialog({
       }
 
       setActivityStatus("listening")
-      resetVadState()
       safeStartListening()
     } catch (error: any) {
       console.error("Failed to start call:", error)
@@ -1286,7 +1472,7 @@ export default function VideoCallDialog({
       )
       setIsCallActive(false)
       isCallActiveRef.current = false
-      stopRecorderOnly()
+      stopRecorder()
       stopAudioGraph()
       stopKeepAlive()
       stopStreams()
@@ -1301,10 +1487,11 @@ export default function VideoCallDialog({
     setIsCallActive(false)
     isCallActiveRef.current = false
 
-    stopRecorderOnly()
+    stopRecorder()
     stopCurrentSpeech()
 
     setIsAiSpeaking(false)
+    isAiSpeakingRef.current = false
     setActivityStatus("listening")
     setInterimTranscript("")
     setMessages([])
@@ -1341,6 +1528,8 @@ export default function VideoCallDialog({
   function toggleMicrophone() {
     if (!isCallActiveRef.current) return
 
+    const rec: any = mediaRecorderRef.current
+
     if (isMicMuted) {
       setIsMicMuted(false)
       isMicMutedRef.current = false
@@ -1349,13 +1538,22 @@ export default function VideoCallDialog({
       setSpeechError(null)
       setActivityStatus("listening")
       resetVadState()
-      safeStartListening()
+
+      if (rec && rec.state === "paused") {
+        try {
+          rec.resume()
+        } catch {}
+      } else {
+        safeStartListening()
+      }
     } else {
       setIsMicMuted(true)
       isMicMutedRef.current = true
       stopReasonRef.current = "manual"
 
-      stopRecorderOnly()
+      try {
+        if (rec && rec.state === "recording") rec.pause()
+      } catch {}
       setInterimTranscript("")
       setActivityStatus("listening")
     }
@@ -1380,6 +1578,7 @@ export default function VideoCallDialog({
     if (!next) {
       stopCurrentSpeech()
       setIsAiSpeaking(false)
+      isAiSpeakingRef.current = false
       setActivityStatus("listening")
       stopReasonRef.current = null
     }
@@ -1401,8 +1600,6 @@ export default function VideoCallDialog({
     return t("Waiting... you can start speaking at any moment.")
   })()
 
-  // Important: keep the dialog body itself non-scrollable.
-  // Only the right chat column scrolls, so the video block never collapses on mobile.
   const bodyClass = "flex-1 min-h-0 overflow-hidden p-3 sm:p-4 flex flex-col touch-pan-y"
 
   return (
