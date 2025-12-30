@@ -443,9 +443,17 @@ video {
   z-index: 40 !important;
 }
 
-
-/* Disable soft grid background pattern */
-.bg-soft-grid {
+/* Disable soft grid background pattern (safe override) */
+body::before,
+body::after {
   background-image: none !important;
   opacity: 0 !important;
+  content: none !important;
 }
+
+.bg-grid,
+.grid-pattern,
+.bg-grid-pattern {
+  background-image: none !important;
+}
+

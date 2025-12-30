@@ -134,7 +134,7 @@ export default function ContactForm() {
       <Button
         type="submit"
         disabled={isLoading}
-        className="mt-2 w-full h-11 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 shadow-md shadow-primary-500/30 disabled:opacity-70 disabled:cursor-not-allowed"
+        className="mt-2 w-full h-11 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 shadow-md shadow-primary-500/30 disabled:opacity-70 disabled:cursor-not-allowed bg-violet-600 hover:bg-violet-700"
       >
         {isLoading ? (
           <span className="flex items-center justify-center gap-2">
