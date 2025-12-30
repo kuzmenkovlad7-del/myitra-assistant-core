@@ -59,17 +59,15 @@ function setProp(text, key, value) {
     })
   }
 
-  // insert before final "}" of the exported object
   const endMatch = text.match(/}\s*$/)
   if (!endMatch || endMatch.index == null) {
-    throw new Error("Could not find end of translations object (missing trailing '}')") 
+    throw new Error("Could not find end of translations object (missing trailing '}')")
   }
   const insertPos = endMatch.index
 
   let before = text.slice(0, insertPos)
   const after = text.slice(insertPos)
 
-  // ensure there's a comma before we add a new property (unless object is empty)
   const beforeTrim = before.replace(/\s*$/, "")
   const lastNonWs = beforeTrim[beforeTrim.length - 1]
   if (lastNonWs && lastNonWs !== "," && lastNonWs !== "{") {
@@ -106,16 +104,15 @@ function extractRotatingTestimonialsKeys(pageSource) {
 
   const block = pageSource.slice(open, close + 1)
 
-  // extract t("...") and t('...') calls
+  // IMPORTANT: allow trailing comma inside t("...",) or t('...',)
   const keys = []
-  const re = /t\(\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')\s*\)/g
+  const re = /t\(\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')\s*,?\s*\)/g
   let m
   while ((m = re.exec(block))) {
     const s = m[1] ?? m[2]
     if (s != null) keys.push(s)
   }
 
-  // unique, keep order
   const seen = new Set()
   const out = []
   for (const k of keys) {
@@ -130,7 +127,6 @@ function extractRotatingTestimonialsKeys(pageSource) {
 async function openaiTranslateBatch(strings, targetLang) {
   const apiKey = process.env.OPENAI_API_KEY || process.env.OPENAI_KEY
   if (!apiKey) throw new Error("OPENAI_API_KEY is not set (needed to translate missing strings)")
-
   const model = process.env.OPENAI_MODEL || "gpt-4o-mini"
 
   const prompt =
@@ -179,7 +175,7 @@ async function openaiTranslateBatch(strings, targetLang) {
   return obj && typeof obj === "object" ? obj : {}
 }
 
-async function translateAndPatch(langName, filePath, text, keys) {
+async function translateAndPatch(langName, text, keys) {
   const need = []
   for (const k of keys) {
     const prop = findProp(text, k)
@@ -187,7 +183,7 @@ async function translateAndPatch(langName, filePath, text, keys) {
       need.push(k)
       continue
     }
-    // untranslated fallback (value === key)
+    // fallback case: value === key (не переведено)
     if (prop.valueEscaped === escapeForTsString(k)) {
       need.push(k)
     }
@@ -217,7 +213,6 @@ async function translateAndPatch(langName, filePath, text, keys) {
         translated++
         if (!existed) inserted++
       } else {
-        // keep as-is, but report
         console.log(`[warn] ${langName}: missing translation for: ${k}`)
       }
     }
@@ -236,8 +231,8 @@ async function main() {
   const keys = extractRotatingTestimonialsKeys(pageSrc)
 
   if (keys.length === 0) {
-    console.log("[noop] no t(...) keys found in rotatingTestimonials")
-    return
+    console.log("[warn] no t(...) keys found in rotatingTestimonials (check if strings are wrapped in t())")
+    process.exit(0)
   }
 
   let enText = read(enPath)
@@ -254,22 +249,22 @@ async function main() {
   }
   if (enAdded) console.log(`[write] en.ts: added ${enAdded}`)
 
-  // re-translate only missing/fallback in RU/UK
-  const ruRes = await translateAndPatch("Russian", ruPath, ruText, keys)
-  const ukRes = await translateAndPatch("Ukrainian", ukPath, ukText, keys)
+  const ruRes = await translateAndPatch("Russian", ruText, keys)
+  const ukRes = await translateAndPatch("Ukrainian", ukText, keys)
 
-  // optional: normalize badge label value if present
+  // normalize badge label
   const badgeKey = "Real experiences from beta users"
   enText = setProp(enText, badgeKey, "Real experiences from users")
   ruRes.nextText = setProp(ruRes.nextText, badgeKey, "Реальный опыт пользователей")
   ukRes.nextText = setProp(ukRes.nextText, badgeKey, "Реальний досвід користувачів")
 
-  // write files
   write(enPath, enText)
   write(ruPath, ruRes.nextText)
   write(ukPath, ukRes.nextText)
 
-  console.log(`[done] i18n fixed: EN add=${enAdded}, RU translated=${ruRes.translated} (inserted=${ruRes.inserted}), UK translated=${ukRes.translated} (inserted=${ukRes.inserted})`)
+  console.log(
+    `[done] i18n fixed: keys=${keys.length}, EN add=${enAdded}, RU translated=${ruRes.translated} (inserted=${ruRes.inserted}), UK translated=${ukRes.translated} (inserted=${ukRes.inserted})`,
+  )
 }
 
 main().catch((e) => {
