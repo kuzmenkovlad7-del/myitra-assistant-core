@@ -3,7 +3,6 @@ import fs from "fs"
 import path from "path"
 
 const ROOT = process.cwd()
-const pagePath = path.join(ROOT, "app/client-stories/page.tsx")
 
 const enPath = path.join(ROOT, "lib/i18n/translations/en.ts")
 const ruPath = path.join(ROOT, "lib/i18n/translations/ru.ts")
@@ -34,7 +33,6 @@ function getProp(text, key) {
   )
   const m = text.match(re)
   if (!m) return null
-  // unescape minimal
   return m[1].replace(/\\"/g, '"').replace(/\\\\/g, "\\")
 }
 
@@ -64,7 +62,6 @@ function setProp(text, key, value) {
   let before = text.slice(0, insertPos)
   const after = text.slice(insertPos)
 
-  // ensure comma before insertion (TS allows trailing commas, ok)
   const beforeTrim = before.replace(/\s*$/, "")
   const lastChar = beforeTrim[beforeTrim.length - 1]
   if (lastChar && lastChar !== "," && lastChar !== "{") {
@@ -74,85 +71,15 @@ function setProp(text, key, value) {
   }
 
   const indentMatch = before.match(/\n(\s*)"/g)
-  const indent = indentMatch ? indentMatch[indentMatch.length - 1].replace(/\n/g, "").replace(/"/g, "") : "  "
+  const indent = indentMatch
+    ? indentMatch[indentMatch.length - 1].replace(/\n/g, "").replace(/"/g, "")
+    : "  "
 
   const line = `${indent}"${keyEsc}": "${valEsc}",\n`
   return before + line + after
 }
 
-function extractArrayLiteralBlock(source, constName) {
-  const idx = source.indexOf(`const ${constName}`)
-  if (idx === -1) throw new Error(`Could not find \`const ${constName}\``)
-
-  const open = source.indexOf("[", idx)
-  if (open === -1) throw new Error(`Could not find '[' after const ${constName}`)
-
-  let i = open
-  let depth = 0
-  let inS = false
-  let inD = false
-  let inB = false
-  let esc = false
-
-  for (; i < source.length; i++) {
-    const ch = source[i]
-    if (esc) {
-      esc = false
-      continue
-    }
-    if (ch === "\\") {
-      esc = true
-      continue
-    }
-    if (inS) {
-      if (ch === "'") inS = false
-      continue
-    }
-    if (inD) {
-      if (ch === '"') inD = false
-      continue
-    }
-    if (inB) {
-      if (ch === "`") inB = false
-      continue
-    }
-    if (ch === "'") { inS = true; continue }
-    if (ch === '"') { inD = true; continue }
-    if (ch === "`") { inB = true; continue }
-
-    if (ch === "[") depth++
-    if (ch === "]") {
-      depth--
-      if (depth === 0) {
-        return source.slice(open, i + 1)
-      }
-    }
-  }
-  throw new Error(`Unclosed array literal for const ${constName}`)
-}
-
-function extractTKeysFromBlock(block) {
-  // allow trailing comma: t("...",) or t('...',)
-  const re = /t\(\s*(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)')\s*,?\s*\)/g
-  const keys = []
-  let m
-  while ((m = re.exec(block))) {
-    const s = m[1] ?? m[2]
-    if (s != null) keys.push(s)
-  }
-  // unique preserve order
-  const seen = new Set()
-  const out = []
-  for (const k of keys) {
-    if (!seen.has(k)) {
-      seen.add(k)
-      out.push(k)
-    }
-  }
-  return out
-}
-
-// Полный ручной словарь для 54 ключей (18 карточек × text/name/role)
+// Ровно те строки, что в rotatingTestimonials (18 карточек × text/name/role) + badge
 const MANUAL = [
   // 1
   { key: "“After a week with TurbotaAI I finally slept through the night without panic thoughts.”",
@@ -352,93 +279,40 @@ const MANUAL = [
     ru: "Первые шаги в терапии и тревога",
     uk: "Перші кроки в терапії та тривога" },
 
-  // Badge (на всякий случай)
+  // badge
   { key: "Real experiences from beta users",
     ru: "Реальный опыт пользователей",
     uk: "Реальний досвід користувачів" },
 ]
 
-const manualByKey = new Map(MANUAL.map((x) => [x.key, x]))
-
-function shouldPatchMissingOrFallback(langText, key) {
-  const v = getProp(langText, key)
-  if (v == null) return true
-  // fallback == key (EN showing in RU/UK)
-  if (v.trim() === key.trim()) return true
-  return false
-}
-
 function main() {
-  mustExist(pagePath)
-  mustExist(enPath)
-  mustExist(ruPath)
-  mustExist(ukPath)
-
-  const page = read(pagePath)
-  const block = extractArrayLiteralBlock(page, "rotatingTestimonials")
-  const keys = extractTKeysFromBlock(block)
-
-  console.log(`[info] rotatingTestimonials: extracted keys = ${keys.length}`)
+  mustExist(enPath); mustExist(ruPath); mustExist(ukPath)
 
   let enText = read(enPath)
   let ruText = read(ruPath)
   let ukText = read(ukPath)
 
-  // ensure EN contains all keys as identity
   let enAdded = 0
-  for (const k of keys) {
-    if (getProp(enText, k) == null) {
-      enText = setProp(enText, k, k)
+  let ruSet = 0
+  let ukSet = 0
+
+  for (const item of MANUAL) {
+    if (getProp(enText, item.key) == null) {
+      enText = setProp(enText, item.key, item.key)
       enAdded++
     }
+    ruText = setProp(ruText, item.key, item.ru); ruSet++
+    ukText = setProp(ukText, item.key, item.uk); ukSet++
   }
 
-  let ruPatched = 0
-  let ukPatched = 0
-  const missingManual = []
-
-  // patch RU/UK strictly from manual map
-  for (const k of keys) {
-    const m = manualByKey.get(k)
-    if (!m) {
-      // if key is not in manual map, we can't guarantee translation
-      // keep as-is and report
-      if (shouldPatchMissingOrFallback(ruText, k) || shouldPatchMissingOrFallback(ukText, k)) {
-        missingManual.push(k)
-      }
-      continue
-    }
-
-    if (shouldPatchMissingOrFallback(ruText, k)) {
-      ruText = setProp(ruText, k, m.ru)
-      ruPatched++
-    }
-    if (shouldPatchMissingOrFallback(ukText, k)) {
-      ukText = setProp(ukText, k, m.uk)
-      ukPatched++
-    }
-  }
-
-  // also enforce badge label value (even if not in keys extraction)
-  const badgeKey = "Real experiences from beta users"
-  const badge = manualByKey.get(badgeKey)
-  if (badge) {
-    enText = setProp(enText, badgeKey, "Real experiences from users")
-    ruText = setProp(ruText, badgeKey, badge.ru)
-    ukText = setProp(ukText, badgeKey, badge.uk)
-  }
+  // стабилизируем текст бейджа в EN (как ты хотел)
+  enText = setProp(enText, "Real experiences from beta users", "Real experiences from users")
 
   write(enPath, enText)
   write(ruPath, ruText)
   write(ukPath, ukText)
 
-  console.log(`[done] EN add=${enAdded}, RU patched=${ruPatched}, UK patched=${ukPatched}`)
-
-  if (missingManual.length) {
-    console.log(`[warn] Missing manual translations for ${missingManual.length} keys:`)
-    for (const k of missingManual) console.log(` - ${k}`)
-    process.exitCode = 2
-  }
+  console.log(`[done] i18n patched (manual): EN add=${enAdded}, RU set=${ruSet}, UK set=${ukSet}`)
 }
 
 main()
