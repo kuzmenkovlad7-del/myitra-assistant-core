@@ -1,11 +1,4 @@
-// @ts-nocheck
-// lib/i18n/translations/uk.ts
-import { en } from "./en"
-
 export const uk: Record<string, string> = {
-  // Базово беремо всі ключі з en, щоб нічого не ламалося
-  ...en,
-
   // ─────────────────────
   // Навігація і меню
   // ─────────────────────
@@ -388,7 +381,6 @@ export const uk: Record<string, string> = {
   "User Responsibilities": "Відповідальність користувача",
   "Limitation of Liability": "Обмеження відповідальності",
   "Changes to Terms": "Зміни умов",
-  Eligibility: "Право користування сервісом",
   "Prohibited Activities": "Заборонені дії",
   "Intellectual Property": "Інтелектуальна власність",
   "Payment and Billing": "Оплата та білінг",
@@ -401,7 +393,6 @@ export const uk: Record<string, string> = {
   Severability: "Подільність положень",
   "Contact Information": "Контактна інформація",
   "Last Updated": "Оновлено",
-  "Last Updated: November 2025": "Оновлено: листопад 2025 року",
 
   // ─────────────────────
   // About / Про продукт
@@ -517,18 +508,13 @@ export const uk: Record<string, string> = {
   "Select the AI psychologist you'd like to speak with during your video call.":
     "Оберіть AI-психолога, з яким хочете поспілкуватися під час відеодзвінка.",
   "Video call language:": "Мова відеодзвінка:",
-  Ukrainian: "Українська",
   "All characters use Google TTS for authentic native accent.":
     "Усі персонажі використовують Google TTS для природного, автентичного акценту.",
-  "Clinical psychologist specializing in anxiety, depression, and workplace stress management":
-    "Клінічний психолог, що спеціалізується на тривозі, депресії та управлінні стресом на роботі.",
   Selected: "Обрано",
   "Start Video Call": "Почати відеодзвінок",
   "Video session in Ukrainian": "Відеосесія українською",
   "AI will understand and respond in this language with native accent":
     "ШІ зрозуміє і відповість на обраній мові",
-  "AI will understand and respond in this language with voice and text.": "AI розумітиме та відповідатиме цією мовою голосом і текстом.",
-  "Video session in {{language}}": "Відеосесія мовою: {{language}}",
   "Video session in Russian": "Відеосесія російською",
   "Video session in English": "Відеосесія англійською",
 
@@ -601,8 +587,6 @@ export const uk: Record<string, string> = {
   "Refund conditions (if available) will be described in a separate section of the pricing page or in our refund policy. Please review these terms carefully before making a payment.":
     "Умови повернення коштів (якщо вони передбачені) будуть описані в окремому розділі сторінки тарифу або в нашій політиці повернення. Будь ласка, уважно ознайомтеся з ними перед оплатою.",
 
-  "The TurbotaAI Service is provided \"as is\" without any express or implied warranties regarding its accuracy, completeness or fitness for your particular purposes. We aim to keep the Service stable but do not guarantee that it will be available without interruptions or errors.":
-    "Сервіс TurbotaAI надається «як є» без будь-яких прямих або неявних гарантій щодо його точності, повноти чи відповідності вашим конкретним цілям. Ми прагнемо підтримувати стабільну роботу Сервісу, але не гарантуємо, що він буде доступний безперервно та без помилок.",
 
   "TurbotaAI is not an emergency service and does not replace consultations with a doctor, psychiatrist or other licensed healthcare professional. If you are in danger or may harm yourself or others, you must immediately contact emergency services or a human specialist.":
     "TurbotaAI не є екстреною службою та не замінює консультацію лікаря, психіатра або іншого ліцензованого фахівця в галузі охорони здоров'я. Якщо ви в небезпеці або можете завдати шкоди собі чи іншим, негайно зверніться до служб екстреної допомоги або до живого спеціаліста.",
@@ -753,10 +737,6 @@ export const uk: Record<string, string> = {
   // ─────────────────────
   // Додаткові переклади для аватарів, статусів і кнопок
   // ─────────────────────
-  "Senior psychologist specializing in cognitive behavioral therapy with 15+ years of experience":
-    "Старший психолог, що спеціалізується на когнітивно-поведінковій терапії, з досвідом понад 15 років.",
-  "Psychotherapist specializing in emotional regulation, trauma recovery, and relationship counseling":
-    "Психотерапевт, що спеціалізується на емоційній регуляції, відновленні після травм та роботі зі стосунками.",
   Select: "Обрати",
 
   // Voice modal – тексти на першому екрані
@@ -909,4 +889,14 @@ export const uk: Record<string, string> = {
   "Microphone access is not supported in this browser. Please use the latest version of Chrome, Edge or Safari.": "Доступ до мікрофона не підтримується в цьому браузері. Використовуйте останню версію Chrome, Edge або Safari.",
   "Microphone access is not available in this environment. Please open the assistant in a regular browser window.": "Доступ до мікрофона недоступний у цьому середовищі. Відкрийте асистента у звичайному вікні браузера.",
   "Speech recognition is disabled or not available on this device. Please enable speech recognition in the system settings or use another browser.": "Сервіс розпізнавання мовлення вимкнено або недоступний на цьому пристрої. Увімкніть розпізнавання мовлення в системних налаштуваннях або скористайтеся іншим браузером.",
+  "AI will understand and respond in this language with voice and text.": "AI розумітиме та відповідатиме цією мовою голосом і текстом.",
+  "Video session in {{language}}": "Відеосесія мовою: {{language}}",
+  "Video call language": "Мова відеодзвінка",
+  "English": "Англійська",
+  "Russian": "Російська",
+  "Ukrainian": "Українська",
+  "Senior psychologist specializing in cognitive behavioral therapy with 15+ years of experience": "Старший психолог, спеціаліст з когнітивно-поведінкової терапії (15+ років досвіду)",
+  "Clinical psychologist specializing in anxiety, depression, and workplace stress management": "Клінічний психолог: тривожність, депресія та керування стресом на роботі",
+  "Psychotherapist specializing in emotional regulation, trauma recovery, and relationship counseling": "Психотерапевт: емоційна регуляція, відновлення після травми та консультування стосунків",
+
 }

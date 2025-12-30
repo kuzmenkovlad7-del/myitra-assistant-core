@@ -1,11 +1,4 @@
-// @ts-nocheck
-// lib/i18n/translations/ru.ts
-import { en } from "./en"
-
 export const ru: Record<string, string> = {
-  // Базово берём все ключи из en, чтобы ничего не падало
-  ...en,
-
   // ─────────────────────
   // Навигация и меню
   // ─────────────────────
@@ -388,7 +381,6 @@ export const ru: Record<string, string> = {
   "User Responsibilities": "Ответственность пользователя",
   "Limitation of Liability": "Ограничение ответственности",
   "Changes to Terms": "Изменение условий",
-  Eligibility: "Право использования сервиса",
   "Prohibited Activities": "Запрещённые действия",
   "Intellectual Property": "Интеллектуальная собственность",
   "Payment and Billing": "Оплата и биллинг",
@@ -516,18 +508,13 @@ export const ru: Record<string, string> = {
   "Select the AI psychologist you'd like to speak with during your video call.":
     "Выберите AI-психолога, с которым хотите поговорить во время видеозвонка.",
   "Video call language:": "Язык видеозвонка:",
-  Ukrainian: "Украинский",
   "All characters use Google TTS for authentic native accent.":
     "Все персонажи используют Google TTS для естественного, аутентичного акцента.",
-  "Clinical psychologist specializing in anxiety, depression, and workplace stress management":
-    "Клинический психолог, специализирующийся на тревоге, депрессии и управлении стрессом на работе",
   Selected: "Выбрано",
   "Start Video Call": "Начать видеозвонок",
   "Video session in Ukrainian": "Видеосессия на украинском",
   "AI will understand and respond in this language with native accent":
     "ИИ поймёт и ответит на выбранном языке",
-  "AI will understand and respond in this language with voice and text.": "AI будет понимать и отвечать на этом языке голосом и текстом.",
-  "Video session in {{language}}": "Видеосессия на языке: {{language}}",
   "Video session in Russian": "Видеосессия на русском",
   "Video session in English": "Видеосессия на английском",
 
@@ -597,8 +584,6 @@ export const ru: Record<string, string> = {
   "Refund conditions (if available) will be described in a separate section of the pricing page or in our refund policy. Please review these terms carefully before making a payment.":
     "Условия возврата средств (если они предусмотрены) будут описаны в отдельном разделе страницы тарифа или в нашей политике возвратов. Пожалуйста, внимательно ознакомьтесь с ними перед оплатой.",
 
-  "The TurbotaAI Service is provided \"as is\" without any express or implied warranties regarding its accuracy, completeness or fitness for your particular purposes. We aim to keep the Service stable but do not guarantee that it will be available without interruptions or errors.":
-    "Сервис TurbotaAI предоставляется «как есть» без каких-либо прямых или подразумеваемых гарантий в части его точности, полноты или соответствия вашим конкретным целям. Мы стремимся поддерживать стабильную работу Сервиса, но не гарантируем, что он будет доступен непрерывно и без ошибок.",
 
   "TurbotaAI is not an emergency service and does not replace consultations with a doctor, psychiatrist or other licensed healthcare professional. If you are in danger or may harm yourself or others, you must immediately contact emergency services or a human specialist.":
     "TurbotaAI не является экстренной службой и не заменяет консультацию врача, психиатра или другого лицензированного специалиста в области здравоохранения. Если вы в опасности или можете причинить вред себе или другим, немедленно обратитесь в экстренные службы или к живому специалисту.",
@@ -749,10 +734,6 @@ export const ru: Record<string, string> = {
   // ─────────────────────
   // Дополнительные переводы для аватаров, статусов и кнопок
   // ─────────────────────
-  "Senior psychologist specializing in cognitive behavioral therapy with 15+ years of experience":
-    "Старший психолог, специализирующийся на когнитивно-поведенческой терапии, с опытом более 15 лет.",
-  "Psychotherapist specializing in emotional regulation, trauma recovery, and relationship counseling":
-    "Психотерапевт, специализирующийся на эмоциональной регуляции, восстановлении после травм и работе с отношениями.",
   Select: "Выбрать",
 
   // Voice modal – тексты на первом экране
@@ -909,4 +890,14 @@ export const ru: Record<string, string> = {
   "Microphone access is not supported in this browser. Please use the latest version of Chrome, Edge or Safari.": "Доступ к микрофону не поддерживается в этом браузере. Используйте последнюю версию Chrome, Edge или Safari.",
   "Microphone access is not available in this environment. Please open the assistant in a regular browser window.": "Доступ к микрофону недоступен в этом окружении. Откройте ассистента в обычном окне браузера.",
   "Speech recognition is disabled or not available on this device. Please enable speech recognition in the system settings or use another browser.": "Сервис распознавания речи отключён или недоступен на этом устройстве. Включите распознавание речи в системных настройках или используйте другой браузер.",
+  "AI will understand and respond in this language with voice and text.": "AI будет понимать и отвечать на этом языке голосом и текстом.",
+  "Video session in {{language}}": "Видеосессия на языке: {{language}}",
+  "Video call language": "Язык видеозвонка",
+  "English": "Английский",
+  "Russian": "Русский",
+  "Ukrainian": "Украинский",
+  "Senior psychologist specializing in cognitive behavioral therapy with 15+ years of experience": "Старший психолог, специалист по когнитивно-поведенческой терапии (15+ лет опыта)",
+  "Clinical psychologist specializing in anxiety, depression, and workplace stress management": "Клинический психолог: тревожность, депрессия и управление стрессом на работе",
+  "Psychotherapist specializing in emotional regulation, trauma recovery, and relationship counseling": "Психотерапевт: эмоциональная регуляция, восстановление после травмы и консультации по отношениям",
+
 }
