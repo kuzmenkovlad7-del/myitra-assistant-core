@@ -30,98 +30,19 @@ function extFromMime(mime: string): string {
   return "webm"
 }
 
-type WhisperSegment = {
-  id?: number
-  start?: number
-  end?: number
-  text?: string
-  avg_logprob?: number
-  compression_ratio?: number
-  no_speech_prob?: number
-}
-
-type WhisperVerbose = {
-  text?: string
-  language?: string
-  segments?: WhisperSegment[]
-}
-
-function shouldDropByConfidence(verbose: WhisperVerbose): { drop: boolean; reason: string; metrics?: any } {
-  const segs = Array.isArray(verbose?.segments) ? verbose.segments : []
-  if (!segs.length) return { drop: true, reason: "no_segments" }
-
-  let nspSum = 0
-  let nspN = 0
-  let logSum = 0
-  let logN = 0
-  let compSum = 0
-  let compN = 0
-  let speechy = 0
-
-  for (const s of segs) {
-    if (typeof s.no_speech_prob === "number") {
-      nspSum += s.no_speech_prob
-      nspN++
-      if (s.no_speech_prob < 0.55) speechy++
-    }
-    if (typeof s.avg_logprob === "number") {
-      logSum += s.avg_logprob
-      logN++
-    }
-    if (typeof s.compression_ratio === "number") {
-      compSum += s.compression_ratio
-      compN++
-    }
-  }
-
-  const avgNoSpeech = nspN ? nspSum / nspN : null
-  const avgLogprob = logN ? logSum / logN : null
-  const avgComp = compN ? compSum / compN : null
-
-  // Основной критерий: все сегменты “как будто без речи”
-  if (nspN && speechy === 0) {
-    return { drop: true, reason: "all_no_speech", metrics: { avgNoSpeech, avgLogprob, avgComp } }
-  }
-
-  // Жёсткий no-speech
-  if (typeof avgNoSpeech === "number" && avgNoSpeech > 0.75) {
-    return { drop: true, reason: "high_no_speech_prob", metrics: { avgNoSpeech, avgLogprob, avgComp } }
-  }
-
-  // Whisper-порог: no_speech_prob + низкая уверенность
-  if (
-    typeof avgNoSpeech === "number" &&
-    typeof avgLogprob === "number" &&
-    avgNoSpeech > 0.6 &&
-    avgLogprob < -1.0
-  ) {
-    return { drop: true, reason: "no_speech+low_logprob", metrics: { avgNoSpeech, avgLogprob, avgComp } }
-  }
-
-  // “галлюцинации” часто имеют высокий compression_ratio + низкий logprob
-  if (
-    typeof avgComp === "number" &&
-    typeof avgLogprob === "number" &&
-    avgComp > 2.4 &&
-    avgLogprob < -1.0
-  ) {
-    return { drop: true, reason: "high_compression+low_logprob", metrics: { avgNoSpeech, avgLogprob, avgComp } }
-  }
-
-  return { drop: false, reason: "ok", metrics: { avgNoSpeech, avgLogprob, avgComp, speechy } }
-}
-
-function shouldDropAsGarbageText(text: string): boolean {
-  const t = (text || "")
+function normalizeTextLite(s: string): string {
+  return (s || "")
     .toLowerCase()
     .replace(/\s+/g, " ")
     .replace(/[“”"«»]/g, '"')
     .trim()
+}
 
+function shouldDropAsGarbage(text: string): boolean {
+  const t = normalizeTextLite(text)
   if (!t) return true
   if (t.length <= 1) return true
 
-  // минимальный набор “очевидного мусора” (но основное — confidence фильтр)
   const patterns: RegExp[] = [
     /^(thank(s| you).*)$/i,
     /^thanks for (watching|listening).*$/i,
@@ -132,9 +53,51 @@ function shouldDropAsGarbageText(text: string): boolean {
     /постав(ьте|те) лайк/i,
     /подпис(ывайтесь|уйтесь)/i,
     /see you next time/i,
+
+    // “экран” мусор/эхо (ук/ру)
+    /зверн(іть|ить)\s+уваг(у|а)\s+на\s+екран/i,
+    /диві(т|тЬ)ся\s+на\s+екран/i,
+    /обрат(и|ите)\s+вниман(ие|ия)\s+на\s+экран/i,
+
+    /ви маєте можливість.*перейти на відео/i,
+    /перейти на відео.*дяку(ю|ємо)/i,
+    /яке ви бачите на екрані/i,
+    /перейти на видео.*спасибо/i,
+    /которое вы видите на экране/i,
+    /switch to (the )?video/i,
+    /that you see on (the )?screen/i,
   ]
 
   return patterns.some((re) => re.test(t))
+}
+
+function confidenceLooksLikeNoSpeech(verbose: any): boolean {
+  const segs = verbose?.segments
+  if (!Array.isArray(segs) || segs.length === 0) return false
+
+  let totalDur = 0
+  let weightedNoSpeech = 0
+
+  for (const s of segs) {
+    const a = Number(s?.start)
+    const b = Number(s?.end)
+    const dur = Number.isFinite(a) && Number.isFinite(b) && b > a ? b - a : 0.3
+    const p = Number(s?.no_speech_prob)
+    const noSpeech = Number.isFinite(p) ? p : 0
+    totalDur += dur
+    weightedNoSpeech += noSpeech * dur
+  }
+
+  const avg = totalDur > 0 ? weightedNoSpeech / totalDur : 0
+  const text = normalizeTextLite(verbose?.text || "")
+
+  // если модель сама считает “no_speech” высокой, а текста мало — это почти всегда галлюцинация
+  if (avg >= 0.6 && text.length <= 30) return true
+
+  // если avg очень высокий — режем независимо (в т.ч. для коротких мусорных фраз)
+  if (avg >= 0.8) return true
+
+  return false
 }
 
 async function whisperTranscribe(args: { bytes: Uint8Array; mime: string; lang: Lang3 }) {
@@ -149,13 +112,13 @@ async function whisperTranscribe(args: { bytes: Uint8Array; mime: string; lang: 
 
   form.append("file", blob, filename)
   form.append("model", OPENAI_STT_MODEL)
+
+  // язык даём как хинт (ваш UI язык)
   form.append("language", lang)
+
   form.append("response_format", "verbose_json")
   form.append("temperature", "0")
-  form.append(
-    "prompt",
-    "Transcribe speech verbatim. If there is no clear speech, return an empty transcription.",
-  )
+  form.append("prompt", "Transcribe speech verbatim. If there is no clear speech, return an empty transcription.")
 
   const resp = await fetch("https://api.openai.com/v1/audio/transcriptions", {
     method: "POST",
@@ -223,34 +186,26 @@ export async function POST(request: Request) {
       })
     }
 
-    const result = (await whisperTranscribe({ bytes, mime, lang })) as WhisperVerbose
-    const text = (result?.text || "").trim()
+    const result = await whisperTranscribe({ bytes, mime, lang })
 
-    if (!text) {
+    // no-speech / confidence фильтр по verbose_json сегментам
+    if (confidenceLooksLikeNoSpeech(result)) {
       return NextResponse.json({
         success: true,
         text: "",
         lang,
-        debug: { dropped: true, reason: "empty_text" },
+        debug: { dropped: true, reason: "no_speech_prob" },
       })
     }
 
-    const conf = shouldDropByConfidence(result)
-    if (conf.drop) {
-      return NextResponse.json({
-        success: true,
-        text: "",
-        lang,
-        debug: { dropped: true, reason: conf.reason, metrics: conf.metrics },
-      })
-    }
+    const text = (result?.text || "").toString().trim()
 
-    if (shouldDropAsGarbageText(text)) {
+    if (!text || shouldDropAsGarbage(text)) {
       return NextResponse.json({
         success: true,
         text: "",
         lang,
-        debug: { dropped: true, reason: "garbage_text" },
+        debug: { dropped: true, reason: "garbage_or_empty" },
       })
     }
 

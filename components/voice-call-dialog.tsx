@@ -80,8 +80,6 @@ function normalizeUtterance(s: string): string {
 function collapseLeadingWordRepeats(text: string): string {
   let t = (text || "").trim()
   if (!t) return t
-  // убираем повторяющееся первое слово сколько угодно раз
-  // "Вітаю Вітаю Вітаю як..." -> "Вітаю як..."
   for (let i = 0; i < 6; i++) {
     const parts = t.split(/\s+/)
     if (parts.length < 2) break
@@ -102,8 +100,6 @@ function stripLeadingEchoOfPrev(delta: string, prevSentNorm: string, prevSentTs:
   const dt = Date.now() - (prevSentTs || 0)
   if (!prevSentNorm || dt > 15000) return t
 
-  // если прошлое сообщение было коротким (1-2 слова) — чаще всего это приветствие,
-  // и если оно “эхом” попало в начало нового — убираем.
   const prevWords = prevSentNorm.split(" ").filter(Boolean)
   if (prevWords.length === 0 || prevWords.length > 2) return t
 
@@ -117,58 +113,47 @@ function stripLeadingEchoOfPrev(delta: string, prevSentNorm: string, prevSentTs:
   return t
 }
 
-function diffTranscript(prev: string, full: string): string {
-  const normalize = (s: string) =>
-    s
-      .toLowerCase()
-      .replace(/[.,!?;:«»"“”‚‘’…]/g, "")
-      .replace(/\s+/g, " ")
-      .trim()
-
-  full = (full || "").trim()
-  if (!full) return ""
-  if (!prev) return full
-
-  const prevNorm = normalize(prev)
-  const fullNorm = normalize(full)
-
-  if (!prevNorm || !fullNorm) return full
-
-  const prevWords = prevNorm.split(" ")
-  const fullWords = fullNorm.split(" ")
-
-  const maxCommon = Math.min(prevWords.length, fullWords.length)
-  let common = 0
-  while (common < maxCommon && prevWords[common] === fullWords[common]) common++
-
-  if (common === 0) return full
-
-  const rawTokens = full.split(/\s+/)
-  if (common >= rawTokens.length) return ""
-  return rawTokens.slice(common).join(" ").trim()
-}
-
-/**
- * Лёгкий локальный фильтр. НЕ делаем “список слов”.
- * Основной анти-мусор — на сервере (/api/stt) по verbose_json no_speech_prob/logprob.
- */
 function isMostlyGarbage(text: string): boolean {
   const t = (text || "").trim()
   if (!t) return true
-
   const norm = normalizeUtterance(t)
   if (!norm) return true
-  if (norm.length < 2) return true
 
-  const toks = norm.split(" ").filter(Boolean)
+  if (norm.length < 3) return true
+
+  const toks = norm.split(" ")
   if (toks.length === 1 && toks[0].length <= 2) return true
 
-  // мало букв = часто шум/артефакты
   const letters = (t.match(/[A-Za-zА-Яа-яЇїІіЄєҐґ]/g) || []).length
   const total = t.length
-  if (total > 0 && letters / total < 0.35) return true
+  if (total > 0 && letters / total < 0.45) return true
 
-  // односложные “поддакивания” — не отправляем в агента
+  // локальный “анти-мусор” (на всякий)
+  const bannedSub = [
+    "обратите внимание",
+    "зверніть увагу",
+    "звернить увагу",
+    "дивіться на екран",
+    "дивиться на екран",
+    "подпиш",
+    "подписывай",
+    "лайк",
+    "ставьте",
+    "на канал",
+    "в описании",
+    "ссылка",
+    "спонсор",
+    "реклама",
+    "промокод",
+    "фотография",
+    "скриншот",
+    "нажмите",
+    "кнопк",
+  ]
+  for (const b of bannedSub) {
+    if (norm.includes(b)) return true
+  }
+
   const bannedExact = new Set([
     "угу",
     "ага",
@@ -186,13 +171,16 @@ function isMostlyGarbage(text: string): boolean {
   ])
   if (toks.length === 1 && bannedExact.has(toks[0])) return true
 
-  // одинаковое слово много раз подряд
-  if (toks.length >= 4) {
-    const uniq = new Set(toks)
-    if (uniq.size === 1) return true
-  }
-
   return false
+}
+
+function base64ToObjectUrl(b64: string, mime = "audio/mpeg"): string {
+  const bin = atob(b64)
+  const len = bin.length
+  const bytes = new Uint8Array(len)
+  for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i)
+  const blob = new Blob([bytes], { type: mime })
+  return URL.createObjectURL(blob)
 }
 
 export default function VoiceCallDialog({
@@ -225,17 +213,19 @@ export default function VoiceCallDialog({
   const rafRef = useRef<number | null>(null)
 
   const keepAudioElRef = useRef<HTMLAudioElement | null>(null)
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null)
 
   const audioChunksRef = useRef<Blob[]>([])
-  const sentIdxRef = useRef(0)
+  const utterStartIdxRef = useRef<number>(1)
+
   const pendingSttReasonRef = useRef<string | null>(null)
   const pendingSttTimerRef = useRef<number | null>(null)
+  const pendingSttStartIdxRef = useRef<number | null>(null)
 
   const MIN_UTTERANCE_MS = 450
-  const MIN_VOICED_MS = 220 // игнорим “импульсы” (клавиатура/клик), чтобы тишина не шла в STT
   const isSttBusyRef = useRef(false)
 
-  const lastTranscriptRef = useRef("") // ВАЖНО: не сбрасывать на TTS — иначе будут “эхо-слова”
+  // больше не “диффим” по предыдущему fullText — отправляем по фразам
   const lastUserSentNormRef = useRef("")
   const lastUserSentTsRef = useRef(0)
 
@@ -248,7 +238,6 @@ export default function VoiceCallDialog({
   const ttsCooldownUntilRef = useRef(0)
 
   const scrollRef = useRef<HTMLDivElement | null>(null)
-  const ttsAudioRef = useRef<HTMLAudioElement | null>(null)
 
   const debugParams = useMemo(() => {
     if (typeof window === "undefined") return { debug: false }
@@ -325,15 +314,7 @@ export default function VoiceCallDialog({
     voice: false,
     voiceUntilTs: 0,
     utteranceStartTs: 0,
-    voicedMs: 0,
-    lastTickTs: 0,
   })
-
-  function dropBufferedAudioBody() {
-    const hdr = audioChunksRef.current?.[0]
-    audioChunksRef.current = hdr ? [hdr] : []
-    sentIdxRef.current = hdr ? 1 : 0
-  }
 
   function stopRaf() {
     if (rafRef.current) {
@@ -449,27 +430,29 @@ export default function VoiceCallDialog({
     return false
   }
 
-  async function maybeSendStt(reason: string) {
+  async function maybeSendStt(reason: string, startIdxOverride?: number) {
     if (!isCallActiveRef.current) return
     if (isAiSpeakingRef.current) return
     if (Date.now() < ttsCooldownUntilRef.current) return
     if (isMicMutedRef.current) return
-    if (ttsAudioRef.current && !ttsAudioRef.current.paused) return
-
-    const chunks = audioChunksRef.current
-    if (!chunks.length) return
-
-    const header = chunks[0]
-    const sentIdx = sentIdxRef.current
-    const body = chunks.slice(Math.max(1, sentIdx))
-    if (!header || body.length === 0) return
-
-    const roughSize = body.reduce((acc, b) => acc + (b?.size || 0), 0)
-    if (roughSize < 7000) return
     if (isSttBusyRef.current) return
 
+    const chunks = audioChunksRef.current
+    if (!chunks || chunks.length < 2) return
+
+    const header = chunks[0]
+    if (!header) return
+
+    const startIdx = Math.max(1, startIdxOverride ?? utterStartIdxRef.current ?? 1)
+    const body = chunks.slice(startIdx)
+    if (!body.length) return
+
+    const roughSize = body.reduce((acc, b) => acc + (b?.size || 0), 0)
+    // ниже порог — чтобы короткие фразы не копились минутами
+    if (roughSize < 1800) return
+
     const blob = new Blob([header, ...body], { type: header.type || body[0]?.type || "audio/webm" })
-    if (blob.size < 6000) return
+    if (blob.size < 1600) return
 
     try {
       isSttBusyRef.current = true
@@ -497,21 +480,20 @@ export default function VoiceCallDialog({
         return
       }
 
-      // важное: после любого успешного ответа STT — “срезаем хвост”
-      // (даже если text == "" — сервер уже решил что там мусор/тишина)
-      dropBufferedAudioBody()
+      // после успешного STT — чистим буфер до “header only”, чтобы следующая фраза не склеивалась
+      const keepHeader = audioChunksRef.current?.[0]
+      audioChunksRef.current = keepHeader ? [keepHeader] : []
+      utterStartIdxRef.current = keepHeader ? 1 : 0
 
       const fullText = (data.text || "").toString().trim()
       if (!fullText) return
 
-      const prev = lastTranscriptRef.current
-      let delta = diffTranscript(prev, fullText)
-      lastTranscriptRef.current = fullText
+      let delta = fullText
 
-      // 1) если STT “эхом” добавило первое слово прошлой короткой фразы — режем
+      // эхом в начале может прилететь слово предыдущей короткой фразы — режем
       delta = stripLeadingEchoOfPrev(delta, lastUserSentNormRef.current, lastUserSentTsRef.current)
 
-      // 2) схлопываем повторы первого слова ("Вітаю Вітаю ...")
+      // схлопываем повторы первого слова ("Вітаю Вітаю ...")
       delta = collapseLeadingWordRepeats(delta).trim()
 
       if (!delta) return
@@ -522,7 +504,7 @@ export default function VoiceCallDialog({
       lastUserSentTsRef.current = Date.now()
 
       if (debugParams.debug) {
-        console.log("[STT]", { reason, prev, fullText, delta })
+        console.log("[STT]", { reason, startIdx, fullText, delta })
       }
 
       const userMsg: VoiceMessage = {
@@ -540,15 +522,16 @@ export default function VoiceCallDialog({
     }
   }
 
-  function flushAndSendStt(reason: string) {
+  function flushAndSendStt(reason: string, startIdx?: number) {
     const rec: any = mediaRecorderRef.current
     if (!rec || rec.state !== "recording" || typeof rec.requestData !== "function") {
-      void maybeSendStt(reason)
+      void maybeSendStt(reason, startIdx)
       return
     }
 
     if (pendingSttReasonRef.current) return
     pendingSttReasonRef.current = reason
+    pendingSttStartIdxRef.current = typeof startIdx === "number" ? startIdx : utterStartIdxRef.current
 
     try {
       rec.requestData()
@@ -558,10 +541,12 @@ export default function VoiceCallDialog({
     pendingSttTimerRef.current = window.setTimeout(() => {
       if (!pendingSttReasonRef.current) return
       const r = pendingSttReasonRef.current
+      const si = pendingSttStartIdxRef.current ?? utterStartIdxRef.current
       pendingSttReasonRef.current = null
+      pendingSttStartIdxRef.current = null
       pendingSttTimerRef.current = null
-      void maybeSendStt(r)
-    }, 250)
+      void maybeSendStt(r, si)
+    }, 220)
   }
 
   function pickMime(): string | null {
@@ -591,29 +576,10 @@ export default function VoiceCallDialog({
     const data = new Uint8Array(analyser.fftSize)
 
     const baseThr = isMobile ? 0.012 : 0.008
-    const hangoverMs = 1800
-    const maxUtteranceMs = 20000
+    const hangoverMs = 2200 // чуть больше, чтобы не резать фразы на коротких паузах
+    const maxUtteranceMs = 25000
 
     const tick = () => {
-      const now = Date.now()
-      const st = vad.current
-      const dt = st.lastTickTs ? Math.min(80, Math.max(0, now - st.lastTickTs)) : 16
-      st.lastTickTs = now
-
-      // Во время TTS/паузы микрофона — гасим VAD состояние, чтобы не “ловить” спикер/эхо
-      if (
-        isAiSpeakingRef.current ||
-        Date.now() < ttsCooldownUntilRef.current ||
-        isMicMutedRef.current
-      ) {
-        st.voice = false
-        st.voiceUntilTs = 0
-        st.utteranceStartTs = 0
-        st.voicedMs = 0
-        rafRef.current = requestAnimationFrame(tick)
-        return
-      }
-
       analyser.getByteTimeDomainData(data)
 
       let sum = 0
@@ -623,49 +589,35 @@ export default function VoiceCallDialog({
       }
       const rms = Math.sqrt(sum / data.length)
 
+      const now = Date.now()
+      const st = vad.current
+
       if (!st.voice) st.noiseFloor = st.noiseFloor * 0.995 + rms * 0.005
       const thr = Math.max(baseThr, st.noiseFloor * 3.6)
       const voiceNow = rms > thr
 
       if (voiceNow) {
         st.voiceUntilTs = now + hangoverMs
-        st.voicedMs += dt
-
         if (!st.voice) {
           st.voice = true
           st.utteranceStartTs = now
-          st.voicedMs = 0
+          // важное: стартовый индекс чанков для текущей фразы
+          utterStartIdxRef.current = Math.max(1, audioChunksRef.current.length - 1)
         }
       } else {
         if (st.voice && now > st.voiceUntilTs) {
           const voiceMs = st.utteranceStartTs ? now - st.utteranceStartTs : 0
-          const voicedMs = st.voicedMs || 0
-
           st.voice = false
           st.utteranceStartTs = 0
-          st.voicedMs = 0
-
-          // фильтр импульсного шума: не отправляем в STT “клавиатуру/клики/тишину”
-          if (voiceMs >= MIN_UTTERANCE_MS && voicedMs >= MIN_VOICED_MS) {
-            void flushAndSendStt("vad_end")
-          } else {
-            // чтобы мусор не копился и не улетал “через минуту”
-            dropBufferedAudioBody()
-          }
+          if (voiceMs >= MIN_UTTERANCE_MS) void flushAndSendStt("vad_end", utterStartIdxRef.current)
         }
       }
 
-      // защита от слишком длинной фразы
       if (st.voice && st.utteranceStartTs && now - st.utteranceStartTs > maxUtteranceMs) {
-        const voicedMs = st.voicedMs || 0
         st.utteranceStartTs = now
-        st.voicedMs = 0
-
-        if (voicedMs >= MIN_VOICED_MS) {
-          void flushAndSendStt("max_utt")
-        } else {
-          dropBufferedAudioBody()
-        }
+        void flushAndSendStt("max_utt", utterStartIdxRef.current)
+        // после “max_utt” новый кусок будет уже со свежего индекса
+        utterStartIdxRef.current = Math.max(1, audioChunksRef.current.length - 1)
       }
 
       rafRef.current = requestAnimationFrame(tick)
@@ -680,16 +632,72 @@ export default function VoiceCallDialog({
 
     const langCode = langCodeOverride || computeLangCode()
     const gender = getCurrentGender()
-    let ttsWatchdog: any = null
+
+    let done = false
+    let watchdogId: number | null = null
+    let objectUrl: string | null = null
+
+    const clearWatchdog = () => {
+      if (watchdogId) {
+        try {
+          window.clearTimeout(watchdogId)
+        } catch {}
+        watchdogId = null
+      }
+    }
+
+    const revokeUrl = () => {
+      if (objectUrl) {
+        try {
+          URL.revokeObjectURL(objectUrl)
+        } catch {}
+        objectUrl = null
+      }
+    }
+
+    const finishOnce = () => {
+      if (done) return
+      done = true
+
+      clearWatchdog()
+      // на всякий не ловим TTS хвост в STT
+      ttsCooldownUntilRef.current = Date.now() + 900
+
+      setIsAiSpeaking(false)
+      isAiSpeakingRef.current = false
+
+      revokeUrl()
+
+      const rec = mediaRecorderRef.current
+      if (rec && rec.state === "paused" && isCallActiveRef.current && !isMicMutedRef.current) {
+        window.setTimeout(() => {
+          try {
+            rec.resume()
+          } catch {}
+        }, 260)
+      }
+    }
 
     const begin = () => {
       setIsAiSpeaking(true)
       isAiSpeakingRef.current = true
 
-      ttsCooldownUntilRef.current = Date.now() + 700
+      ttsCooldownUntilRef.current = Date.now() + 900
 
-      // сбрасываем чанки, чтобы не ловить хвост
-      dropBufferedAudioBody()
+      // сбрасываем чанки (оставляем header, если он уже есть), чтобы не ловить хвост в STT
+      const hdr = audioChunksRef.current?.[0]
+      audioChunksRef.current = hdr ? [hdr] : []
+      utterStartIdxRef.current = hdr ? 1 : 0
+
+      // отменяем отложенную отправку STT, если она висит
+      pendingSttReasonRef.current = null
+      pendingSttStartIdxRef.current = null
+      if (pendingSttTimerRef.current) {
+        try {
+          window.clearTimeout(pendingSttTimerRef.current)
+        } catch {}
+        pendingSttTimerRef.current = null
+      }
 
       const rec = mediaRecorderRef.current
       if (rec && rec.state === "recording") {
@@ -698,29 +706,18 @@ export default function VoiceCallDialog({
         } catch {}
       }
 
-      if (ttsWatchdog) window.clearTimeout(ttsWatchdog)
-      ttsWatchdog = window.setTimeout(() => {
-        console.warn("[TTS] watchdog fired")
-        finish()
-      }, 20000)
-    }
-
-    const finish = () => {
-      if (ttsWatchdog) window.clearTimeout(ttsWatchdog)
-      ttsWatchdog = null
-
-      ttsCooldownUntilRef.current = Date.now() + 700
-      setIsAiSpeaking(false)
-      isAiSpeakingRef.current = false
-
-      const rec = mediaRecorderRef.current
-      if (rec && rec.state === "paused" && isCallActiveRef.current && !isMicMutedRef.current) {
-        window.setTimeout(() => {
-          try {
-            rec.resume()
-          } catch {}
-        }, 250)
-      }
+      // watchdog по длине текста (больше не “20с в лоб”)
+      const hardTimeoutMs = Math.min(120000, Math.max(30000, cleanText.length * 140))
+      clearWatchdog()
+      watchdogId = window.setTimeout(() => {
+        console.warn("[TTS] watchdog fired (hard timeout)")
+        // если зависло — останавливаем воспроизведение и выходим
+        try {
+          const a = ttsAudioRef.current
+          if (a) a.pause()
+        } catch {}
+        finishOnce()
+      }, hardTimeoutMs)
     }
 
     ;(async () => {
@@ -742,32 +739,51 @@ export default function VoiceCallDialog({
         }
 
         if (!res.ok || !data || data.success === false || !data.audioContent) {
-          finish()
+          finishOnce()
           return
         }
-
-        const url = `data:audio/mp3;base64,${data.audioContent}`
 
         stopTtsAudio()
 
         const a = ttsAudioRef.current ?? new Audio()
         ;(a as any).playsInline = true
         ;(a as any).preload = "auto"
-        a.src = url
         ttsAudioRef.current = a
 
-        a.onended = () => finish()
-        a.onerror = () => finish()
+        // Blob URL стабильнее на iOS, чем data:audio/mp3;base64,...
+        objectUrl = base64ToObjectUrl(data.audioContent, "audio/mpeg")
+        a.src = objectUrl
+
+        a.onended = () => finishOnce()
+        a.onerror = () => finishOnce()
+
+        // если метаданные пришли — можем уточнить watchdog по duration
+        a.onloadedmetadata = () => {
+          try {
+            const dur = Number(a.duration)
+            if (Number.isFinite(dur) && dur > 0) {
+              const ms = Math.min(150000, Math.max(25000, Math.floor(dur * 1000) + 8000))
+              clearWatchdog()
+              watchdogId = window.setTimeout(() => {
+                console.warn("[TTS] watchdog fired (duration)")
+                try {
+                  a.pause()
+                } catch {}
+                finishOnce()
+              }, ms)
+            }
+          } catch {}
+        }
 
         try {
           await a.play()
         } catch (e) {
           console.warn("[TTS] play blocked", e)
-          finish()
+          finishOnce()
         }
       } catch (e) {
         console.error("[TTS] fatal", e)
-        finish()
+        finishOnce()
       }
     })()
   }
@@ -888,9 +904,9 @@ export default function VoiceCallDialog({
       bridgedStreamRef.current = bridged
 
       audioChunksRef.current = []
-      sentIdxRef.current = 1
+      utterStartIdxRef.current = 1
       isSttBusyRef.current = false
-      lastTranscriptRef.current = ""
+
       lastUserSentNormRef.current = ""
       lastUserSentTsRef.current = 0
       lastAssistantSentNormRef.current = ""
@@ -901,8 +917,15 @@ export default function VoiceCallDialog({
         voice: false,
         voiceUntilTs: 0,
         utteranceStartTs: 0,
-        voicedMs: 0,
-        lastTickTs: 0,
+      }
+
+      pendingSttReasonRef.current = null
+      pendingSttStartIdxRef.current = null
+      if (pendingSttTimerRef.current) {
+        try {
+          window.clearTimeout(pendingSttTimerRef.current)
+        } catch {}
+        pendingSttTimerRef.current = null
       }
 
       const mime = pickMime()
@@ -917,6 +940,7 @@ export default function VoiceCallDialog({
       rec.ondataavailable = (ev: BlobEvent) => {
         const b = ev.data
         const size = b?.size || 0
+
         if (size > 0) {
           if (!isAiSpeakingRef.current && !isMicMutedRef.current) {
             audioChunksRef.current.push(b)
@@ -925,12 +949,14 @@ export default function VoiceCallDialog({
 
         const pending = pendingSttReasonRef.current
         if (pending) {
+          const si = pendingSttStartIdxRef.current ?? utterStartIdxRef.current
           pendingSttReasonRef.current = null
+          pendingSttStartIdxRef.current = null
           if (pendingSttTimerRef.current) {
             window.clearTimeout(pendingSttTimerRef.current)
             pendingSttTimerRef.current = null
           }
-          void maybeSendStt(pending)
+          void maybeSendStt(pending, si)
         }
       }
 
@@ -980,6 +1006,15 @@ export default function VoiceCallDialog({
     setIsAiSpeaking(false)
     setNetworkError(null)
 
+    pendingSttReasonRef.current = null
+    pendingSttStartIdxRef.current = null
+    if (pendingSttTimerRef.current) {
+      try {
+        window.clearTimeout(pendingSttTimerRef.current)
+      } catch {}
+      pendingSttTimerRef.current = null
+    }
+
     stopRecorder()
     stopKeepAlive()
     stopAudioGraph()
@@ -987,8 +1022,8 @@ export default function VoiceCallDialog({
     stopTtsAudio()
 
     audioChunksRef.current = []
-    sentIdxRef.current = 0
-    lastTranscriptRef.current = ""
+    utterStartIdxRef.current = 1
+
     lastUserSentNormRef.current = ""
     lastUserSentTsRef.current = 0
     lastAssistantSentNormRef.current = ""
@@ -1023,10 +1058,12 @@ export default function VoiceCallDialog({
       endCall()
       setMessages([])
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
   useEffect(() => {
     return () => endCall()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const statusText = !isCallActive
