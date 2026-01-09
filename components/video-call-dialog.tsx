@@ -151,6 +151,92 @@ function collapseLeadingWordRepeats(text: string): string {
   return t
 }
 
+// --- same anti-repetition as in voice-call-dialog (точечно перенесено) ---
+function splitSentencesKeepPunct(text: string): string[] {
+  const t = (text || "").replace(/\s+/g, " ").trim()
+  if (!t) return []
+  const parts = t.match(/[^.!?]+[.!?]?/g)
+  if (!parts) return [t]
+  return parts.map((p) => p.trim()).filter(Boolean)
+}
+
+function dedupeConsecutive(parts: string[]): string[] {
+  const out: string[] = []
+  let prevNorm = ""
+  for (const raw of parts) {
+    const p = (raw || "").trim()
+    if (!p) continue
+    const n = normalizeUtterance(p)
+    if (!n) continue
+    if (n === prevNorm) continue
+    out.push(p)
+    prevNorm = n
+  }
+  return out
+}
+
+function sanitizeCommaRepeatsInSentence(sentence: string): string {
+  let s = (sentence || "").trim()
+  if (!s) return s
+
+  const endPunct = /[.!?]$/.test(s) ? s.slice(-1) : ""
+  const body = endPunct ? s.slice(0, -1) : s
+
+  const commaCount = (body.match(/,/g) || []).length
+  if (commaCount < 2) return s
+
+  const parts = body.split(/\s*,\s*/g).map((p) => p.trim()).filter(Boolean)
+  if (parts.length < 3) return s
+
+  const deduped = dedupeConsecutive(parts)
+  const joined = deduped.join(", ").trim()
+  return (joined + endPunct).trim()
+}
+
+function sanitizeTextRepetitions(text: string): string {
+  let t = (text || "").trim()
+  if (!t) return t
+
+  const sentences = splitSentencesKeepPunct(t)
+  if (sentences.length >= 2) {
+    t = dedupeConsecutive(sentences).join(" ").trim()
+  }
+
+  const sentences2 = splitSentencesKeepPunct(t).map(sanitizeCommaRepeatsInSentence)
+  t = sentences2.join(" ").replace(/\s+/g, " ").trim()
+
+  const toks = normalizeUtterance(t).split(" ").filter(Boolean)
+  if (toks.length >= 40) {
+    const uniq = new Set(toks).size
+    const ratio = uniq / toks.length
+    if (ratio < 0.35) {
+      const first = splitSentencesKeepPunct(t).slice(0, 2)
+      t = first.join(" ").trim()
+    }
+  }
+
+  return t
+}
+
+function sanitizeUserText(text: string): string {
+  let t = (text || "").trim()
+  if (!t) return t
+  t = collapseLeadingWordRepeats(t)
+  t = sanitizeTextRepetitions(t)
+  return t.trim()
+}
+
+function sanitizeAssistantText(text: string): string {
+  let t = (text || "").trim()
+  if (!t) return t
+  t = collapseLeadingWordRepeats(t)
+  t = sanitizeTextRepetitions(t)
+  const sents = splitSentencesKeepPunct(t)
+  if (sents.length > 5) t = sents.slice(0, 5).join(" ").trim()
+  return t.trim()
+}
+// --- end anti-repetition ---
+
 function stripLeadingEchoOfPrev(delta: string, prevSentNorm: string, prevSentTs: number): string {
   let t = (delta || "").trim()
   if (!t) return t
@@ -409,6 +495,10 @@ export default function VideoCallDialog({
   const lastUserSentNormRef = useRef("")
   const lastUserSentTsRef = useRef(0)
 
+  // анти-дубль ассистента (как в voice)
+  const lastAssistantSentNormRef = useRef("")
+  const lastAssistantSentTsRef = useRef(0)
+
   const ttsCooldownUntilRef = useRef(0)
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null)
   const ttsObjectUrlRef = useRef<string | null>(null)
@@ -418,6 +508,60 @@ export default function VideoCallDialog({
   const maxUtteranceMs = 20000
 
   const startListeningInFlightRef = useRef(false)
+
+  const hasEnhancedVideo =
+    !!selectedCharacter?.idleVideo && !!selectedCharacter?.speakingVideo
+
+  function setAvatarSpeaking(on: boolean) {
+    if (!hasEnhancedVideo) return
+    const idle = idleVideoRef.current
+    const speak = speakingVideoRef.current
+
+    if (!isCallActiveRef.current) {
+      try {
+        idle?.pause()
+        if (idle) idle.currentTime = 0
+      } catch {}
+      try {
+        speak?.pause()
+        if (speak) speak.currentTime = 0
+      } catch {}
+      return
+    }
+
+    if (on) {
+      try {
+        idle?.pause()
+      } catch {}
+      try {
+        if (speak) {
+          speak.currentTime = 0
+          speak.play().catch(() => {})
+        }
+      } catch {}
+    } else {
+      try {
+        if (speak) {
+          speak.pause()
+          speak.currentTime = 0
+        }
+      } catch {}
+      try {
+        idle?.play().catch(() => {})
+      } catch {}
+    }
+  }
+
+  // гарантируем, что speaking-видео играет ТОЛЬКО когда isAiSpeaking=true
+  useEffect(() => {
+    if (!hasEnhancedVideo) return
+    if (!isCallActive) {
+      setAvatarSpeaking(false)
+      return
+    }
+    setAvatarSpeaking(!!isAiSpeaking)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAiSpeaking, isCallActive, selectedCharacter.id, hasEnhancedVideo])
 
   // iOS/Safari: prime audio playback on first user gesture
   useEffect(() => {
@@ -549,6 +693,15 @@ export default function VideoCallDialog({
       const b = last.slice(0, 25)
       if (a && b && a === b) return true
     }
+    return false
+  }
+
+  function shouldDedupAssistant(text: string): boolean {
+    const norm = normalizeUtterance(text)
+    if (!norm) return true
+    const last = lastAssistantSentNormRef.current || ""
+    const dt = Date.now() - (lastAssistantSentTsRef.current || 0)
+    if (last && norm === last && dt < 12000) return true
     return false
   }
 
@@ -801,13 +954,11 @@ export default function VideoCallDialog({
       return
     }
 
-    // уже есть рекордер
     const existing: any = mediaRecorderRef.current
     if (existing && (existing.state === "recording" || existing.state === "paused")) return
 
-    // сброс буфера, но НЕ lastTranscript (он нужен для delta-дедупа в рамках сессии)
     audioChunksRef.current = []
-    sentIdxRef.current = 1 // ждём header + body
+    sentIdxRef.current = 1
     resetVadState()
     setInterimTranscript("")
     setSpeechError(null)
@@ -998,7 +1149,6 @@ export default function VideoCallDialog({
         return
       }
 
-      // чистим буфер: оставляем header, чтобы webm не ломался
       const keep = audioChunksRef.current?.[0]
       audioChunksRef.current = keep ? [keep] : []
       sentIdxRef.current = keep ? 1 : 0
@@ -1014,7 +1164,7 @@ export default function VideoCallDialog({
       lastTranscriptRef.current = fullText
 
       delta = stripLeadingEchoOfPrev(delta, lastUserSentNormRef.current, lastUserSentTsRef.current)
-      delta = collapseLeadingWordRepeats(delta).trim()
+      delta = sanitizeUserText(delta)
 
       if (!delta) {
         setActivityStatus("listening")
@@ -1046,7 +1196,6 @@ export default function VideoCallDialog({
   }
 
   function stopCurrentSpeech() {
-    // stop server audio (keep ttsAudioRef element for iOS unlock)
     const a = currentAudioRef.current
     if (a) {
       try {
@@ -1070,13 +1219,15 @@ export default function VideoCallDialog({
       ttsObjectUrlRef.current = null
     }
 
-    // stop browser speech synthesis
     if (typeof window !== "undefined" && window.speechSynthesis) {
       try {
         window.speechSynthesis.cancel()
       } catch {}
     }
     currentUtteranceRef.current = null
+
+    // на всякий случай выключаем speaking-видео, если звук принудительно оборвали
+    setAvatarSpeaking(false)
   }
 
   function getRefinedVoiceForLanguage(
@@ -1155,7 +1306,7 @@ export default function VideoCallDialog({
     }
   }
 
-  async function speakViaServerTTS(text: string, gender: "male" | "female") {
+  async function speakViaServerTTS(text: string, gender: "male" | "female", hardTimeoutMs = 60000) {
     const ttsGender = gender === "male" ? "MALE" : "FEMALE"
     const langCode = computeLangCode()
 
@@ -1192,6 +1343,7 @@ export default function VideoCallDialog({
         try {
           audio.onended = null
           audio.onerror = null
+          audio.onloadedmetadata = null
         } catch {}
         if (timeoutId) {
           try {
@@ -1208,12 +1360,26 @@ export default function VideoCallDialog({
         resolve()
       }
 
-      timeoutId = setTimeout(() => done(), 60000)
+      timeoutId = setTimeout(() => done(), Math.max(25000, Math.min(150000, hardTimeoutMs)))
 
       audio.onended = () => done()
       audio.onerror = () => done()
 
-      // ВАЖНО: не data:base64 (на iOS может “обрезать”), а blob URL
+      audio.onloadedmetadata = () => {
+        try {
+          const dur = Number(audio.duration)
+          if (Number.isFinite(dur) && dur > 0) {
+            const ms = Math.min(150000, Math.max(25000, Math.floor(dur * 1000) + 8000))
+            if (timeoutId) {
+              try {
+                clearTimeout(timeoutId)
+              } catch {}
+            }
+            timeoutId = setTimeout(() => done(), ms)
+          }
+        } catch {}
+      }
+
       try {
         if (ttsObjectUrlRef.current) {
           try {
@@ -1243,14 +1409,23 @@ export default function VideoCallDialog({
 
   async function speakText(text: string): Promise<void> {
     if (!isCallActiveRef.current) return
-    if (!isSoundEnabled) return
 
-    const cleaned = cleanResponseText(text)
+    // если звук выключен — не залипаем в thinking
+    if (!isSoundEnabled) {
+      setIsAiSpeaking(false)
+      isAiSpeakingRef.current = false
+      setActivityStatus("listening")
+      stopReasonRef.current = null
+      setAvatarSpeaking(false)
+      if (isCallActiveRef.current && !isMicMutedRef.current) safeStartListening()
+      return
+    }
+
+    const cleaned = sanitizeAssistantText(cleanResponseText(text))
     if (!cleaned) return
 
     stopReasonRef.current = "tts"
 
-    // стопаем только текущую озвучку, запись НЕ убиваем — просто пауза
     stopCurrentSpeech()
 
     const rec: any = mediaRecorderRef.current
@@ -1260,7 +1435,6 @@ export default function VideoCallDialog({
       } catch {}
     }
 
-    // очистка чанков, но сохраняем header чтобы не ловить webm-баги
     const hdr = audioChunksRef.current?.[0]
     audioChunksRef.current = hdr ? [hdr] : []
     sentIdxRef.current = hdr ? 1 : 0
@@ -1269,12 +1443,17 @@ export default function VideoCallDialog({
     isAiSpeakingRef.current = true
     setActivityStatus("speaking")
 
+    // ВКЛ speaking-анимацию ровно на старте TTS
+    setAvatarSpeaking(true)
+
     ttsCooldownUntilRef.current = Date.now() + 700
     resetVadState()
 
     const gender: "male" | "female" = selectedCharacter.gender || "female"
 
     let ttsWatchdog: any = null
+    const hardTimeoutMs = Math.min(120000, Math.max(30000, cleaned.length * 140))
+
     const finish = () => {
       if (ttsWatchdog) {
         try {
@@ -1287,22 +1466,11 @@ export default function VideoCallDialog({
       setIsAiSpeaking(false)
       isAiSpeakingRef.current = false
 
-      // return to idle video
-      if (hasEnhancedVideo && speakingVideoRef.current) {
-        try {
-          speakingVideoRef.current.pause()
-          speakingVideoRef.current.currentTime = 0
-        } catch {}
-      }
-      if (hasEnhancedVideo && idleVideoRef.current && selectedCharacter.idleVideo && isCallActiveRef.current) {
-        try {
-          idleVideoRef.current.play().catch(() => {})
-        } catch {}
-      }
+      // ВЫК speaking-анимацию ровно на конце TTS
+      setAvatarSpeaking(false)
 
       stopReasonRef.current = null
 
-      // resume recorder
       const r: any = mediaRecorderRef.current
       if (r && r.state === "paused" && isCallActiveRef.current && !isMicMutedRef.current) {
         window.setTimeout(() => {
@@ -1321,21 +1489,13 @@ export default function VideoCallDialog({
       }
     }
 
-    // speaking video
-    if (hasEnhancedVideo && speakingVideoRef.current && selectedCharacter.speakingVideo) {
-      try {
-        speakingVideoRef.current.currentTime = 0
-        await speakingVideoRef.current.play()
-      } catch {}
-    }
-
     ttsWatchdog = setTimeout(() => {
       console.warn("[TTS] watchdog fired")
       finish()
-    }, 20000)
+    }, hardTimeoutMs + 10000)
 
     try {
-      await speakViaServerTTS(cleaned, gender)
+      await speakViaServerTTS(cleaned, gender, hardTimeoutMs)
     } catch {
       await new Promise<void>((resolve) => browserSpeak(cleaned, gender, resolve))
     } finally {
@@ -1385,10 +1545,21 @@ export default function VideoCallDialog({
       } catch {}
 
       let aiRaw = extractAnswer(data)
-      aiRaw = collapseLeadingWordRepeats(aiRaw)
-      const cleaned = cleanResponseText(aiRaw)
-
+      const cleaned = sanitizeAssistantText(cleanResponseText(aiRaw))
       if (!cleaned) throw new Error("Empty response received")
+
+      // анти-дубль ассистента
+      if (shouldDedupAssistant(cleaned)) {
+        setActivityStatus("listening")
+        if (isCallActiveRef.current && !isMicMutedRef.current && !isAiSpeakingRef.current) {
+          resetVadState()
+          safeStartListening()
+        }
+        return
+      }
+
+      lastAssistantSentNormRef.current = normalizeUtterance(cleaned)
+      lastAssistantSentTsRef.current = Date.now()
 
       setMessages((prev) => [
         ...prev,
@@ -1443,24 +1614,22 @@ export default function VideoCallDialog({
       setIsMicMuted(false)
       isMicMutedRef.current = false
 
-      // сброс дедупа на новую сессию
       lastTranscriptRef.current = ""
       lastUserSentNormRef.current = ""
       lastUserSentTsRef.current = 0
 
+      lastAssistantSentNormRef.current = ""
+      lastAssistantSentTsRef.current = 0
+
       stopReasonRef.current = null
       ttsCooldownUntilRef.current = 0
 
-      // сброс буфера
       audioChunksRef.current = []
       sentIdxRef.current = 1
       resetVadState()
 
-      if (hasEnhancedVideo && idleVideoRef.current && selectedCharacter.idleVideo) {
-        try {
-          idleVideoRef.current.play().catch(() => {})
-        } catch {}
-      }
+      // стартуем с idle
+      setAvatarSpeaking(false)
 
       setActivityStatus("listening")
       safeStartListening()
@@ -1476,6 +1645,7 @@ export default function VideoCallDialog({
       stopAudioGraph()
       stopKeepAlive()
       stopStreams()
+      setAvatarSpeaking(false)
     } finally {
       setIsConnecting(false)
     }
@@ -1496,6 +1666,8 @@ export default function VideoCallDialog({
     setInterimTranscript("")
     setMessages([])
     setSpeechError(null)
+
+    setAvatarSpeaking(false)
 
     if (idleVideoRef.current) {
       try {
@@ -1581,11 +1753,9 @@ export default function VideoCallDialog({
       isAiSpeakingRef.current = false
       setActivityStatus("listening")
       stopReasonRef.current = null
+      setAvatarSpeaking(false)
     }
   }
-
-  const hasEnhancedVideo =
-    !!selectedCharacter?.idleVideo && !!selectedCharacter?.speakingVideo
 
   if (!isOpen) return null
 
@@ -1761,7 +1931,6 @@ export default function VideoCallDialog({
                             muted
                             loop
                             playsInline
-                            autoPlay
                             preload="auto"
                           >
                             <source src={selectedCharacter.speakingVideo} type="video/mp4" />
@@ -1793,7 +1962,6 @@ export default function VideoCallDialog({
                             muted
                             loop
                             playsInline
-                            autoPlay
                             preload="auto"
                           >
                             <source src={selectedCharacter.speakingVideo} type="video/mp4" />
