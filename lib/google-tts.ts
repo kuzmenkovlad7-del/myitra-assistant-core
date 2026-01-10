@@ -37,21 +37,21 @@ export function normalizeGender(gender?: string): TTSGender {
 }
 
 /**
- * ГОЛОСА ПО ЯЗЫКУ:
- * - uk-UA: меняем мужской на более мягкий, чтобы уйти от металлического тембра
- * - ru-RU/en-US: оставляем как было, чтобы не менять привычное звучание
+ * ПАРА ГОЛОСОВ ДЛЯ ВСЕХ ЯЗЫКОВ:
+ *   MALE   → cedar   (в доках рекомендован по качеству)
+ *   FEMALE → shimmer (оставляем как было)
  */
 const VOICE_MAP: Record<string, { MALE: string; FEMALE: string }> = {
   "en-US": {
-    MALE: "onyx",
+    MALE: "cedar",
     FEMALE: "shimmer",
   },
   "ru-RU": {
-    MALE: "onyx",
+    MALE: "cedar",
     FEMALE: "shimmer",
   },
   "uk-UA": {
-    MALE: "sage",
+    MALE: "cedar",
     FEMALE: "shimmer",
   },
 }
@@ -69,7 +69,7 @@ export function selectOpenAIVoice(language: string, gender: TTSGender): string {
   }
 
   // запасной вариант — базовая пара
-  return g === "MALE" ? "onyx" : "shimmer"
+  return g === "MALE" ? "cedar" : "shimmer"
 }
 
 /**
@@ -91,11 +91,7 @@ export function shouldUseGoogleTTS(language: string): boolean {
  * Клиентский helper для tts-test-component и т.п.
  * Ходит в /api/tts и возвращает data URL с base64-аудио.
  */
-export async function generateGoogleTTS(
-  text: string,
-  language: string,
-  gender?: string,
-): Promise<string> {
+export async function generateGoogleTTS(text: string, language: string, gender?: string): Promise<string> {
   const lang = normalizeLanguage(language)
   const g = normalizeGender(gender)
 
@@ -126,6 +122,6 @@ export async function generateGoogleTTS(
     throw new Error(data?.error || "TTS: request failed")
   }
 
-  // готовый data URL для <audio>
-  return `data:audio/mpeg;base64,${data.audioContent as string}`
+  const ct = (data.contentType || "audio/mpeg") as string
+  return `data:${ct};base64,${data.audioContent as string}`
 }

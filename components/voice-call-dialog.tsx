@@ -330,6 +330,9 @@ export default function VoiceCallDialog({
   const isMicMutedRef = useRef(false)
   const ttsCooldownUntilRef = useRef(0)
 
+  // важно: только последний TTS имеет право проигрываться (иначе может “двоить”)
+  const ttsSeqRef = useRef(0)
+
   // защита от параллельных запросов к агенту
   const isAgentBusyRef = useRef(false)
   const pendingUserToAgentRef = useRef<{ text: string; voiceLang: string } | null>(null)
@@ -750,6 +753,8 @@ export default function VoiceCallDialog({
     const langCode = langCodeOverride || getSessionVoiceLang()
     const gender = getCurrentGender()
 
+    const seq = ++ttsSeqRef.current
+
     let done = false
     let watchdogId: number | null = null
     let objectUrl: string | null = null
@@ -777,12 +782,15 @@ export default function VoiceCallDialog({
       done = true
 
       clearWatchdog()
+      revokeUrl()
+
+      // только актуальный запрос может сбрасывать состояние
+      if (seq !== ttsSeqRef.current) return
+
       ttsCooldownUntilRef.current = Date.now() + 900
 
       setIsAiSpeaking(false)
       isAiSpeakingRef.current = false
-
-      revokeUrl()
 
       const rec = mediaRecorderRef.current
       if (rec && rec.state === "paused" && isCallActiveRef.current && !isMicMutedRef.current) {
@@ -795,6 +803,9 @@ export default function VoiceCallDialog({
     }
 
     const begin = () => {
+      // стопаем прошлое аудио сразу, чтобы не было наложения/“двоения”
+      stopTtsAudio()
+
       setIsAiSpeaking(true)
       isAiSpeakingRef.current = true
 
@@ -823,7 +834,6 @@ export default function VoiceCallDialog({
       const hardTimeoutMs = Math.min(120000, Math.max(30000, cleanText.length * 140))
       clearWatchdog()
       watchdogId = window.setTimeout(() => {
-        console.warn("[TTS] watchdog fired (hard timeout)")
         try {
           const a = ttsAudioRef.current
           if (a) a.pause()
@@ -855,14 +865,16 @@ export default function VoiceCallDialog({
           return
         }
 
-        stopTtsAudio()
+        // если пока грузилось — уже пришёл новый TTS, этот игнорируем
+        if (seq !== ttsSeqRef.current) return
 
         const a = ttsAudioRef.current ?? new Audio()
         ;(a as any).playsInline = true
         ;(a as any).preload = "auto"
         ttsAudioRef.current = a
 
-        objectUrl = base64ToObjectUrl(data.audioContent, "audio/mpeg")
+        const ct = (data.contentType || "audio/mpeg") as string
+        objectUrl = base64ToObjectUrl(data.audioContent, ct)
         a.src = objectUrl
 
         a.onended = () => finishOnce()
@@ -875,7 +887,6 @@ export default function VoiceCallDialog({
               const ms = Math.min(150000, Math.max(25000, Math.floor(dur * 1000) + 8000))
               clearWatchdog()
               watchdogId = window.setTimeout(() => {
-                console.warn("[TTS] watchdog fired (duration)")
                 try {
                   a.pause()
                 } catch {}
@@ -887,8 +898,7 @@ export default function VoiceCallDialog({
 
         try {
           await a.play()
-        } catch (e) {
-          console.warn("[TTS] play blocked", e)
+        } catch {
           finishOnce()
         }
       } catch (e) {
@@ -942,10 +952,7 @@ export default function VoiceCallDialog({
 
       answer = sanitizeAssistantText(answer)
 
-      // если внезапно пришло пустое после чистки — не озвучиваем
       if (!answer) return
-
-      // если агент вернул то же самое — не повторяем (и не говорим второй раз)
       if (shouldDedupAssistant(answer)) return
 
       lastAssistantSentNormRef.current = normalizeUtterance(answer)

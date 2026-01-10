@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
       model: OPENAI_TTS_MODEL,
       voice,
       input: text,
+      response_format: "wav",
     })
 
     const buffer = Buffer.from(await response.arrayBuffer())
@@ -47,7 +48,7 @@ export async function POST(req: NextRequest) {
       language: langCode,
       gender,
       voice,
-      contentType: "audio/mpeg",
+      contentType: "audio/wav",
     })
   } catch {
     return NextResponse.json({ success: false, error: "TTS generation failed" }, { status: 500 })
