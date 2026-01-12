@@ -51,9 +51,9 @@ const AI_CHARACTERS: AICharacter[] = [
       "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/photo_2025-10-31_22-27-18-BmxDH7DCv7e3p0y8HobTyoPkQw1COM.jpg",
     animated: true,
     idleVideo:
-      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_7660-2BvRYFiYOwNRwDjKtBtSCtEGUbLMEh.MP4",
+      "/avatars/avatar1_idle.mp4",
     speakingVideo:
-      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_9968-64neCIRuZ7CYXDT86QGYu4XSE7j0Ug.MP4",
+      "/avatars/avatar1_speaking.mp4",
   },
   {
     id: "dr-sophia",
@@ -65,9 +65,9 @@ const AI_CHARACTERS: AICharacter[] = [
       "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/photo_2025-10-31_22-27-ds8y3Pe7RedqJBqZMDPltEeFI149ki.jpg",
     animated: true,
     idleVideo:
-      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_9962-fVXHRSVmzv64cpPJf4FddeCDXqxdGE.MP4",
+      "/avatars/avatar2_idle.mp4",
     speakingVideo:
-      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_9950-XyDJMndgIHEWrKcLj25FUlV4c18GLp.MP4",
+      "/avatars/avatar2_speaking.mp4",
   },
   {
     id: "dr-maria",
@@ -79,9 +79,9 @@ const AI_CHARACTERS: AICharacter[] = [
       "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/photo_2025-10-31_22-27-19%D1%83-iWDrUd3gH9sLBeOjmIvu8wX3yxwBuq.jpg",
     animated: true,
     idleVideo:
-      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_9963-sneJ4XhoEuemkYgVb425Mscu7X9OC6.MP4",
+      "/avatars/avatar3_idle.mp4",
     speakingVideo:
-      "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/IMG_9949-mYErfm0ubE19kr4trLKJrggtvoh4zy.MP4",
+      "/avatars/avatar3_speaking.mp4",
   },
 ]
 
