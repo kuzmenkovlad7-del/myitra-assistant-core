@@ -1895,6 +1895,7 @@ export default function VideoCallDialog({
                               preload="metadata"
                             >
                               poster={character.avatar}>
+                              poster={character.avatar}>
                               <source src={character.idleVideo} type="video/mp4" />
                             </video>
                           ) : (
@@ -1963,6 +1964,7 @@ export default function VideoCallDialog({
                             preload="metadata"
                           >
                             poster={selectedCharacter.avatar}>
+                            poster={selectedCharacter.avatar}>
                             <source src={selectedCharacter.idleVideo} type="video/mp4" />
                           </video>
                         )}
@@ -1978,6 +1980,7 @@ export default function VideoCallDialog({
                             playsInline
                             preload="metadata"
                           >
+                            poster={selectedCharacter.avatar}>
                             poster={selectedCharacter.avatar}>
                             <source src={selectedCharacter.speakingVideo} type="video/mp4" />
                           </video>
@@ -2010,6 +2013,7 @@ export default function VideoCallDialog({
                             playsInline
                             preload="metadata"
                           >
+                            poster={selectedCharacter.avatar}>
                             poster={selectedCharacter.avatar}>
                             <source src={selectedCharacter.speakingVideo} type="video/mp4" />
                           </video>
