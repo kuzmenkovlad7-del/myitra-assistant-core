@@ -938,6 +938,11 @@ export default function VoiceCallDialog({
           voiceLanguage: voiceLangCode,
         }),
       })
+if (res.status === 402) {
+  window.location.href = "/pricing"
+  return
+}
+
 
       if (!res.ok) throw new Error(`Chat API error: ${res.status}`)
 

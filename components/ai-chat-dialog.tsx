@@ -165,6 +165,11 @@ export default function AIChatDialog({ isOpen, onClose, webhookUrl }: Props) {
           mode: "chat",
         }),
       })
+if (res.status === 402) {
+  window.location.href = "/pricing"
+  return
+}
+
 
       if (!res.ok) {
         throw new Error(`Request failed with status ${res.status}`)

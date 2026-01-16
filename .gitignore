@@ -45,3 +45,5 @@ Thumbs.db
 
 # local backups
 *.bak_*
+.env.local.bak.before_cleanup
+.env*.bak*

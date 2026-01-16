@@ -1,56 +1,113 @@
-import { NextRequest, NextResponse } from "next/server"
-import { getPrincipal } from "@/lib/server/principal"
-import { getSupabaseAdmin } from "@/lib/supabase/admin"
+import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import { createServerClient } from "@supabase/ssr"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-function addMonths(d: Date, months: number) {
-  const x = new Date(d)
-  x.setMonth(x.getMonth() + months)
-  return x
+function addMonthsSafe(date: Date, months: number) {
+  const d = new Date(date)
+  const day = d.getDate()
+  d.setMonth(d.getMonth() + months)
+  if (d.getDate() !== day) d.setDate(0)
+  return d
 }
 
-export async function POST(req: NextRequest) {
-  const p = await getPrincipal(req)
-  if (p.principal.kind !== "user") {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 })
+export async function POST(req: Request) {
+  const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!SUPABASE_URL || !SUPABASE_ANON) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Supabase env is missing",
+        missing: ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"],
+      },
+      { status: 500 }
+    )
   }
 
-  const body = await req.json().catch(() => ({}))
-  const code = String(body?.code || "").trim().toUpperCase()
+  const cookieStore = cookies()
 
-  const want = String(process.env.PROMO_DOCTORS_CODE || "DOCTORS2026").trim().toUpperCase()
-  const months = Number(process.env.PROMO_DOCTORS_MONTHS || 12)
+  // SSR клиент сам прочитает auth cookies Supabase
+  const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON, {
+    cookies: {
+      get(name: string) {
+        return cookieStore.get(name)?.value
+      },
+      set() {},
+      remove() {},
+    },
+  })
 
-  if (!code || code !== want) {
+  const { data: userData, error: userErr } = await supabase.auth.getUser()
+  const user = userData?.user
+
+  if (userErr || !user) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Unauthorized",
+        details: userErr?.message || "No user session",
+        hint: "Check that fetch() uses credentials: include",
+      },
+      { status: 401 }
+    )
+  }
+
+  const body = await req.json().catch(() => ({} as any))
+  const code = String(body?.code ?? "").trim()
+
+  if (!code) {
+    return NextResponse.json({ ok: false, error: "Promo code is required" }, { status: 400 })
+  }
+
+  const expected = String(process.env.PROMO_DOCTORS_CODE ?? "DOCTOR12FREE").trim()
+  const months = Number(process.env.PROMO_DOCTORS_MONTHS ?? "12") || 12
+
+  if (code.toUpperCase() !== expected.toUpperCase()) {
     return NextResponse.json({ ok: false, error: "Invalid promo code" }, { status: 400 })
   }
 
-  const supabase = getSupabaseAdmin()
+  const promoUntil = addMonthsSafe(new Date(), months).toISOString()
 
-  // ensure row
-  await supabase.from("access_grants").upsert(
-    { user_id: p.principal.userId, trial_questions_left: 5 },
-    { onConflict: "user_id" },
+  // пробуем update / insert разными схемами на случай отличий колонок
+  const updateAttempts: any[] = [
+    { promo_until: promoUntil, promo_code: code.toUpperCase() },
+    { promo_until: promoUntil },
+    { promo_valid_until: promoUntil, promo_code: code.toUpperCase() },
+    { promo_expires_at: promoUntil, promo_code: code.toUpperCase() },
+  ]
+
+  let lastError: any = null
+
+  for (const payload of updateAttempts) {
+    const { error } = await supabase.from("access_grants").update(payload).eq("user_id", user.id)
+    if (!error) return NextResponse.json({ ok: true, promoUntil })
+    lastError = error
+  }
+
+  const insertAttempts: any[] = [
+    { user_id: user.id, kind: "promo", valid_until: promoUntil, promo_code: code.toUpperCase() },
+    { user_id: user.id, type: "promo", expires_at: promoUntil, promo_code: code.toUpperCase() },
+    { user_id: user.id, access_type: "promo", access_until: promoUntil, promo_code: code.toUpperCase() },
+    { user_id: user.id, promo_until: promoUntil, promo_code: code.toUpperCase() },
+  ]
+
+  for (const row of insertAttempts) {
+    const { error } = await supabase.from("access_grants").insert(row)
+    if (!error) return NextResponse.json({ ok: true, promoUntil })
+    lastError = error
+  }
+
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "Failed to apply promo",
+      promoUntil,
+      details: lastError?.message || lastError,
+    },
+    { status: 500 }
   )
-
-  const { data: row } = await supabase
-    .from("access_grants")
-    .select("promo_until")
-    .eq("user_id", p.principal.userId)
-    .maybeSingle()
-
-  const base = row?.promo_until && new Date(row.promo_until).getTime() > Date.now()
-    ? new Date(row.promo_until)
-    : new Date()
-
-  const promoUntil = addMonths(base, months).toISOString()
-
-  await supabase
-    .from("access_grants")
-    .update({ promo_until: promoUntil, updated_at: new Date().toISOString() })
-    .eq("user_id", p.principal.userId)
-
-  return NextResponse.json({ ok: true, promoUntil })
 }

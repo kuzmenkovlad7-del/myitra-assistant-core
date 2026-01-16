@@ -1,4 +1,7 @@
 "use client"
+import { usePathname, useSearchParams } from "next/navigation"
+import { RainbowButton } from "@/components/ui/rainbow-button"
+import { Banner } from "@/components/ui/banner"
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
@@ -19,9 +22,18 @@ export default function Header() {
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [trialLeft, setTrialLeft] = useState<number | null>(null)
+
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const paywall = searchParams?.get("paywall")
+  const [paywallDismissed, setPaywallDismissed] = useState(false)
+  const showPaywall = pathname === "/pricing" && paywall === "trial" && !paywallDismissed
+  const [trialText, setTrialText] = useState<string | null>(null)
   const [hasAccess, setHasAccess] = useState<boolean | null>(null)
 
-  const mainLinks: MainLink[] = useMemo(
+  
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null)
+const mainLinks: MainLink[] = useMemo(
     () => [
       { href: "/", label: t("Home") },
       { href: "/programs", label: t("Programs") },
@@ -33,17 +45,54 @@ export default function Header() {
     [t],
   )
 
-  useEffect(() => {
-    fetch("/api/account/summary")
-      .then((r) => r.json())
-      .then((d) => {
-        setTrialLeft(typeof d?.trialLeft === "number" ? d.trialLeft : null)
-        setHasAccess(Boolean(d?.hasAccess))
-      })
-      .catch(() => {})
-  }, [user?.email])
+  const loadSummary = () =>
+    fetch("/api/account/summary", { cache: "no-store", credentials: "include" })
 
-  const scrollToSection = (e: any, href: string) => {
+  useEffect(() => {
+    let alive = true
+
+    const run = () => {
+      loadSummary()
+        .then((r) => r.json())
+        .then((d) => {
+          if (!alive) return
+
+          setIsLoggedIn(Boolean(d?.isLoggedIn))
+
+          const left = typeof d?.trialLeft === "number" ? d.trialLeft : null
+          setTrialLeft(left)
+
+          const txt =
+            typeof d?.trialText === "string"
+              ? d.trialText
+              : d?.access === "Paid"
+              ? "Unlimited"
+              : d?.access === "Promo"
+              ? "Doctor access"
+              : null
+
+          setTrialText(txt)
+
+          const accessActive =
+            Boolean(d?.hasAccess) ||
+            d?.access === "Paid" ||
+            d?.access === "Promo"
+
+          setHasAccess(accessActive)
+        })
+        .catch(() => {})
+    }
+
+    run()
+    const onRefresh = () => run()
+    window.addEventListener("turbota:refresh", onRefresh)
+
+    return () => {
+      alive = false
+      window.removeEventListener("turbota:refresh", onRefresh)
+    }
+  }, [user?.email])
+const scrollToSection = (e: any, href: string) => {
     if (href.startsWith("#")) {
       e.preventDefault()
       const el = document.querySelector(href)
@@ -59,8 +108,107 @@ export default function Header() {
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
   }
 
-  return (
+
+
+  // turbota_global_fetch_interceptor
+  useEffect(() => {
+    if (typeof window === "undefined") return
+
+    const originalFetch = window.fetch.bind(window)
+
+    window.fetch = (async (input: any, init?: any) => {
+      const res = await originalFetch(input, init)
+
+      try {
+        const url =
+          typeof input === "string"
+            ? input
+            : input?.url
+            ? String(input.url)
+            : ""
+
+        const isAgent = url.includes("/api/turbotaai-agent")
+        const isPromo = url.includes("/api/billing/promo/redeem")
+        const isClear = url.includes("/api/auth/clear")
+
+        // paywall -> pricing + toast
+        if (isAgent && res.status === 402) {
+          try {
+            sessionStorage.setItem("turbota_paywall", "trial")
+          } catch {}
+          window.dispatchEvent(new Event("turbota:refresh"))
+          window.location.assign("/pricing?paywall=trial")
+          return res
+        }
+
+        // logout -> чистим localStorage supabase session
+        if (isClear && res.ok) {
+          try {
+            for (const k of Object.keys(localStorage)) {
+              if (k.startsWith("sb-") && k.endsWith("-auth-token")) {
+                localStorage.removeItem(k)
+              }
+            }
+          } catch {}
+
+          try {
+            sessionStorage.removeItem("turbota_paywall")
+          } catch {}
+
+          window.dispatchEvent(new Event("turbota:refresh"))
+          return res
+        }
+
+        // success -> refresh summary in header
+        if ((isAgent || isPromo) && res.ok) {
+          window.dispatchEvent(new Event("turbota:refresh"))
+        }
+      } catch {}
+
+      return res
+    }) as any
+
+    return () => {
+      window.fetch = originalFetch as any
+    }
+  }, [])
+return (
     <header className="sticky top-0 z-50 w-full border-b border-slate-200/80 bg-white/90 backdrop-blur-sm">
+      {showPaywall ? (
+        <div className="fixed right-4 top-4 z-[9999] w-[380px]">
+          <Banner
+            show={true}
+            variant="warning"
+            showShade={true}
+            closable={true}
+            onHide={() => setPaywallDismissed(true)}
+            title="Free trial is over"
+            description="Subscribe to continue using the assistant."
+            action={
+              <div className="flex items-center gap-2">
+                <RainbowButton
+                  className="h-9 px-4 text-sm font-semibold"
+                  onClick={() => {
+                    const btn = document.getElementById("turbota-subscribe") as HTMLButtonElement | null
+                    if (btn) btn.click()
+                    else window.location.assign("/pricing")
+                  }}
+                >
+                  Subscribe
+                </RainbowButton>
+                <Button
+                  variant="outline"
+                  className="h-9 px-4"
+                  onClick={() => setPaywallDismissed(true)}
+                >
+                  Later
+                </Button>
+              </div>
+            }
+          />
+        </div>
+      ) : null}
+
       <div className="flex h-16 w-full items-center justify-between px-4 sm:px-6 lg:px-10 xl:px-16">
         <Link href="/" className="flex items-center gap-2 rounded-full px-1 py-1 transition-colors hover:bg-slate-50">
           <Logo />
@@ -85,11 +233,11 @@ export default function Header() {
 
           {trialLeft != null && (
             <span className="rounded-full bg-slate-50 px-3 py-1 text-xs text-slate-700 ring-1 ring-slate-200">
-              {hasAccess ? "Access: Active" : `Trial left: ${trialLeft}`}
+              {trialText ? `Access: ${trialText}` : hasAccess ? "Access: Active" : `Trial left: ${trialLeft}`}
             </span>
           )}
 
-          {user ? (
+          {isLoggedIn ? (
             <Link href="/profile">
               <Button variant="outline" size="sm" className="border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 hover:bg-slate-100">
                 {t("Profile")}

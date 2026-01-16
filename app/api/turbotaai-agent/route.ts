@@ -1,147 +1,228 @@
 import { NextRequest, NextResponse } from "next/server"
-import { requireAccess } from "@/lib/access/access-control"
-import { getOrCreateConversationId, appendMessage } from "@/lib/history/history-store"
+import { cookies } from "next/headers"
+import { createServerClient } from "@supabase/ssr"
 
-const N8N_WEBHOOK_URL =
-  process.env.N8N_TURBOTA_AGENT_WEBHOOK_URL ??
-  "https://n8n.vladkuzmenko.com/webhook/turbotaai-agent"
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
 
-async function forwardToN8N(payload: any) {
-  const res = await fetch(N8N_WEBHOOK_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
+function num(v: string | undefined, fallback = 0) {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : fallback
+}
+
+function getTrialLimit() {
+  const raw = process.env.TRIAL_QUESTIONS_LIMIT
+  const limit = num(raw, 5)
+  return limit > 0 ? Math.floor(limit) : 5
+}
+
+function isActiveDate(v: any) {
+  if (!v) return false
+  const t = new Date(v).getTime()
+  if (!Number.isFinite(t)) return false
+  return t > Date.now()
+}
+
+function routeSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!url || !anon) {
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY")
+  }
+
+  const cookieStore = cookies()
+  const pendingCookies: any[] = []
+  const extraCookies: Array<{ name: string; value: string; options?: any }> = []
+
+  const sb = createServerClient(url, anon, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll()
+      },
+      setAll(cookiesToSet) {
+        pendingCookies.push(...cookiesToSet)
+      },
     },
-    body: JSON.stringify(payload ?? {}),
-    cache: "no-store",
   })
 
-  const text = await res.text()
-  const contentType = res.headers.get("content-type") || "text/plain"
-
-  if (contentType.includes("application/json")) {
-    try {
-      const json = text ? JSON.parse(text) : {}
-      return { ok: res.ok, status: res.status, contentType, body: json }
-    } catch {
-      // fallthrough
+  const applyPendingCookies = (res: NextResponse) => {
+    for (const c of pendingCookies) {
+      res.cookies.set(c.name, c.value, c.options)
     }
   }
 
-  return { ok: res.ok, status: res.status, contentType, body: text }
+  return { sb, cookieStore, extraCookies, applyPendingCookies }
 }
 
 export async function POST(req: NextRequest) {
-  // лимиты: 1 вопрос на каждый вызов /api/turbotaai-agent
-  const access = await requireAccess(req, true)
-  if (!access.ok) {
-    return NextResponse.json(
-      { error: "payment_required", reason: access.reason, grant: access.grant },
-      { status: access.status },
-    )
+  const { sb, cookieStore, extraCookies, applyPendingCookies } = routeSupabase()
+
+  // device cookie (как в summary)
+  let deviceHash = cookieStore.get("turbotaai_device")?.value ?? null
+  if (!deviceHash) {
+    deviceHash = crypto.randomUUID()
+    extraCookies.push({
+      name: "turbotaai_device",
+      value: deviceHash,
+      options: { path: "/", sameSite: "lax", httpOnly: false, maxAge: 60 * 60 * 24 * 365 },
+    })
   }
 
-  let payload: any = {}
-  try {
-    payload = await req.json()
-  } catch {}
+  const trialDefault = getTrialLimit()
+  const nowIso = new Date().toISOString()
 
-  const result = await forwardToN8N(payload)
+  const { data: userData } = await sb.auth.getUser()
+  const user = userData?.user ?? null
 
-  // история
-  try {
-    const deviceHash = req.cookies.get("turbotaai_device")?.value || ""
-    const mode =
-      typeof payload?.mode === "string" && payload.mode.trim()
-        ? payload.mode.trim()
-        : "chat"
+  // 1) достаём / создаём grant так же, как summary
+  let grant: any = null
 
-    const q = typeof payload?.query === "string" ? payload.query.trim() : ""
-    const email = typeof payload?.email === "string" ? payload.email.trim() : null
+  if (user) {
+    const { data: byUser } = await sb
+      .from("access_grants")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle()
 
-    if (deviceHash && q) {
-      const title = q.slice(0, 80)
-      const convId = await getOrCreateConversationId({
-        deviceHash,
-        mode,
-        title,
-        userEmail: email,
-      })
+    if (byUser) {
+      grant = byUser
+    } else {
+      const { data: byDevice } = await sb
+        .from("access_grants")
+        .select("*")
+        .eq("device_hash", deviceHash)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
 
-      if (convId) {
-        await appendMessage({ conversationId: convId, role: "user", text: q })
+      if (byDevice?.id) {
+        const { data: updated } = await sb
+          .from("access_grants")
+          .update({ user_id: user.id, updated_at: nowIso })
+          .eq("id", byDevice.id)
+          .select("*")
+          .single()
 
-        const answer =
-          typeof result.body === "string" ? result.body : JSON.stringify(result.body)
-        await appendMessage({ conversationId: convId, role: "assistant", text: String(answer || "").trim() })
+        grant = updated ?? byDevice
+      } else {
+        const { data: created } = await sb
+          .from("access_grants")
+          .insert({
+            id: crypto.randomUUID(),
+            user_id: user.id,
+            device_hash: deviceHash,
+            trial_questions_left: trialDefault,
+            paid_until: null,
+            promo_until: null,
+            created_at: nowIso,
+            updated_at: nowIso,
+          })
+          .select("*")
+          .single()
+
+        grant = created ?? null
       }
     }
-  } catch (e) {
-    console.warn("History save failed:", e)
+  } else {
+    const { data: byDevice } = await sb
+      .from("access_grants")
+      .select("*")
+      .eq("device_hash", deviceHash)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (byDevice) {
+      grant = byDevice
+    } else {
+      const { data: created } = await sb
+        .from("access_grants")
+        .insert({
+          id: crypto.randomUUID(),
+          user_id: null,
+          device_hash: deviceHash,
+          trial_questions_left: trialDefault,
+          paid_until: null,
+          promo_until: null,
+          created_at: nowIso,
+          updated_at: nowIso,
+        })
+        .select("*")
+        .single()
+
+      grant = created ?? null
+    }
   }
 
-  if (!result.ok) {
-    return NextResponse.json(
-      { error: `Webhook returned ${result.status}`, status: result.status, body: result.body },
-      { status: 502 },
+  const trialLeft = Math.max(0, Number(grant?.trial_questions_left ?? trialDefault))
+  const paidUntil = grant?.paid_until ?? null
+  const promoUntil = grant?.promo_until ?? null
+
+  const paidActive = isActiveDate(paidUntil)
+  const promoActive = isActiveDate(promoUntil)
+  const unlimited = paidActive || promoActive
+
+  // 2) блокируем только Limited
+  if (!unlimited && trialLeft <= 0) {
+    const res = NextResponse.json(
+      { ok: false, error: "PAYMENT_REQUIRED", reason: "trial_limit_reached", trialLeft },
+      { status: 402 }
     )
+    for (const c of extraCookies) res.cookies.set(c.name, c.value, c.options)
+    applyPendingCookies(res)
+    res.headers.set("x-access", "Limited")
+    res.headers.set("x-trial-left", String(trialLeft))
+    res.headers.set("cache-control", "no-store, max-age=0")
+    return res
   }
 
-  if (typeof result.body === "string") {
-    return new NextResponse(result.body, {
-      status: 200,
-      headers: { "Content-Type": result.contentType },
-    })
+  // 3) проксируем в n8n
+  const upstream = String(process.env.N8N_TURBOTA_AGENT_WEBHOOK_URL || "").trim()
+  if (!upstream) {
+    const res = NextResponse.json({ ok: false, error: "Missing N8N_TURBOTA_AGENT_WEBHOOK_URL" }, { status: 500 })
+    for (const c of extraCookies) res.cookies.set(c.name, c.value, c.options)
+    applyPendingCookies(res)
+    return res
   }
 
-  return NextResponse.json(result.body, { status: 200 })
+  const contentType = req.headers.get("content-type") || "application/json"
+  const bodyText = await req.text()
+
+  const upstreamRes = await fetch(upstream, {
+    method: "POST",
+    headers: { "content-type": contentType },
+    body: bodyText,
+    cache: "no-store",
+  })
+
+  const text = await upstreamRes.text()
+
+  // 4) если успешный ответ и НЕ unlimited → уменьшаем trial_questions_left
+  let nextTrialLeft = trialLeft
+  if (upstreamRes.ok && !unlimited) {
+    nextTrialLeft = Math.max(0, trialLeft - 1)
+    try {
+      await sb
+        .from("access_grants")
+        .update({ trial_questions_left: nextTrialLeft, updated_at: nowIso })
+        .eq("id", grant?.id)
+    } catch {}
+  }
+
+  const res = new NextResponse(text, {
+    status: upstreamRes.status,
+    headers: {
+      "content-type": upstreamRes.headers.get("content-type") || "application/json",
+    },
+  })
+
+  for (const c of extraCookies) res.cookies.set(c.name, c.value, c.options)
+  applyPendingCookies(res)
+
+  res.headers.set("x-access", paidActive ? "Paid" : promoActive ? "Promo" : "Limited")
+  res.headers.set("x-trial-left", String(nextTrialLeft))
+  res.headers.set("cache-control", "no-store, max-age=0")
+
+  return res
 }
-
-export async function GET(req: NextRequest) {
-  const url = new URL(req.url)
-
-  const query =
-    url.searchParams.get("query") ||
-    url.searchParams.get("q") ||
-    url.searchParams.get("text") ||
-    url.searchParams.get("message")
-
-  if (!query) {
-    return NextResponse.json({ ok: true })
-  }
-
-  const language = url.searchParams.get("language") || "uk"
-  const email = url.searchParams.get("email") || url.searchParams.get("userEmail") || "guest@example.com"
-  const mode = url.searchParams.get("mode") || "video"
-
-  // GET тоже считаем как вопрос
-  const access = await requireAccess(req, true)
-  if (!access.ok) {
-    return NextResponse.json(
-      { error: "payment_required", reason: access.reason, grant: access.grant },
-      { status: access.status },
-    )
-  }
-
-  const payload = { query, language, email, mode }
-  const result = await forwardToN8N(payload)
-
-  if (!result.ok) {
-    return NextResponse.json(
-      { error: `Webhook returned ${result.status}`, status: result.status, body: result.body },
-      { status: 502 },
-    )
-  }
-
-  if (typeof result.body === "string") {
-    return new NextResponse(result.body, {
-      status: 200,
-      headers: { "Content-Type": result.contentType },
-    })
-  }
-
-  return NextResponse.json(result.body, { status: 200 })
-}
-
-export const dynamic = "force-dynamic"

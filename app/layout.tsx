@@ -1,4 +1,5 @@
-import type React from "react"
+import { Suspense } from "react"
+import type { ReactNode } from "react"
 import type { Metadata, Viewport } from "next"
 import Script from "next/script"
 import { Inter } from "next/font/google"
@@ -8,6 +9,7 @@ import { AuthProvider } from "@/lib/auth/auth-context"
 import { LanguageProvider } from "@/lib/i18n/language-context"
 import { AutoTranslate } from "@/components/auto-translate"
 import { RTLWrapper } from "@/components/rtl-wrapper"
+import { PaywallToast } from "@/components/paywall-toast"
 import Header from "@/components/header"
 import Footer from "@/components/footer"
 import { APP_NAME } from "@/lib/app-config"
@@ -47,8 +49,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: fullTitle,
-    description:
-      "AI-psychologist nearby 24/7. Talk in chat, voice or video when you need support.",
+    description: "AI-psychologist nearby 24/7. Talk in chat, voice or video when you need support.",
     images: ["/og-image.png"],
   },
   robots: {
@@ -67,52 +68,49 @@ export const viewport: Viewport = {
   themeColor: "#F7F8FF",
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="uk" suppressHydrationWarning>
       <body
         className={`${inter.className} min-h-screen bg-background text-foreground antialiased`}
         suppressHydrationWarning
       >
-        {/* Voiceflow site-assistant widget */}
-        <Script id="voiceflow-chat-widget" strategy="afterInteractive">
-          {`
-            (function(d, t) {
-              var v = d.createElement(t), s = d.getElementsByTagName(t)[0];
-              v.onload = function() {
-                window.voiceflow.chat.load({
-                  verify: { projectID: '6920c09ba59edfa96ca49b3a' },
-                  url: 'https://general-runtime.voiceflow.com',
-                  versionID: 'production',
-                  voice: {
-                    url: 'https://runtime-api.voiceflow.com'
-                  }
-                });
-              };
-              v.src = 'https://cdn.voiceflow.com/widget-next/bundle.mjs';
-              v.type = 'text/javascript';
-              s.parentNode.insertBefore(v, s);
-            })(document, 'script');
-          `}
-        </Script>
+        <Suspense fallback={null}>
+          {/* Voiceflow site-assistant widget */}
+          <Script id="voiceflow-chat-widget" strategy="afterInteractive">
+            {`
+              (function(d, t) {
+                var v = d.createElement(t), s = d.getElementsByTagName(t)[0];
+                v.onload = function() {
+                  window.voiceflow.chat.load({
+                    verify: { projectID: '6920c09ba59edfa96ca49b3a' },
+                    url: 'https://general-runtime.voiceflow.com',
+                    versionID: 'production',
+                    voice: { url: 'https://runtime-api.voiceflow.com' }
+                  });
+                };
+                v.src = 'https://cdn.voiceflow.com/widget-next/bundle.mjs';
+                v.type = 'text/javascript';
+                s.parentNode.insertBefore(v, s);
+              })(document, 'script');
+            `}
+          </Script>
 
-        <AuthProvider>
-          <LanguageProvider>
-            <RTLWrapper>
-              <AutoTranslate>
-                <div className="flex min-h-screen flex-col bg-soft-grid">
+          <AuthProvider>
+            <LanguageProvider>
+              <RTLWrapper>
+                <AutoTranslate>
+                  <div className="flex min-h-screen flex-col bg-soft-grid">
+                    <PaywallToast />
                   <Header />
-                  <main className="flex-1">{children}</main>
-                  <Footer />
-                </div>
-              </AutoTranslate>
-            </RTLWrapper>
-          </LanguageProvider>
-        </AuthProvider>
+                    <main className="flex-1">{children}</main>
+                    <Footer />
+                  </div>
+                </AutoTranslate>
+              </RTLWrapper>
+            </LanguageProvider>
+          </AuthProvider>
+        </Suspense>
       </body>
     </html>
   )

@@ -1,66 +1,45 @@
-import crypto from "crypto"
+import { createHmac } from "crypto";
 
-export function hmacMd5Hex(secret: string, message: string) {
-  return crypto.createHmac("md5", secret).update(message, "utf8").digest("hex")
+export function hmacMd5Hex(secret: string, payload: string) {
+  return createHmac("md5", secret).update(payload, "utf8").digest("hex");
 }
 
-// Signature for CREATE_INVOICE:
-// merchantAccount;merchantDomainName;orderReference;orderDate;amount;currency;productName...;productCount...;productPrice...
-export function signCreateInvoice(args: {
-  secret: string
-  merchantAccount: string
-  merchantDomainName: string
-  orderReference: string
-  orderDate: number
-  amount: number
-  currency: string
-  productName: string[]
-  productCount: number[]
-  productPrice: number[]
+export function makeInvoiceSignature(params: {
+  merchantAccount: string;
+  merchantDomainName: string;
+  orderReference: string;
+  orderDate: number;
+  amount: number;
+  currency: string;
+  productName: string[];
+  productCount: number[];
+  productPrice: number[];
+  secretKey: string;
 }) {
+  // WayForPay signature string: fields joined by ';' in UTF-8, then HMAC_MD5 with SecretKey
+  // merchantAccount;merchantDomainName;orderReference;orderDate;amount;currency;productName...;productCount...;productPrice...
   const s = [
-    args.merchantAccount,
-    args.merchantDomainName,
-    args.orderReference,
-    String(args.orderDate),
-    String(args.amount),
-    args.currency,
-    ...args.productName,
-    ...args.productCount.map(String),
-    ...args.productPrice.map(String),
-  ].join(";")
-  return hmacMd5Hex(args.secret, s)
+    params.merchantAccount,
+    params.merchantDomainName,
+    params.orderReference,
+    String(params.orderDate),
+    String(params.amount),
+    params.currency,
+    ...params.productName,
+    ...params.productCount.map(String),
+    ...params.productPrice.map(String),
+  ].join(";");
+
+  return hmacMd5Hex(params.secretKey, s);
 }
 
-// Callback signature:
-// merchantAccount;orderReference;amount;currency;authCode;cardPan;transactionStatus;reasonCode
-export function verifyCallbackSignature(args: {
-  secret: string
-  merchantAccount: string
-  orderReference: string
-  amount: string
-  currency: string
-  authCode: string
-  cardPan: string
-  transactionStatus: string
-  reasonCode: string
-  merchantSignature: string
+export function makeWebhookSignature(params: {
+  orderReference: string;
+  status: string;
+  time: number;
+  secretKey: string;
 }) {
-  const s = [
-    args.merchantAccount,
-    args.orderReference,
-    args.amount,
-    args.currency,
-    args.authCode,
-    args.cardPan,
-    args.transactionStatus,
-    args.reasonCode,
-  ].join(";")
-  const expected = hmacMd5Hex(args.secret, s)
-  return expected === (args.merchantSignature || "")
-}
-
-// Accept response signature: orderReference;status;time
-export function signAcceptResponse(args: { secret: string; orderReference: string; status: string; time: number }) {
-  return hmacMd5Hex(args.secret, [args.orderReference, args.status, String(args.time)].join(";"))
+  // WayForPay webhook signature usually based on: orderReference;status;time
+  const s = [params.orderReference, params.status, String(params.time)].join(";");
+  return hmacMd5Hex(params.secretKey, s);
 }

@@ -1,115 +1,148 @@
-import { NextRequest, NextResponse } from "next/server"
-import crypto from "crypto"
-import { getPrincipal } from "@/lib/server/principal"
-import { getPlan } from "@/lib/billing/plans"
-import { getSupabaseAdmin } from "@/lib/supabase/admin"
-import { signCreateInvoice } from "@/lib/wayforpay"
+import { NextResponse } from "next/server"
+import { headers } from "next/headers"
+import { makeInvoiceSignature } from "@/lib/wayforpay"
 
-export const runtime = "nodejs"
-export const dynamic = "force-dynamic"
+const WFP_API = "https://api.wayforpay.com/api"
 
-function baseUrlFromReq(req: NextRequest) {
-  const proto = req.headers.get("x-forwarded-proto") || "https"
-  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "localhost:3000"
-  return `${proto}://${host}`
+function missingEnv() {
+  const required = ["WAYFORPAY_MERCHANT_ACCOUNT", "WAYFORPAY_SECRET_KEY"]
+  const missing = required.filter((k) => !process.env[k])
+  return missing
 }
 
-export async function POST(req: NextRequest) {
-  const p = await getPrincipal(req)
-
-  const body = await req.json().catch(() => ({}))
-  const planId = String(body?.planId || "").trim()
-  const plan = getPlan(planId)
-
-  if (!plan) {
-    return NextResponse.json({ ok: false, error: "Unknown plan" }, { status: 400 })
+export async function POST(req: Request) {
+  const missing = missingEnv()
+  if (missing.length) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "WayForPay is not configured",
+        missing,
+        hint:
+          "Add env vars in .env.local (and Vercel). Required: WAYFORPAY_MERCHANT_ACCOUNT, WAYFORPAY_SECRET_KEY. Optional: WAYFORPAY_MERCHANT_DOMAIN_NAME, WAYFORPAY_WEBHOOK_URL, WAYFORPAY_RETURN_URL",
+      },
+      { status: 400 }
+    )
   }
 
-  const merchantAccount = String(process.env.WAYFORPAY_MERCHANT_ACCOUNT || "").trim()
-  const secret = String(process.env.WAYFORPAY_SECRET_KEY || "").trim()
-  const merchantDomainName = String(process.env.WAYFORPAY_MERCHANT_DOMAIN || "").trim()
-  const apiUrl = String(process.env.WAYFORPAY_API_URL || "https://api.wayforpay.com/api").trim()
+  const merchantAccount = process.env.WAYFORPAY_MERCHANT_ACCOUNT!
+  const secretKey = process.env.WAYFORPAY_SECRET_KEY!
 
-  if (!merchantAccount || !secret || !merchantDomainName) {
-    return NextResponse.json({ ok: false, error: "WayForPay is not configured" }, { status: 500 })
+  const merchantDomainName =
+    process.env.WAYFORPAY_MERCHANT_DOMAIN_NAME ||
+    process.env.WAYFORPAY_MERCHANT_DOMAIN ||
+    headers().get("host") ||
+    "localhost:3000"
+
+  const body = await req.json().catch(() => ({} as any))
+
+  let amount = Number(body?.amount ?? 499)
+  const currency = String(body?.currency ?? "UAH")
+
+  // ✅ local-only override (НЕ влияет на прод Vercel)
+  const __testAmount = Number(process.env.WAYFORPAY_TEST_AMOUNT_UAH || "")
+  if (process.env.NODE_ENV !== "production" && Number.isFinite(__testAmount) && __testAmount > 0) {
+    amount = __testAmount
   }
 
-  const orderReference = `tb_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`
+  const productName = [String(body?.productName ?? "TurbotaAI Monthly")]
+  const productCount = [Number(body?.productCount ?? 1)]
+  const productPrice = [amount]
+
+  const orderReference =
+    body?.orderReference
+      ? String(body.orderReference)
+      : `TAI-${Date.now()}-${Math.random().toString(16).slice(2)}`
+
   const orderDate = Math.floor(Date.now() / 1000)
 
-  const productName = [`TurbotaAI ${plan.title}`]
-  const productCount = [1]
-  const productPrice = [plan.amount]
+  const serviceUrl =
+    process.env.WAYFORPAY_SERVICE_URL ||
+    process.env.WAYFORPAY_WEBHOOK_URL ||
+    (headers().get("x-forwarded-proto") && headers().get("host")
+      ? `${headers().get("x-forwarded-proto")}://${headers().get("host")}/api/billing/wayforpay/webhook`
+      : undefined)
 
-  const merchantSignature = signCreateInvoice({
-    secret,
+  const returnUrl =
+    process.env.WAYFORPAY_RETURN_URL ||
+    (headers().get("x-forwarded-proto") && headers().get("host")
+      ? `${headers().get("x-forwarded-proto")}://${headers().get("host")}/payment/return`
+      : undefined)
+
+  const merchantSignature = makeInvoiceSignature({
     merchantAccount,
     merchantDomainName,
     orderReference,
     orderDate,
-    amount: plan.amount,
-    currency: plan.currency,
+    amount,
+    currency,
     productName,
     productCount,
     productPrice,
+    secretKey,
   })
 
-  const serviceUrl = `${baseUrlFromReq(req)}/api/billing/wayforpay/webhook`
-
-  const payload = {
+  const payload: any = {
     transactionType: "CREATE_INVOICE",
     merchantAccount,
-    merchantAuthType: "SimpleSignature",
     merchantDomainName,
     merchantSignature,
     apiVersion: 1,
-    language: "UA",
-    serviceUrl,
     orderReference,
     orderDate,
-    amount: plan.amount,
-    currency: plan.currency,
-    orderTimeout: 86400,
+    amount,
+    currency,
     productName,
-    productPrice,
     productCount,
-    clientEmail: p.principal.kind === "user" ? (p.principal.email || undefined) : undefined,
+    productPrice,
+    language: "EN",
   }
 
-  // persist billing order
-  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    const supabase = getSupabaseAdmin()
-    await supabase.from("billing_orders").insert({
-      order_reference: orderReference,
-      user_id: p.principal.kind === "user" ? p.principal.userId : null,
-      device_hash: p.deviceHash,
-      plan_id: plan.id,
-      amount: plan.amount,
-      currency: plan.currency,
-      status: "pending",
-      raw: payload,
-    })
-  }
+  if (serviceUrl) payload.serviceUrl = serviceUrl
+  if (returnUrl) payload.returnUrl = returnUrl
 
-  const r = await fetch(apiUrl, {
+  const r = await fetch(WFP_API, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
     cache: "no-store",
   })
 
-  const text = await r.text()
-  let json: any = null
-  try { json = JSON.parse(text) } catch { json = { raw: text } }
+  const data = await r.json().catch(() => ({}))
 
-  if (!r.ok) {
-    return NextResponse.json({ ok: false, error: "WayForPay error", details: json }, { status: 502 })
+  const invoiceUrl = data?.invoiceUrl || data?.url || data?.paymentUrl
+  const reason = String(data?.reason ?? "")
+  const reasonCode = String(data?.reasonCode ?? "")
+
+  const ok =
+    r.ok &&
+    !!invoiceUrl &&
+    (reason.toLowerCase() === "ok" || reasonCode === "1100" || reasonCode === "")
+
+  if (!ok) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "WayForPay create invoice failed",
+        status: r.status,
+        response: data,
+        debug: {
+          merchantDomainName,
+          orderReference,
+          amount,
+          currency,
+          serviceUrl,
+          returnUrl,
+        },
+      },
+      { status: 400 }
+    )
   }
 
-  const invoiceUrl = String(json?.invoiceUrl || "").trim()
-  if (!invoiceUrl) {
-    return NextResponse.json({ ok: false, error: "Missing invoiceUrl", details: json }, { status: 502 })
-  }
-
-  return NextResponse.json({ ok: true, invoiceUrl, orderReference })
+  return NextResponse.json({
+    ok: true,
+    orderReference,
+    invoiceUrl,
+    raw: data,
+  })
 }

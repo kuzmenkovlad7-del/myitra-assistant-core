@@ -1565,6 +1565,11 @@ export default function VideoCallDialog({
           gender: selectedCharacter.gender,
         }),
       })
+if (res.status === 402) {
+  window.location.href = "/pricing"
+  return
+}
+
 
       if (!res.ok) throw new Error(`Webhook error: ${res.status}`)
 
