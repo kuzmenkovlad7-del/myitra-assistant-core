@@ -77,25 +77,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       >
         <Suspense fallback={null}>
           {/* Voiceflow site-assistant widget */}
-          <Script id="voiceflow-chat-widget" strategy="afterInteractive">
-            {`
-              (function(d, t) {
-                var v = d.createElement(t), s = d.getElementsByTagName(t)[0];
-                v.onload = function() {
-                  window.voiceflow.chat.load({
-                    verify: { projectID: '6920c09ba59edfa96ca49b3a' },
-                    url: 'https://general-runtime.voiceflow.com',
-                    versionID: 'production',
-                    voice: { url: 'https://runtime-api.voiceflow.com' }
-                  });
-                };
-                v.src = 'https://cdn.voiceflow.com/widget-next/bundle.mjs';
-                v.type = 'text/javascript';
-                s.parentNode.insertBefore(v, s);
-              })(document, 'script');
-            `}
-          </Script>
-
           <AuthProvider>
             <LanguageProvider>
               <RTLWrapper>
