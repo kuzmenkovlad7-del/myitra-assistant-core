@@ -1,108 +1,181 @@
-import { NextResponse } from "next/server"
-import { supabaseAdmin } from "@/lib/supabaseAdmin"
-import { makeServiceWebhookSignature, makeServiceResponseSignature } from "@/lib/wayforpay"
+import { NextRequest, NextResponse } from "next/server"
+import crypto from "crypto"
+import { createClient } from "@supabase/supabase-js"
 
 export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
 
-function normalizeStr(x: any) {
-  return String(x ?? "").trim()
+type AnyObj = Record<string, any>
+
+function getSecret() {
+  return (
+    process.env.WAYFORPAY_SECRET_KEY ||
+    process.env.WAYFORPAY_SECRET ||
+    process.env.WFP_SECRET ||
+    ""
+  )
 }
 
-async function readPayload(req: Request) {
-  const ct = req.headers.get("content-type") || ""
+function hmacMd5(str: string, key: string) {
+  return crypto.createHmac("md5", key).update(str, "utf8").digest("hex")
+}
+
+function calcRequestSignature(p: AnyObj, secret: string) {
+  const signString = [
+    String(p.merchantAccount ?? ""),
+    String(p.orderReference ?? ""),
+    String(p.amount ?? ""),
+    String(p.currency ?? ""),
+    String(p.authCode ?? ""),
+    String(p.cardPan ?? ""),
+    String(p.transactionStatus ?? ""),
+    String(p.reasonCode ?? ""),
+  ].join(";")
+
+  return hmacMd5(signString, secret)
+}
+
+function calcResponseSignature(orderReference: string, status: string, time: number, secret: string) {
+  const signString = `${orderReference};${status};${time}`
+  return hmacMd5(signString, secret)
+}
+
+function statusToInternal(transactionStatus: string) {
+  const s = (transactionStatus || "").toLowerCase()
+  if (s === "approved") return "paid"
+  if (s.includes("processing") || s.includes("inprocessing") || s.includes("pending")) return "pending"
+  if (s.includes("declined") || s.includes("refused") || s.includes("failed")) return "failed"
+  if (s.includes("expired")) return "expired"
+  if (s.includes("refunded")) return "refunded"
+  return transactionStatus || "unknown"
+}
+
+async function parseBody(req: NextRequest): Promise<AnyObj> {
+  const ct = (req.headers.get("content-type") || "").toLowerCase()
+
   try {
     if (ct.includes("application/json")) {
-      return await req.json()
+      const j = await req.json().catch(() => ({}))
+      return (j && typeof j === "object") ? j : {}
     }
 
     if (ct.includes("application/x-www-form-urlencoded") || ct.includes("multipart/form-data")) {
       const fd = await req.formData()
-      const obj: Record<string, string> = {}
-
-      // ✅ Никаких iterators / entries() / spread — чтобы TS не падал на Vercel
+      const obj: AnyObj = {}
+      // важно: НЕ используем spread / итераторы -> это и ломало сборку
       fd.forEach((v, k) => {
-        if (typeof v === "string") obj[k] = v
-        else obj[k] = v?.name ? String(v.name) : String(v)
+        obj[k] = String(v)
       })
-
       return obj
     }
 
-    return await req.json().catch(() => ({}))
+    // fallback
+    const txt = await req.text().catch(() => "")
+    if (!txt) return {}
+    try {
+      const j = JSON.parse(txt)
+      return (j && typeof j === "object") ? j : {}
+    } catch {
+      return { raw: txt }
+    }
   } catch {
     return {}
   }
 }
 
-export async function POST(req: Request) {
-  const payload = await readPayload(req)
+function getSupabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || ""
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || ""
+  if (!url || !key) return null
 
-  const secret = process.env.WAYFORPAY_SECRET_KEY || ""
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+}
+
+export async function GET() {
+  // чтобы можно было открыть в браузере и убедиться что endpoint живой
+  return NextResponse.json({ ok: true, endpoint: "wayforpay-webhook" })
+}
+
+export async function POST(req: NextRequest) {
+  const secret = getSecret()
+  const payload = await parseBody(req)
+
+  const orderReference = String(payload.orderReference || "")
+  const transactionStatus = String(payload.transactionStatus || "")
+
+  console.log("✅ WFP webhook in:", {
+    orderReference,
+    transactionStatus,
+    reason: payload.reason,
+    reasonCode: payload.reasonCode,
+    amount: payload.amount,
+    currency: payload.currency,
+  })
+
   if (!secret) {
-    console.error("WAYFORPAY_SECRET_KEY missing")
+    console.log("❌ WAYFORPAY secret is missing in env")
     return NextResponse.json({ ok: false, error: "Server misconfigured" }, { status: 500 })
   }
 
-  const orderReference = normalizeStr(payload?.orderReference)
   if (!orderReference) {
-    console.error("WayForPay webhook: missing orderReference", payload)
-    return NextResponse.json({ ok: false, error: "Bad payload" }, { status: 400 })
+    console.log("❌ Missing orderReference in webhook payload")
+    return NextResponse.json({ ok: false, error: "Missing orderReference" }, { status: 400 })
   }
 
-  const got = normalizeStr(payload?.merchantSignature).toLowerCase()
-  const expected = makeServiceWebhookSignature(secret, payload).toLowerCase()
+  // Проверяем подпись WayForPay
+  const incomingSig = String(payload.merchantSignature || "")
+  const expectedSig = calcRequestSignature(payload, secret)
 
-  if (!got || got !== expected) {
-    console.error("WayForPay webhook: INVALID SIGNATURE", {
-      orderReference,
-      got,
-      expected,
-      payload,
+  if (incomingSig && incomingSig !== expectedSig) {
+    console.log("❌ WFP signature mismatch", { incomingSig, expectedSig })
+    return NextResponse.json({ ok: false, error: "Bad signature" }, { status: 400 })
+  }
+
+  // Обновляем Supabase
+  const sb = getSupabaseAdmin()
+  if (!sb) {
+    console.log("❌ Supabase Admin env missing (NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)")
+    return NextResponse.json({ ok: false, error: "Supabase misconfigured" }, { status: 500 })
+  }
+
+  const internalStatus = statusToInternal(transactionStatus)
+
+  const { data: existing } = await sb
+    .from("billing_orders")
+    .select("raw")
+    .eq("order_reference", orderReference)
+    .maybeSingle()
+
+  const nextRaw = {
+    ...(existing?.raw || {}),
+    webhook: payload,
+  }
+
+  const { error: updErr } = await sb
+    .from("billing_orders")
+    .update({
+      status: internalStatus,
+      raw: nextRaw,
+      updated_at: new Date().toISOString(),
     })
-    return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 400 })
+    .eq("order_reference", orderReference)
+
+  if (updErr) {
+    console.log("❌ Supabase update error:", updErr)
+    return NextResponse.json({ ok: false, error: "DB update failed" }, { status: 500 })
   }
 
-  const transactionStatus = normalizeStr(payload?.transactionStatus)
-  const isApproved = transactionStatus.toLowerCase() === "approved"
-
-  // 1) Обновляем billing_orders по order_reference
-  try {
-    await supabaseAdmin
-      .from("billing_orders")
-      .update({
-        status: isApproved ? "approved" : (transactionStatus || "unknown"),
-        raw: payload,
-      })
-      .eq("order_reference", orderReference)
-  } catch (e) {
-    console.error("WayForPay webhook: billing_orders update failed", e)
-  }
-
-  // 2) (опционально) выдаём доступ через access_grants
-  if (isApproved) {
-    try {
-      const { data: orderRow } = await supabaseAdmin
-        .from("billing_orders")
-        .select("user_id, device_hash, plan_id")
-        .eq("order_reference", orderReference)
-        .maybeSingle()
-
-      if (orderRow?.user_id) {
-        await supabaseAdmin.from("access_grants").insert({
-          user_id: orderRow.user_id,
-          device_hash: orderRow.device_hash ?? null,
-          plan_id: orderRow.plan_id ?? null,
-        })
-      }
-    } catch (e) {
-      console.error("WayForPay webhook: access_grants insert skipped/failed", e)
-    }
-  }
-
-  // WayForPay ждёт ответ accept + signature(orderReference;status;time)
-  const status = "accept"
+  // Ответ WayForPay (важно: accept + signature)
   const time = Math.floor(Date.now() / 1000)
-  const signature = makeServiceResponseSignature(secret, orderReference, status, time)
+  const status = "accept"
+  const signature = calcResponseSignature(orderReference, status, time, secret)
 
-  return NextResponse.json({ orderReference, status, time, signature })
+  return NextResponse.json({
+    orderReference,
+    status,
+    time,
+    signature,
+  })
 }
