@@ -3,46 +3,45 @@ import Link from "next/link"
 export default function PaymentReturnPage({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined }
+  searchParams?: { orderReference?: string }
 }) {
-  const orderReference = Array.isArray(searchParams.orderReference)
-    ? searchParams.orderReference[0]
-    : searchParams.orderReference
+  const orderReference = searchParams?.orderReference || ""
 
   return (
-    <main className="max-w-2xl mx-auto px-6 py-16">
-      <h1 className="text-2xl font-semibold">Payment processing</h1>
+    <main className="min-h-[70vh] flex items-center justify-center px-4">
+      <div className="max-w-xl w-full rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+        <h1 className="text-2xl font-semibold text-gray-900">Оплата обрабатывается</h1>
 
-      <p className="mt-4 text-gray-700">
-        {orderReference
-          ? <>Order reference: <span className="font-mono">{orderReference}</span></>
-          : <>Order reference not provided</>
-        }
-      </p>
-
-      <div className="mt-6 space-y-3 text-gray-700">
-        <p>
-          If payment was successful, access will be activated automatically.
+        <p className="mt-3 text-gray-600">
+          Если оплата прошла, доступ активируется автоматически через несколько секунд.
         </p>
-        <p>
-          Usually it takes 5–30 seconds. If you do not see access, refresh the page or open Profile.
-        </p>
-      </div>
 
-      <div className="mt-8 flex gap-3">
-        <Link
-          href="/profile"
-          className="px-4 py-2 rounded-md bg-black text-white"
-        >
-          Go to Profile
-        </Link>
+        {orderReference ? (
+          <div className="mt-4 rounded-xl bg-gray-50 p-3 text-sm text-gray-800">
+            <div className="font-medium">Order reference</div>
+            <div className="break-all">{orderReference}</div>
+          </div>
+        ) : (
+          <p className="mt-4 text-sm text-gray-500">
+            Не найден orderReference в URL.
+          </p>
+        )}
 
-        <Link
-          href="/pricing"
-          className="px-4 py-2 rounded-md border border-gray-300"
-        >
-          Back to Pricing
-        </Link>
+        <div className="mt-6 flex flex-col gap-2">
+          <Link
+            href="/profile"
+            className="w-full rounded-xl bg-black px-4 py-3 text-center text-white hover:opacity-90"
+          >
+            Перейти в профиль
+          </Link>
+
+          <Link
+            href="/pricing"
+            className="w-full rounded-xl border border-gray-300 px-4 py-3 text-center text-gray-800 hover:bg-gray-50"
+          >
+            Назад к тарифам
+          </Link>
+        </div>
       </div>
     </main>
   )
