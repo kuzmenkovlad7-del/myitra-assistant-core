@@ -16,9 +16,7 @@ export default function MobileNav() {
   const pathname = usePathname()
   const [isOpen, setIsOpen] = useState(false)
 
-  const isActive = (path: string) => {
-    return pathname === path
-  }
+  const isActive = (path: string) => pathname === path
 
   const handleSignOut = async () => {
     await signOut()
@@ -34,6 +32,7 @@ export default function MobileNav() {
             <span className="sr-only">Toggle menu</span>
           </Button>
         </SheetTrigger>
+
         <SheetContent side="right" className="w-[300px] sm:w-[400px] bg-white">
           <div className="flex flex-col h-full">
             <div className="flex justify-between items-center py-4">
@@ -54,6 +53,7 @@ export default function MobileNav() {
               >
                 {t("Home")}
               </Link>
+
               <Link
                 href="/about"
                 className={`px-2 py-1 rounded-md ${
@@ -63,15 +63,17 @@ export default function MobileNav() {
               >
                 {t("About")}
               </Link>
+
               <Link
-                href="/services"
+                href="/contacts"
                 className={`px-2 py-1 rounded-md ${
-                  isActive("/services") ? "bg-primary-100 text-primary-600" : "text-gray-700 hover:bg-gray-100"
+                  isActive("/contacts") ? "bg-primary-100 text-primary-600" : "text-gray-700 hover:bg-gray-100"
                 }`}
                 onClick={() => setIsOpen(false)}
               >
-                {t("Services")}
+                {t("Contacts")}
               </Link>
+
               <Link
                 href="/pricing"
                 className={`px-2 py-1 rounded-md ${
@@ -80,15 +82,6 @@ export default function MobileNav() {
                 onClick={() => setIsOpen(false)}
               >
                 {t("Pricing")}
-              </Link>
-              <Link
-                href="/contact"
-                className={`px-2 py-1 rounded-md ${
-                  isActive("/contact") ? "bg-primary-100 text-primary-600" : "text-gray-700 hover:bg-gray-100"
-                }`}
-                onClick={() => setIsOpen(false)}
-              >
-                {t("Contact")}
               </Link>
             </nav>
 
@@ -107,6 +100,7 @@ export default function MobileNav() {
                         <User size={18} />
                         <span>{t("Profile")}</span>
                       </Link>
+
                       <button
                         onClick={handleSignOut}
                         className="flex items-center space-x-2 px-2 py-1 rounded-md text-red-600 hover:bg-red-50 w-full text-left"
