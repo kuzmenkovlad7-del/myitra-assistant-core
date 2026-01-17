@@ -1,42 +1,46 @@
-import { cookies } from "next/headers"
 import { createServerClient } from "@supabase/ssr"
+import { cookies } from "next/headers"
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+function stripQuotes(v: string) {
+  return v.replace(/^['"]|['"]$/g, "")
+}
 
-if (!url) throw new Error("NEXT_PUBLIC_SUPABASE_URL is missing")
-if (!anonKey) throw new Error("NEXT_PUBLIC_SUPABASE_ANON_KEY is missing")
+function getEnv(name: string): string {
+  const raw = process.env[name] ?? ""
+  return stripQuotes(raw)
+}
 
-export function getSupabaseServerClient() {
+/**
+ * Server-side Supabase client (SSR / Route Handlers)
+ * Требует NEXT_PUBLIC_SUPABASE_URL и NEXT_PUBLIC_SUPABASE_ANON_KEY
+ */
+export function createSupabaseServerClient() {
   const cookieStore = cookies()
+
+  const url = getEnv("NEXT_PUBLIC_SUPABASE_URL")
+  const anonKey = getEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+
+  if (!url || !anonKey) {
+    throw new Error("Missing env: NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY")
+  }
 
   return createServerClient(url, anonKey, {
     cookies: {
-      get(name: string) {
-        return cookieStore.get(name)?.value
+      getAll() {
+        return cookieStore.getAll()
       },
-      set(name: string, value: string, options: any) {
-        cookieStore.set({ name, value, ...options })
-      },
-      remove(name: string, options: any) {
-        cookieStore.set({ name, value: "", ...options, maxAge: 0 })
+      setAll(cookiesToSet) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options)
+          })
+        } catch {
+          // В некоторых контекстах cookies() read-only — игнорируем
+        }
       },
     },
   })
 }
 
-export function getOrCreateDeviceHash() {
-  const cookieStore = cookies()
-  let deviceHash = cookieStore.get("device_hash")?.value
-
-  if (!deviceHash) {
-    deviceHash = crypto.randomUUID()
-    cookieStore.set("device_hash", deviceHash, {
-      path: "/",
-      httpOnly: true,
-      sameSite: "lax",
-    })
-  }
-
-  return deviceHash
-}
+// alias (на всякий случай, чтобы не ломать импорты)
+export const getSupabaseServerClient = createSupabaseServerClient
