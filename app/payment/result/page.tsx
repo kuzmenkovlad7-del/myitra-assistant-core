@@ -1,123 +1,168 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, XCircle, Loader2, RefreshCw } from "lucide-react";
 
-type UiStatus = "checking" | "paid" | "failed" | "processing" | "not_found" | "error";
+type BillingStatus = "paid" | "failed" | "processing" | "not_found" | "unknown";
+
+function normalizeStatus(s: any): BillingStatus {
+  const v = String(s || "").toLowerCase();
+  if (v === "paid") return "paid";
+  if (v === "failed") return "failed";
+  if (v === "processing") return "processing";
+  if (v === "not_found") return "not_found";
+  return "unknown";
+}
 
 export default function PaymentResultPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const sp = useSearchParams();
 
-  const orderReference = useMemo(() => {
-    return (searchParams.get("orderReference") || "").trim();
-  }, [searchParams]);
+  const orderReference = sp.get("orderReference")?.trim() || "";
+  const debug = sp.get("debug") === "1";
 
-  const [status, setStatus] = useState<UiStatus>("checking");
-  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = React.useState<BillingStatus>("processing");
+  const [loading, setLoading] = React.useState(false);
+  const [tries, setTries] = React.useState(0);
 
-  const autoCheckDoneRef = useRef(false);
-
-  const goHome = () => router.push("/");
-  const goProfile = () => router.push("/profile");
-
-  const fetchStatus = async () => {
+  const fetchStatus = React.useCallback(async () => {
     if (!orderReference) {
-      setStatus("error");
+      setStatus("failed");
       return;
     }
 
     try {
-      const r = await fetch(
+      const res = await fetch(
         `/api/billing/orders/status?orderReference=${encodeURIComponent(orderReference)}`,
         { cache: "no-store" }
       );
-      const j = await r.json().catch(() => null);
 
-      const next = (j?.status as UiStatus) || "processing";
-      if (j?.ok) {
-        setStatus(next);
-      } else {
-        setStatus("processing");
+      const json: any = await res.json().catch(() => ({}));
+
+      if (debug) {
+        console.log("[billing][result] status", { httpStatus: res.status, json });
       }
-    } catch {
-      setStatus("error");
-    }
-  };
 
-  const forceCheck = async () => {
+      if (!res.ok || !json?.ok) {
+        setStatus("unknown");
+        return;
+      }
+
+      setStatus(normalizeStatus(json.status));
+    } catch (e) {
+      if (debug) console.log("[billing][result] status fetch error", e);
+      setStatus("unknown");
+    }
+  }, [orderReference, debug]);
+
+  const forceCheck = React.useCallback(async () => {
     if (!orderReference) return;
 
     setLoading(true);
     try {
-      await fetch(
+      const res = await fetch(
         `/api/billing/wayforpay/check?orderReference=${encodeURIComponent(orderReference)}`,
-        { cache: "no-store" }
+        { method: "POST", cache: "no-store" }
       );
-    } catch {
-      // ignore - status will show error if needed
-    } finally {
+
+      const json: any = await res.json().catch(() => ({}));
+      if (debug) console.log("[billing][result] forceCheck", { httpStatus: res.status, json });
+
+      // после check сразу повторяем status
       await fetchStatus();
+    } finally {
       setLoading(false);
     }
-  };
+  }, [orderReference, fetchStatus, debug]);
 
-  useEffect(() => {
-    fetchStatus();
-    // ✅ один авто-check, без интервалов и спама
-    const t = setTimeout(async () => {
-      if (autoCheckDoneRef.current) return;
-      autoCheckDoneRef.current = true;
+  // Первичная проверка + максимум 6 попыток автопроверки
+  React.useEffect(() => {
+    let mounted = true;
+    let timer: any = null;
 
-      // если статус еще не paid — делаем один check
-      await forceCheck();
-    }, 800);
+    const run = async () => {
+      await fetchStatus();
+      if (!mounted) return;
 
-    return () => clearTimeout(t);
+      setTries(0);
+
+      timer = setInterval(async () => {
+        // если уже финальный статус — стоп
+        if (status === "paid" || status === "failed") return;
+
+        setTries((t) => {
+          const next = t + 1;
+          return next;
+        });
+      }, 1500);
+    };
+
+    run();
+
+    return () => {
+      mounted = false;
+      if (timer) clearInterval(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderReference]);
 
-  const title =
-    status === "paid"
-      ? "Оплата подтверждена"
-      : status === "failed"
-      ? "Оплата не прошла"
-      : status === "processing" || status === "checking"
-      ? "Проверяем оплату"
-      : status === "not_found"
-      ? "Оплата не найдена"
-      : "Ошибка проверки";
+  // отдельный эффект чтобы реально делать запросы по tries
+  React.useEffect(() => {
+    if (!orderReference) return;
+    if (status === "paid" || status === "failed") return;
 
-  const subtitle =
-    status === "paid"
-      ? "Доступ активирован. Можете переходить в кабинет."
-      : status === "failed"
-      ? "Оплата не подтверждена. Попробуйте ещё раз или обратитесь в поддержку."
-      : status === "processing" || status === "checking"
-      ? "Это может занять несколько секунд."
-      : status === "not_found"
-      ? "Не удалось найти заказ. Проверьте ссылку или повторите проверку."
-      : "Не удалось проверить статус. Повторите попытку.";
+    if (tries > 0 && tries <= 6) {
+      fetchStatus();
+    }
+    // после 6 попыток не спамим сеть
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tries]);
+
+  const goProfile = () => router.push("/profile");
+  const goHome = () => router.push("/");
+
+  const ui = (() => {
+    if (!orderReference) {
+      return {
+        title: "Ошибка оплаты",
+        subtitle: "Не найден orderReference. Попробуйте ещё раз или обратитесь в поддержку.",
+        icon: <XCircle className="h-8 w-8 text-red-600" />,
+      };
+    }
+
+    if (status === "paid") {
+      return {
+        title: "Оплата подтверждена",
+        subtitle: "Доступ активирован. Можете переходить в кабинет.",
+        icon: <CheckCircle2 className="h-8 w-8 text-green-600" />,
+      };
+    }
+
+    if (status === "failed") {
+      return {
+        title: "Оплата не прошла",
+        subtitle: "Оплата не подтверждена. Попробуйте ещё раз или обратитесь в поддержку.",
+        icon: <XCircle className="h-8 w-8 text-red-600" />,
+      };
+    }
+
+    return {
+      title: "Проверяем оплату",
+      subtitle: "Подождите пару секунд. Если не обновится — нажмите Проверить ещё раз.",
+      icon: <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />,
+    };
+  })();
 
   return (
     <div className="flex min-h-[70vh] items-center justify-center px-4 py-10">
       <div className="w-full max-w-md rounded-2xl border bg-card p-6 shadow-xl">
         <div className="flex items-start gap-3">
-          <div className="mt-0.5">
-            {status === "paid" ? (
-              <CheckCircle2 className="h-7 w-7 text-green-600" />
-            ) : status === "failed" ? (
-              <XCircle className="h-7 w-7 text-red-600" />
-            ) : (
-              <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />
-            )}
-          </div>
-
+          <div className="mt-0.5">{ui.icon}</div>
           <div className="flex-1">
-            <h1 className="text-xl font-semibold text-card-foreground">{title}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+            <h1 className="text-xl font-semibold text-card-foreground">{ui.title}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">{ui.subtitle}</p>
 
             {orderReference ? (
               <p className="mt-2 text-xs text-muted-foreground/70">
