@@ -26,7 +26,7 @@ function mapStatus(transactionStatus?: string) {
 async function parseBody(req: Request) {
   const ct = (req.headers.get("content-type") || "").toLowerCase();
 
-  // multipart
+  // multipart/form-data
   if (ct.includes("multipart/form-data")) {
     const fd = await req.formData();
     const obj: Record<string, any> = {};
@@ -36,12 +36,12 @@ async function parseBody(req: Request) {
     return obj;
   }
 
-  // fallback raw text
+  // read raw body as text (works for json + urlencoded)
   const raw = await req.text();
   const trimmed = raw.trim();
   if (!trimmed) return {};
 
-  // JSON
+  // JSON (normal case)
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
     try {
       return JSON.parse(trimmed);
@@ -50,10 +50,12 @@ async function parseBody(req: Request) {
     }
   }
 
-  // x-www-form-urlencoded
+  // x-www-form-urlencoded (NO iterators to satisfy TS target)
   const params = new URLSearchParams(trimmed);
   const obj: Record<string, any> = {};
-  for (const [k, v] of params.entries()) obj[k] = v;
+  params.forEach((value, key) => {
+    obj[key] = value;
+  });
 
   // special case: body is JSON string but came in wrong format without "="
   if (Object.keys(obj).length === 1) {
@@ -110,7 +112,6 @@ function normalizeWfpPayload(payload: any) {
 
 // WayForPay webhook signature:
 // merchantAccount;orderReference;amount;currency;authCode;cardPan;transactionStatus;reasonCode
-// HMAC_MD5(secretKey) :contentReference[oaicite:1]{index=1}
 function verifyWebhookSignature(p: any, secret: string) {
   const signStr = [
     p.merchantAccount ?? "",
@@ -129,8 +130,8 @@ function verifyWebhookSignature(p: any, secret: string) {
   return { ok: expected === provided, expected, provided };
 }
 
-// WayForPay ожидает accept-ответ:
-// orderReference;status;time -> HMAC_MD5(secretKey) :contentReference[oaicite:2]{index=2}
+// WayForPay accept answer signature:
+// orderReference;status;time
 function wfpAcceptResponse(orderReference: string, secret: string) {
   const time = Math.floor(Date.now() / 1000);
   const status = "accept";
