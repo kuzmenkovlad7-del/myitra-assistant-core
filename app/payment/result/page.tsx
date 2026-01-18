@@ -1,216 +1,246 @@
 "use client";
 
-import * as React from "react";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { CheckCircle2, XCircle, Loader2, Clock3, Bug } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { CheckCircle2, Loader2, RefreshCw, XCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { MissionSuccessDialog } from "@/components/ui/mission-success-dialog";
 
-type PayState = "checking" | "paid" | "processing" | "failed" | "error";
+type BillingStatus = "paid" | "failed" | "processing" | "pending" | "not_found" | "unknown";
+
+type StatusResp = {
+  ok: boolean;
+  status?: BillingStatus;
+  orderReference?: string;
+  updatedAt?: string;
+  createdAt?: string;
+  raw?: any;
+  error?: string;
+};
 
 export default function PaymentResultPage() {
   const sp = useSearchParams();
+  const router = useRouter();
+
   const orderReference = sp.get("orderReference") || "";
   const debug = sp.get("debug") === "1";
 
-  const [state, setState] = React.useState<PayState>("checking");
-  const [details, setDetails] = React.useState<any>(null);
-  const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [showDebug, setShowDebug] = React.useState(debug);
+  const [status, setStatus] = useState<BillingStatus | "checking" | "error">("checking");
+  const [details, setDetails] = useState<StatusResp | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
-  const loadStatus = React.useCallback(async () => {
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const pollRef = useRef<number | null>(null);
+  const didAutoCheckRef = useRef(false);
+
+  const statusTitle = useMemo(() => {
+    if (status === "paid") return "Оплата подтверждена";
+    if (status === "failed") return "Оплата не прошла";
+    if (status === "processing" || status === "pending" || status === "checking") return "Проверяем оплату";
+    if (status === "not_found") return "Платёж не найден";
+    return "Ошибка проверки";
+  }, [status]);
+
+  const statusDesc = useMemo(() => {
+    if (status === "paid") return "Доступ активирован. Можете переходить в кабинет.";
+    if (status === "failed") return "Оплата не подтверждена. Попробуйте ещё раз или обратитесь в поддержку.";
+    if (status === "processing" || status === "pending") return "Платёж обрабатывается. Обычно это занимает несколько секунд.";
+    if (status === "checking") return "Получаем статус заказа…";
+    if (status === "not_found") return "Заказ пока не появился в системе. Нажмите Проверить ещё раз.";
+    return "Не удалось получить статус. Нажмите Проверить ещё раз.";
+  }, [status]);
+
+  async function fetchStatus() {
     if (!orderReference) {
-      setState("error");
-      setDetails({ error: "missing_orderReference_in_url" });
+      setStatus("error");
       return;
     }
 
     try {
-      setState("checking");
+      console.log("[billing][result] fetchStatus start", { orderReference });
+
+      const url = `/api/billing/orders/status?orderReference=${encodeURIComponent(orderReference)}${
+        debug ? "&debug=1" : ""
+      }`;
+
+      const res = await fetch(url, { method: "GET", cache: "no-store" });
+      const json = (await res.json().catch(() => null)) as StatusResp | null;
+
+      if (!res.ok || !json) {
+        console.log("[billing][result] fetchStatus bad response", { status: res.status, json });
+        setStatus("error");
+        return;
+      }
+
+      setDetails(json);
+
+      const nextStatus = (json.status || "unknown") as BillingStatus;
+      setStatus(nextStatus);
+
+      console.log("[billing][result] fetchStatus ok", { orderReference, nextStatus });
+
+      // Если подтвердилось — открываем красивый попап
+      if (nextStatus === "paid") setDialogOpen(true);
+    } catch (e) {
+      console.log("[billing][result] fetchStatus exception", e);
+      setStatus("error");
+    }
+  }
+
+  async function forceCheck() {
+    if (!orderReference) return;
+
+    try {
+      console.log("[billing][result] forceCheck start", { orderReference });
 
       const res = await fetch(
-        `/api/billing/orders/status?orderReference=${encodeURIComponent(orderReference)}`,
-        { cache: "no-store" }
+        `/api/billing/wayforpay/check?orderReference=${encodeURIComponent(orderReference)}`,
+        { method: "GET", cache: "no-store" }
       );
 
       const json = await res.json().catch(() => null);
+      console.log("[billing][result] forceCheck response", { httpStatus: res.status, json });
 
-      const pack = {
-        httpStatus: res.status,
-        ok: json?.ok,
-        status: json?.status,
-        orderReference: json?.orderReference,
-        raw: json?.raw,
-        error: json?.error,
-        details: json?.details,
-      };
-
-      setDetails(pack);
-
-      if (!res.ok || !json?.ok) {
-        setState("error");
-        return;
-      }
-
-      const s = String(json.status || "").toLowerCase();
-
-      if (s === "paid") {
-        setState("paid");
-        setDialogOpen(true);
-        return;
-      }
-
-      if (s === "processing" || s === "pending") {
-        setState("processing");
-        return;
-      }
-
-      setState("failed");
-    } catch (e: any) {
-      setState("error");
-      setDetails({ error: "fetch_failed", details: String(e?.message || e) });
+      await fetchStatus();
+    } catch (e) {
+      console.log("[billing][result] forceCheck exception", e);
     }
+  }
+
+  function startPolling() {
+    if (pollRef.current) window.clearInterval(pollRef.current);
+
+    let ticks = 0;
+    pollRef.current = window.setInterval(async () => {
+      ticks += 1;
+
+      // максимум ~30 секунд
+      if (ticks > 15) {
+        if (pollRef.current) window.clearInterval(pollRef.current);
+        pollRef.current = null;
+        return;
+      }
+
+      await fetchStatus();
+    }, 2000);
+  }
+
+  useEffect(() => {
+    // старт
+    fetchStatus();
+
+    // авто-пулл если статус не paid/failed
+    startPolling();
+
+    return () => {
+      if (pollRef.current) window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderReference]);
 
-  React.useEffect(() => {
-    loadStatus();
-  }, [loadStatus]);
+  useEffect(() => {
+    // Один раз делаем принудительный checkStatus в WayForPay,
+    // чтобы не ждать webhook если он задержался.
+    if (
+      !didAutoCheckRef.current &&
+      (status === "processing" || status === "pending" || status === "not_found" || status === "checking")
+    ) {
+      didAutoCheckRef.current = true;
+      setTimeout(() => {
+        forceCheck();
+      }, 1200);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
 
-  // Автопуллинг если платеж еще обрабатывается
-  React.useEffect(() => {
-    if (state !== "processing" && state !== "checking") return;
-
-    const t = setInterval(() => {
-      loadStatus();
-    }, 2500);
-
-    return () => clearInterval(t);
-  }, [state, loadStatus]);
-
-  const title =
-    state === "paid"
-      ? "Оплата подтверждена"
-      : state === "processing"
-      ? "Платёж в обработке"
-      : state === "failed"
-      ? "Оплата не подтверждена"
-      : state === "checking"
-      ? "Проверяем оплату"
-      : "Не удалось проверить статус";
-
-  const subtitle =
-    state === "paid"
-      ? "Доступ активирован. Можете переходить в кабинет."
-      : state === "processing"
-      ? "Обычно занимает несколько секунд. Страница обновится автоматически."
-      : state === "failed"
-      ? "Если деньги списались, напишите в поддержку."
-      : state === "checking"
-      ? "Запрашиваем статус из базы данных…"
-      : "Обновите страницу через 10 секунд или нажмите Проверить ещё раз.";
-
-  const Icon =
-    state === "paid"
-      ? CheckCircle2
-      : state === "processing"
-      ? Clock3
-      : state === "checking"
-      ? Loader2
-      : state === "failed"
-      ? XCircle
-      : XCircle;
+  const Icon = useMemo(() => {
+    if (status === "paid") return <CheckCircle2 className="h-7 w-7 text-emerald-600" />;
+    if (status === "failed") return <XCircle className="h-7 w-7 text-red-500" />;
+    if (status === "checking" || status === "processing" || status === "pending")
+      return <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />;
+    return <XCircle className="h-7 w-7 text-muted-foreground" />;
+  }, [status]);
 
   return (
-    <main className="min-h-[70vh] flex items-center justify-center px-4 py-12">
-      {/* Success dialog */}
+    <div className="min-h-[70vh] w-full px-4">
+      <div className="mx-auto mt-16 w-full max-w-xl rounded-2xl border bg-card p-6 shadow-sm">
+        <div className="flex items-start gap-3">
+          <div className="mt-1">{Icon}</div>
+          <div className="flex-1">
+            <h1 className="text-2xl font-semibold">{statusTitle}</h1>
+            <p className="mt-1 text-sm text-muted-foreground">{statusDesc}</p>
+
+            {orderReference && (
+              <div className="mt-3 text-xs text-muted-foreground">
+                orderReference: <span className="font-mono">{orderReference}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-6 flex flex-wrap gap-3">
+          <Button
+            className="min-w-[140px]"
+            onClick={() => router.push("/profile")}
+            disabled={status !== "paid"}
+          >
+            В кабинет
+          </Button>
+
+          <Button variant="outline" className="min-w-[140px]" onClick={() => router.push("/")}>
+            На главную
+          </Button>
+
+          <Button
+            variant="secondary"
+            className="min-w-[170px]"
+            onClick={() => fetchStatus()}
+          >
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Проверить ещё раз
+          </Button>
+        </div>
+
+        {debug && details?.raw && (
+          <div className="mt-6">
+            <button
+              className="text-sm text-muted-foreground underline underline-offset-4"
+              onClick={() => setDetailsOpen((v) => !v)}
+            >
+              {detailsOpen ? "Скрыть детали" : "Показать детали"}
+            </button>
+
+            {detailsOpen && (
+              <pre className="mt-3 max-h-72 overflow-auto rounded-xl bg-secondary p-4 text-xs text-secondary-foreground">
+{JSON.stringify(details.raw, null, 2)}
+              </pre>
+            )}
+          </div>
+        )}
+
+        <div className="mt-6 text-xs text-muted-foreground">
+          support@turbotaai.com
+        </div>
+      </div>
+
+      {/* Красивый попап только на успех */}
       <MissionSuccessDialog
         isOpen={dialogOpen}
         onClose={() => setDialogOpen(false)}
-        imageUrl="https://images.unsplash.com/photo-1556745757-8d76bdb6984b?auto=format&fit=crop&w=800&q=80"
+        illustration={<CheckCircle2 className="h-12 w-12 text-emerald-600" />}
         title="Оплата прошла успешно"
-        description="Доступ к тарифу активирован. Можете сразу зайти в кабинет."
-        inputPlaceholder="Email для чека, если нужно"
+        titleIcon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}
+        description="Доступ к тарифу активирован. Можете сразу перейти в кабинет."
+        showInput={false}
         primaryButtonText="Перейти в кабинет"
-        onPrimaryClick={() => {
-          window.location.href = "/dashboard";
-        }}
+        onPrimaryClick={() => router.push("/profile")}
         secondaryButtonText="На главную"
-        onSecondaryClick={() => {
-          window.location.href = "/";
-        }}
+        onSecondaryClick={() => router.push("/")}
         badgeText="TurbotaAI"
-        badgeIcon={<Bug className="h-3 w-3" />}
       />
-
-      <div className="w-full max-w-xl rounded-2xl border bg-white/70 backdrop-blur p-8 shadow-sm">
-        <div className="flex items-start gap-4">
-          <div className="mt-1">
-            <Icon
-              className={[
-                "h-8 w-8",
-                state === "checking" ? "animate-spin" : "",
-                state === "paid" ? "text-green-600" : "",
-                state === "processing" ? "text-orange-500" : "",
-                state === "failed" ? "text-red-600" : "",
-                state === "error" ? "text-red-600" : "",
-              ].join(" ")}
-            />
-          </div>
-
-          <div className="flex-1">
-            <h1 className="text-2xl font-semibold text-black">{title}</h1>
-            <p className="mt-2 text-sm text-black/70">{subtitle}</p>
-
-            <div className="mt-3 text-xs text-black/50 break-all">
-              orderReference: {orderReference || "—"}
-            </div>
-
-            <div className="mt-6 flex flex-col sm:flex-row gap-3">
-              <Link
-                href="/"
-                className="flex-1 rounded-xl bg-black text-white px-4 py-2 text-center font-medium"
-              >
-                На главную
-              </Link>
-              <Link
-                href="/dashboard"
-                className="flex-1 rounded-xl border border-black/15 px-4 py-2 text-center"
-              >
-                В кабинет
-              </Link>
-              <Button
-                variant="outline"
-                className="sm:w-auto"
-                onClick={() => loadStatus()}
-              >
-                Проверить ещё раз
-              </Button>
-            </div>
-
-            <div className="mt-6">
-              <button
-                className="text-xs text-black/60 hover:text-black underline underline-offset-4"
-                onClick={() => setShowDebug((v) => !v)}
-                type="button"
-              >
-                {showDebug ? "Скрыть детали" : "Показать детали"}
-              </button>
-
-              {showDebug && (
-                <pre className="mt-3 text-[11px] bg-black/5 p-3 rounded-xl overflow-auto max-h-64">
-{JSON.stringify(details, null, 2)}
-                </pre>
-              )}
-            </div>
-
-            <div className="mt-5 text-xs text-black/60">
-              support@turbotaai.com
-            </div>
-          </div>
-        </div>
-      </div>
-    </main>
+    </div>
   );
 }
