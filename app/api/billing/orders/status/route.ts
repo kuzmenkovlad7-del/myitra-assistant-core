@@ -7,19 +7,38 @@ export const dynamic = "force-dynamic";
 type BillingStatus = "paid" | "failed" | "processing" | "not_found";
 
 function pickBestStatus(statuses: string[]): BillingStatus {
-  if (statuses.includes("paid")) return "paid";
-  if (statuses.includes("processing")) return "processing";
-  if (statuses.length === 0) return "not_found";
+  const s = statuses.map((x) => String(x || "").toLowerCase());
+  if (s.includes("paid")) return "paid";
+  if (s.includes("processing")) return "processing";
+  if (s.length === 0) return "not_found";
   return "failed";
 }
 
+function safeSupabaseHost() {
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.SUPABASE_URL ||
+    "";
+  try {
+    return url ? new URL(url).host : "";
+  } catch {
+    return "";
+  }
+}
+
 export async function GET(req: NextRequest) {
-  const url = new URL(req.url);
-  const orderReference = url.searchParams.get("orderReference")?.trim() || "";
+  const urlObj = new URL(req.url);
+  const orderReference = urlObj.searchParams.get("orderReference")?.trim() || "";
+  const debug = urlObj.searchParams.get("debug") === "1";
 
   if (!orderReference) {
     return NextResponse.json({ ok: false, error: "missing_orderReference" }, { status: 400 });
   }
+
+  console.info("[billing][status] request", {
+    orderReference,
+    supabaseHost: safeSupabaseHost(),
+  });
 
   const supabase = getSupabaseAdmin();
 
@@ -37,6 +56,24 @@ export async function GET(req: NextRequest) {
 
   const statuses = (data || []).map((r: any) => String(r.status || ""));
   const best = pickBestStatus(statuses);
+
+  console.info("[billing][status] result", {
+    orderReference,
+    best,
+    statuses,
+    rows: (data || []).length,
+  });
+
+  if (debug) {
+    return NextResponse.json({
+      ok: true,
+      orderReference,
+      status: best,
+      statuses,
+      supabaseHost: safeSupabaseHost(),
+      rows: (data || []).length,
+    });
+  }
 
   return NextResponse.json({
     ok: true,

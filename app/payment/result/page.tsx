@@ -35,7 +35,7 @@ export default function PaymentResultPage() {
 
     try {
       const res = await fetch(
-        `/api/billing/orders/status?orderReference=${encodeURIComponent(orderReference)}`,
+        `/api/billing/orders/status?orderReference=${encodeURIComponent(orderReference)}${debug ? "&debug=1" : ""}`,
         { cache: "no-store" }
       );
 
@@ -70,55 +70,43 @@ export default function PaymentResultPage() {
       const json: any = await res.json().catch(() => ({}));
       if (debug) console.log("[billing][result] forceCheck", { httpStatus: res.status, json });
 
-      // после check сразу повторяем status
       await fetchStatus();
     } finally {
       setLoading(false);
     }
   }, [orderReference, fetchStatus, debug]);
 
-  // Первичная проверка + максимум 6 попыток автопроверки
+  // ✅ НОРМАЛЬНЫЙ polling: максимум 6 попыток и стоп
   React.useEffect(() => {
-    let mounted = true;
+    if (!orderReference) {
+      setStatus("failed");
+      return;
+    }
+
     let timer: any = null;
+    let cancelled = false;
 
     const run = async () => {
+      // если уже финальный — ничего не делаем
+      if (status === "paid" || status === "failed") return;
+      // после 6 попыток не спамим
+      if (tries > 6) return;
+
       await fetchStatus();
-      if (!mounted) return;
+      if (cancelled) return;
 
-      setTries(0);
-
-      timer = setInterval(async () => {
-        // если уже финальный статус — стоп
-        if (status === "paid" || status === "failed") return;
-
-        setTries((t) => {
-          const next = t + 1;
-          return next;
-        });
+      timer = setTimeout(() => {
+        setTries((t) => t + 1);
       }, 1500);
     };
 
     run();
 
     return () => {
-      mounted = false;
-      if (timer) clearInterval(timer);
+      cancelled = true;
+      if (timer) clearTimeout(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderReference]);
-
-  // отдельный эффект чтобы реально делать запросы по tries
-  React.useEffect(() => {
-    if (!orderReference) return;
-    if (status === "paid" || status === "failed") return;
-
-    if (tries > 0 && tries <= 6) {
-      fetchStatus();
-    }
-    // после 6 попыток не спамим сеть
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tries]);
+  }, [orderReference, tries, status, fetchStatus]);
 
   const goProfile = () => router.push("/profile");
   const goHome = () => router.push("/");
@@ -173,9 +161,13 @@ export default function PaymentResultPage() {
         </div>
 
         <div className="mt-5 flex gap-3">
-          <Button className="flex-1" onClick={goProfile}>
+          <Button
+            className="flex-1 bg-black text-white hover:bg-black/90"
+            onClick={goProfile}
+          >
             В кабинет
           </Button>
+
           <Button variant="outline" className="flex-1" onClick={goHome}>
             На главную
           </Button>
