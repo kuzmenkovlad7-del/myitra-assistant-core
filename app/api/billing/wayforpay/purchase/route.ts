@@ -52,12 +52,13 @@ function hmacMd5(secretKey: string, s: string) {
 }
 
 function esc(v: any) {
+  // replaceAll ломает билд при старом target/lib, поэтому только replace(/.../g)
   return String(v ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
 }
 
 function addDays(d: Date, days: number) {
@@ -80,10 +81,11 @@ export async function GET(req: NextRequest) {
   const merchantAccount = String(process.env.WAYFORPAY_MERCHANT_ACCOUNT ?? "").trim()
   const secretKey = String(process.env.WAYFORPAY_SECRET_KEY ?? "").trim()
 
+  // поддерживаем обе переменные, чтобы не зависеть от названия на Vercel
   const merchantDomainName = String(
     process.env.WAYFORPAY_MERCHANT_DOMAIN_NAME ??
-    process.env.WAYFORPAY_MERCHANT_DOMAIN ??
-    ""
+      process.env.WAYFORPAY_MERCHANT_DOMAIN ??
+      ""
   ).trim()
 
   if (!merchantAccount || !secretKey || !merchantDomainName) {
