@@ -1,187 +1,150 @@
-"use client";
+"use client"
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
-type SubStatus = {
-  ok: boolean;
-  userId?: string;
-  hasAccess?: boolean;
-  accessUntil?: string | null;
-  paidUntil?: string | null;
-  promoUntil?: string | null;
-  autoRenew?: boolean;
-  subscriptionStatus?: string;
-  error?: string;
-};
+type SubSummary = {
+  ok: boolean
+  hasAccess: boolean
+  accessUntil: string | null
+  paidUntil: string | null
+  promoUntil: string | null
+  autoRenew: boolean
+  subscriptionStatus: string | null
+  wfpOrderReference: string | null
+}
 
-function fmtDate(v?: string | null) {
-  if (!v) return "Not active";
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return "Not active";
-  return d.toLocaleString();
+function fmt(v: string | null) {
+  if (!v) return "Not active"
+  const d = new Date(v)
+  if (Number.isNaN(d.getTime())) return "Not active"
+  return d.toLocaleString()
 }
 
 export default function SubscriptionClient() {
-  const router = useRouter();
+  const router = useRouter()
 
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<SubStatus | null>(null);
+  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState<SubSummary | null>(null)
+  const [busy, setBusy] = useState<null | "pay" | "cancel" | "resume" | "promo">(null)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [promoCode, setPromoCode] = useState("")
 
-  const [busy, setBusy] = useState<string | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
-
-  const [promoCode, setPromoCode] = useState("");
-
-  const statusLabel = useMemo(() => {
-    if (!data?.ok) return "Unknown";
-    if (data.subscriptionStatus === "canceled") return "Canceled";
-    return data.hasAccess ? "Active" : "Inactive";
-  }, [data]);
-
-  async function refresh() {
-    setLoading(true);
-    setMsg(null);
-
+  async function load() {
+    setLoading(true)
+    setMsg(null)
     try {
-      const r = await fetch("/api/billing/subscription/status", { credentials: "include" });
-
-      if (r.status === 401) {
-        router.push("/login");
-        return;
-      }
-
-      const j = (await r.json().catch(() => ({}))) as SubStatus;
-      setData(j);
-    } catch (e: any) {
-      setData({ ok: false, error: String(e?.message || e) });
+      const r = await fetch("/api/subscription/summary", { cache: "no-store", credentials: "include" })
+      const d = await r.json().catch(() => ({} as any))
+      setData(d)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
 
   useEffect(() => {
-    refresh();
-  }, []);
+    load()
+  }, [])
 
   async function payMonthly() {
-    setBusy("pay");
-    setMsg(null);
+    setBusy("pay")
+    setMsg(null)
     try {
-      const r = await fetch("/api/billing/wayforpay/create-invoice", {
-        method: "POST",
-        credentials: "include",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ planId: "monthly" }),
-      });
-
-      if (r.status === 401) {
-        router.push("/login");
-        return;
-      }
-
-      const j = await r.json().catch(() => ({} as any));
-      if (!r.ok || !j?.ok || !j?.invoiceUrl) {
-        setMsg(j?.error || "Failed to create invoice");
-        return;
-      }
-
-      window.location.href = j.invoiceUrl;
-    } catch (e: any) {
-      setMsg(String(e?.message || e));
+      // этот URL вернёт HTML form auto-submit на WayForPay
+      window.location.href = "/api/billing/wayforpay/purchase?planId=monthly"
     } finally {
-      setBusy(null);
+      setBusy(null)
     }
   }
 
   async function cancelAutoRenew() {
-    setBusy("cancel");
-    setMsg(null);
+    setBusy("cancel")
+    setMsg(null)
     try {
-      const r = await fetch("/api/billing/subscription/cancel", { method: "POST", credentials: "include" });
-      const j = await r.json().catch(() => ({} as any));
-      if (!r.ok || !j?.ok) {
-        setMsg(j?.error || "Cancel failed");
-        return;
+      const r = await fetch("/api/billing/wayforpay/regular/suspend", {
+        method: "POST",
+        credentials: "include",
+      })
+      const d = await r.json().catch(() => ({} as any))
+      if (!r.ok || d?.ok === false) {
+        setMsg(d?.error || "Failed to cancel auto-renew")
+        return
       }
-      await refresh();
-      setMsg("Auto-renew is off. Current access stays until Paid until.");
-    } catch (e: any) {
-      setMsg(String(e?.message || e));
+      setMsg("Auto-renew canceled")
+      await load()
     } finally {
-      setBusy(null);
+      setBusy(null)
     }
   }
 
   async function resumeAutoRenew() {
-    setBusy("resume");
-    setMsg(null);
+    setBusy("resume")
+    setMsg(null)
     try {
-      const r = await fetch("/api/billing/subscription/resume", { method: "POST", credentials: "include" });
-      const j = await r.json().catch(() => ({} as any));
-      if (!r.ok || !j?.ok) {
-        setMsg(j?.error || "Resume failed");
-        return;
+      const r = await fetch("/api/billing/wayforpay/regular/resume", {
+        method: "POST",
+        credentials: "include",
+      })
+      const d = await r.json().catch(() => ({} as any))
+      if (!r.ok || d?.ok === false) {
+        setMsg(d?.error || "Failed to resume auto-renew")
+        return
       }
-      await refresh();
-      setMsg("Auto-renew is on.");
-    } catch (e: any) {
-      setMsg(String(e?.message || e));
+      setMsg("Auto-renew resumed")
+      await load()
     } finally {
-      setBusy(null);
+      setBusy(null)
     }
   }
 
-  async function applyPromo() {
-    const code = promoCode.trim();
-    if (!code) {
-      setMsg("Enter promo code");
-      return;
-    }
-
-    setBusy("promo");
-    setMsg(null);
-
+  async function redeemPromo() {
+    const code = promoCode.trim()
+    if (!code) return
+    setBusy("promo")
+    setMsg(null)
     try {
       const r = await fetch("/api/billing/promo/redeem", {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ code }),
-      });
-
-      const j = await r.json().catch(() => ({} as any));
-      if (!r.ok || !j?.ok) {
-        setMsg(j?.error || "Promo failed");
-        return;
+      })
+      const d = await r.json().catch(() => ({} as any))
+      if (!r.ok || d?.ok === false) {
+        setMsg(d?.error || "Promo failed")
+        return
       }
-
-      setPromoCode("");
-      await refresh();
-      setMsg("Promo activated.");
-    } catch (e: any) {
-      setMsg(String(e?.message || e));
+      setPromoCode("")
+      setMsg("Promo applied")
+      await load()
     } finally {
-      setBusy(null);
+      setBusy(null)
     }
   }
 
+  const ok = !!data?.ok
+  const autoRenew = !!data?.autoRenew
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
-      <div className="mb-8 flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-4xl font-semibold">Subscription</h1>
-          <p className="mt-1 text-sm text-slate-500">Manage billing, access and auto-renew</p>
-        </div>
+      <div className="mb-8 flex items-center justify-between">
+        <h1 className="text-4xl font-semibold">Subscription</h1>
 
         <div className="flex items-center gap-3">
-          <Button variant="outline" className="rounded-full border border-slate-200" onClick={() => router.push("/profile")}>
-            Back to profile
+          <Button
+            variant="outline"
+            className="rounded-full border border-slate-200"
+            onClick={() => router.push("/profile")}
+          >
+            Profile
           </Button>
-          <Button variant="outline" className="rounded-full border border-slate-200" onClick={() => router.push("/pricing")}>
+          <Button
+            variant="outline"
+            className="rounded-full border border-slate-200"
+            onClick={() => router.push("/pricing")}
+          >
             Pricing
           </Button>
         </div>
@@ -190,55 +153,51 @@ export default function SubscriptionClient() {
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="rounded-2xl border border-slate-200">
           <CardHeader>
-            <CardTitle className="text-2xl">Status</CardTitle>
-            <CardDescription>Your access and renewal settings</CardDescription>
+            <CardTitle className="text-2xl">Manage</CardTitle>
+            <CardDescription>Monthly recurring subscription</CardDescription>
           </CardHeader>
 
-          <CardContent className="space-y-2 text-sm text-slate-700">
+          <CardContent className="text-sm text-slate-700">
             {loading ? (
               <div className="text-slate-500">Loading...</div>
-            ) : !data?.ok ? (
-              <>
-                <div className="font-medium text-slate-900">Failed to load</div>
-                <div className="text-slate-500">{data?.error || "Unknown error"}</div>
-              </>
+            ) : !ok ? (
+              <div className="text-slate-500">
+                Please sign in to manage subscription.
+              </div>
             ) : (
               <>
-                <div>
-                  <span className="text-slate-500">Status:</span>{" "}
-                  <span className="font-medium">{statusLabel}</span>
+                <div className="grid gap-3">
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="text-xs text-slate-500">Access until</div>
+                    <div className="mt-1 text-base font-semibold">{fmt(data?.accessUntil ?? null)}</div>
+                    <div className="mt-3 text-xs text-slate-500">Paid until / Promo until</div>
+                    <div className="mt-1 text-sm text-slate-700">
+                      Paid: {fmt(data?.paidUntil ?? null)}<br />
+                      Promo: {fmt(data?.promoUntil ?? null)}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="text-xs text-slate-500">Auto-renew</div>
+                    <div className="mt-1 text-sm">
+                      {autoRenew ? "Enabled" : "Disabled"}
+                    </div>
+                    <div className="mt-2 text-xs text-slate-500">
+                      Order reference: {data?.wfpOrderReference || "Not set yet"}
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <span className="text-slate-500">Auto-renew:</span>{" "}
-                  <span className="font-medium">{data.autoRenew ? "On" : "Off"}</span>
-                </div>
-
-                <div className="pt-2">
-                  <span className="text-slate-500">Access until:</span>{" "}
-                  <span className="font-medium">{fmtDate(data.accessUntil ?? null)}</span>
-                </div>
-
-                <div>
-                  <span className="text-slate-500">Paid until:</span>{" "}
-                  <span className="font-medium">{fmtDate(data.paidUntil ?? null)}</span>
-                </div>
-
-                <div>
-                  <span className="text-slate-500">Promo until:</span>{" "}
-                  <span className="font-medium">{fmtDate(data.promoUntil ?? null)}</span>
-                </div>
-
-                <div className="pt-4 space-y-3">
+                <div className="mt-5 grid gap-3">
                   <Button
                     className="w-full rounded-full"
                     disabled={busy !== null}
                     onClick={payMonthly}
                   >
-                    {busy === "pay" ? "Redirecting..." : (data.hasAccess ? "Extend subscription" : "Start subscription")}
+                    {busy === "pay" ? "Redirecting..." : (data?.hasAccess ? "Extend subscription" : "Start subscription")}
                   </Button>
 
-                  {data.autoRenew ? (
+                  {autoRenew ? (
                     <Button
                       variant="outline"
                       className="w-full rounded-full border border-slate-200"
@@ -259,6 +218,26 @@ export default function SubscriptionClient() {
                   )}
                 </div>
 
+                <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="text-xs text-slate-500">Promo code</div>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      value={promoCode}
+                      onChange={(e) => setPromoCode(e.target.value)}
+                      placeholder="Enter promo code"
+                      className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none"
+                    />
+                    <Button
+                      variant="outline"
+                      className="rounded-xl border border-slate-200"
+                      disabled={busy !== null}
+                      onClick={redeemPromo}
+                    >
+                      {busy === "promo" ? "Applying..." : "Apply"}
+                    </Button>
+                  </div>
+                </div>
+
                 {msg ? (
                   <div className="mt-4 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
                     {msg}
@@ -266,7 +245,7 @@ export default function SubscriptionClient() {
                 ) : null}
 
                 <div className="pt-3 text-xs text-slate-500">
-                  Cancel auto-renew does not remove access immediately. It only stops future renewals inside your account.
+                  Cancel auto-renew does not remove access immediately. It only stops future recurring charges.
                 </div>
               </>
             )}
@@ -275,34 +254,29 @@ export default function SubscriptionClient() {
 
         <Card className="rounded-2xl border border-slate-200">
           <CardHeader>
-            <CardTitle className="text-2xl">Promo</CardTitle>
-            <CardDescription>Activate access using promo code</CardDescription>
+            <CardTitle className="text-2xl">How it works</CardTitle>
+            <CardDescription>Production recurring flow</CardDescription>
           </CardHeader>
 
-          <CardContent className="space-y-3">
-            <Input
-              value={promoCode}
-              onChange={(e) => setPromoCode(e.target.value)}
-              placeholder="Enter promo code"
-              className="rounded-xl"
-              disabled={busy !== null}
-            />
-
-            <Button
-              variant="outline"
-              className="w-full rounded-full border border-slate-200"
-              onClick={applyPromo}
-              disabled={busy !== null}
-            >
-              {busy === "promo" ? "Applying..." : "Apply promo"}
-            </Button>
-
-            <div className="text-xs text-slate-500">
-              Promo updates access without payment. It will appear as Promo until in your account.
+          <CardContent className="space-y-2 text-sm text-slate-700">
+            <div>
+              <span className="font-medium">Start:</span> first payment creates monthly auto-renew at WayForPay.
+            </div>
+            <div>
+              <span className="font-medium">Auto-renew:</span> WayForPay charges monthly automatically.
+            </div>
+            <div>
+              <span className="font-medium">Cancel:</span> sends SUSPEND to WayForPay and disables future charges.
+            </div>
+            <div>
+              <span className="font-medium">Resume:</span> sends RESUME to WayForPay and re-enables future charges.
+            </div>
+            <div className="pt-4 text-xs text-slate-500">
+              Access in the app is controlled by paidUntil and promoUntil in profiles.
             </div>
           </CardContent>
         </Card>
       </div>
     </div>
-  );
+  )
 }

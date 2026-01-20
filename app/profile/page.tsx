@@ -10,7 +10,7 @@ type Summary = {
   ok: boolean;
   isLoggedIn: boolean;
   email: string | null;
-  access: "Paid" | "Promo" | "Limited";
+  access: "Paid" | "Promo" | "Limited" | "Trial";
   trialLeft: number;
   paidUntil: string | null;
   promoUntil: string | null;
@@ -95,7 +95,7 @@ export default function ProfilePage() {
           <Button
             variant="outline"
             className="rounded-full border border-slate-200"
-            onClick={() => router.push("/subscription")}
+            onClick={() => router.push("/pricing")}
           >
             Pricing
           </Button>
