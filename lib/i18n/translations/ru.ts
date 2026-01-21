@@ -45,8 +45,7 @@ export const ru: Record<string, string> = {
   "Live Psychological Support,": "Живая эмоциональная поддержка,",
   "AI-Enhanced": "усиленная ИИ",
   
-  "Professionals supported by AI assistants. We help gather history, maintain journals, and remind about sessions."::
-    "Лицензированные собеседники, которых усиливают AI-ассистенты. Мы помогаем собирать историю, вести дневники и напоминать о сессиях.",
+  "Professionals supported by AI assistants. We help gather history, maintain journals, and remind about sessions.": "Лицензированные собеседники, которых усиливают AI-ассистенты. Мы помогаем собирать историю, вести дневники и напоминать о сессиях.",
   "Talk Now": "Поговорить сейчас",
   "View Services": "Посмотреть услуги",
   "AI Chat 24/7": "AI-чат 24/7",
@@ -62,8 +61,7 @@ export const ru: Record<string, string> = {
   "Choose how you want to talk": "Выберите, как вам удобнее говорить",
   "How would you like to contact us?": "Как вам удобнее выйти на связь?",
   
-  "Start with a quick chat, a voice call or a video session with our AI companion — choose the format that feels safest right now."::
-    "Начните с быстрого чата, голосового звонка или видеосессии с AI-собеседником — выберите формат, который сейчас ощущается самым безопасным.",
+  "Start with a quick chat, a voice call or a video session with our AI companion — choose the format that feels safest right now.": "Начните с быстрого чата, голосового звонка или видеосессии с AI-собеседником — выберите формат, который сейчас ощущается самым безопасным.",
 
   "Chat with AI companion": "Чат с AI-собеседником",
   "Write what is happening in your own words and get structured support in a few minutes.":
@@ -156,8 +154,7 @@ export const ru: Record<string, string> = {
   "Support, partnerships and press": "Поддержка, партнёрства и пресса",
   "Contact TurbotaAI team": "Свяжитесь с командой TurbotaAI",
   
-  "Have questions about how TurbotaAI works, want to discuss partnership or need help with your account? Leave a request — we will answer as soon as possible."::
-    "Хотите уточнить, как работает AI-собеседник, обсудить партнёрство или нужна помощь с аккаунтом? Оставьте заявку — мы ответим как можно быстрее.",
+  "Have questions about how TurbotaAI works, want to discuss partnership or need help with your account? Leave a request — we will answer as soon as possible.": "Хотите уточнить, как работает AI-собеседник, обсудить партнёрство или нужна помощь с аккаунтом? Оставьте заявку — мы ответим как можно быстрее.",
 
   "For urgent situations, please contact local emergency services or a crisis line in your country. TurbotaAI is not a substitute for emergency medical help.":
     "В экстренных ситуациях обращайтесь в местные службы спасения или на кризисную линию вашей страны. TurbotaAI не заменяет неотложную медицинскую помощь.",
@@ -299,8 +296,7 @@ export const ru: Record<string, string> = {
   "During the testing phase you can use the platform without creating an account.":
     "На этапе тестирования вы можете пользоваться платформой без создания аккаунта.",
   
-  "Now you can start a chat, voice call or video session with the AI companion directly from the main page."::
-    "Сейчас вы можете начать чат, голосовой звонок или видеосессию с AI-собеседником прямо с главной страницы.",
+  "Now you can start a chat, voice call or video session with the AI companion directly from the main page.": "Сейчас вы можете начать чат, голосовой звонок или видеосессию с AI-собеседником прямо с главной страницы.",
   "Later this page will be used for full registration, saving programs and personal settings.":
     "Позже эта страница будет использоваться для полной регистрации, сохранения программ и личных настроек.",
   "Back to main page": "Вернуться на главную",
