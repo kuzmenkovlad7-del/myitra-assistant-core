@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useLanguage } from "@/lib/i18n/language-context"
-import { MERCHANT_LEGAL_ADDRESS, MERCHANT_ACTUAL_ADDRESS } from "@/lib/merchant-address"
+import { MERCHANT_LEGAL_ADDRESS, MERCHANT_ACTUAL_ADDRESS, MERCHANT_LEGAL_NAME, MERCHANT_IPN, MERCHANT_PHONE, MERCHANT_EMAIL } from "@/lib/merchant-address"
 
 
 function getPublicMerchantInfo() {

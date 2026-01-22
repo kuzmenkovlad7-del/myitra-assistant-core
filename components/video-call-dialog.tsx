@@ -43,10 +43,10 @@ interface AICharacter {
 const AI_CHARACTERS: AICharacter[] = [
   {
     id: "dr-alexander",
-    name: "Dr. Alexander",
+    name: "Alex",
     gender: "male",
     description:
-      "Senior specialist specializing in cognitive behavioral therapy with 15+ years of experience",
+      "Calm AI companion for everyday conversations and support",
     avatar:
       "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/photo_2025-10-31_22-27-19%D1%83-iWDrUd3gH9sLBeOjmIvu8wX3yxwBuq.jpg",
     animated: true,
@@ -57,10 +57,10 @@ const AI_CHARACTERS: AICharacter[] = [
   },
     {
     id: "dr-maria",
-    name: "Dr. Maria",
+    name: "Mia",
     gender: "female",
     description:
-      "Psychotherapist specializing in emotional regulation, trauma recovery, and relationship counseling",
+      "Warm AI companion for supportive conversations",
     avatar:
       "https://hebbkx1anhila5yf.public.blob.vercel-storage.com/photo_2025-10-31_22-27-18-BmxDH7DCv7e3p0y8HobTyoPkQw1COM.jpg",
     animated: true,
@@ -71,7 +71,7 @@ const AI_CHARACTERS: AICharacter[] = [
   },
 {
     id: "dr-sophia",
-    name: "Dr. Sophia",
+    name: "Leo",
     gender: "female",
     description:
       "Clinical specialist specializing in anxiety, depression, and workplace stress management",

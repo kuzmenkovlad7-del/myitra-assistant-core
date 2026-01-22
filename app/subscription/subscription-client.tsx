@@ -274,7 +274,7 @@ export default function SubscriptionClient() {
               <span className="font-medium">Resume:</span> sends RESUME to WayForPay and re-enables future charges.
             </div>
             <div className="pt-4 text-xs text-slate-500">
-              {t("Access in the app is controlled by paidUntil and promoUntil in profiles.")}
+              {t("Access in the app is controlled by subscription status in profiles.")}
             </div>
           </CardContent>
         </Card>
