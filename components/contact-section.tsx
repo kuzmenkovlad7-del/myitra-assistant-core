@@ -46,11 +46,7 @@ export default function ContactSection() {
             <h2 className="mb-3 text-3xl font-bold text-slate-900 sm:text-4xl md:text-5xl">
               {t("Contact TurbotaAI team")}
             </h2>
-            <p className="mx-auto max-w-3xl text-sm text-slate-600 sm:text-base">
-              {t(
-                "Have questions about TurbotaAI, want to discuss partnership or need help with your account? Leave a request — we will answer as soon as possible.",
-              )}
-            </p>
+            <p className="mx-auto max-w-3xl text-sm text-slate-600 sm:text-base">{t("Contact page subtitle")}</p>
           </div>
 
           <div className="grid items-start gap-10 md:grid-cols-[minmax(0,1.05fr)_minmax(0,1.2fr)]">

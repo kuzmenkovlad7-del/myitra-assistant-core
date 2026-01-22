@@ -42,6 +42,7 @@ function extractAnswer(data: any): string {
 
   if (Array.isArray(data) && data.length > 0) {
     const first = data[0] ?? {}
+
     return (
       first.text ||
       first.response ||
@@ -215,8 +216,13 @@ if (res.status === 402) {
     void sendMessage()
   }
 
+  const __props: any = (typeof arguments !== "undefined" ? (arguments as any)[0] : undefined)
+  const controlledOpen: boolean | undefined = typeof __props?.open === "boolean" ? __props.open : undefined
+  const extOnOpenChange: ((v: boolean) => void) | undefined = typeof __props?.onOpenChange === "function" ? __props.onOpenChange : undefined
+
+
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={controlledOpen ?? isOpen} onOpenChange={(v) => { extOnOpenChange?.(v); if (!v) { if (typeof onClose === "function") onClose(); } }}>
       <DialogContent
         style={keyboardOffset > 0 ? ({ bottom: keyboardOffset } as any) : undefined}
         className="left-0 right-0 top-auto bottom-0 translate-x-0 translate-y-0 max-w-xl border-none bg-transparent p-0 sm:left-[50%] sm:top-[50%] sm:right-auto sm:bottom-auto sm:-translate-x-1/2 sm:-translate-y-1/2"

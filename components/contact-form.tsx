@@ -100,7 +100,7 @@ export default function ContactForm() {
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
+          placeholder="You@email.com"
         />
       </div>
 
@@ -112,7 +112,7 @@ export default function ContactForm() {
           required
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          placeholder={t("Briefly describe your request or idea.")}
+          placeholder={t("Write how we can help")}
           rows={5}
         />
       </div>

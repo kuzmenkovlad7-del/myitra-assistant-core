@@ -4,6 +4,17 @@ import { useEffect } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
+
+function safeNewURL(input: any, base?: string) {
+  const fallback = base ?? (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000")
+  try {
+    if (input == null || input === "" || input === "null" || input === "undefined") return new URL(fallback)
+    return new URL(String(input), fallback)
+  } catch {
+    return new URL(fallback)
+  }
+}
+
 export default function PaymentReturnPage() {
   const sp = useSearchParams()
   const router = useRouter()

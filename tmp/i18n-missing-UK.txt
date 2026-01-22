@@ -1,0 +1,27 @@
+AI assistant is temporarily unavailable. Please try again a bit later.  ==>  AI assistant is temporarily unavailable. Please try again a bit later.
+AI specialist Video Call  ==>  AI companion Video Call
+Already have an account?  ==>  Already have an account?
+Choose an AI specialist and press “Start video call” to begin.  ==>  Choose an AI companion and press “Start video call” to begin.
+Choose Your AI specialist  ==>  Choose Your AI companion
+Connecting  ==>  Connecting
+Connecting...  ==>  Connecting...
+Connection error. Please try again.  ==>  Connection error. Please try again.
+Create account  ==>  Create account
+Creating account...  ==>  Creating account...
+Enter your credentials  ==>  Enter your credentials
+Failed to start the call. Please check your microphone and camera permissions.  ==>  Failed to start the call. Please check your microphone and camera permissions.
+Full name (optional)  ==>  Full name (optional)
+Loading...  ==>  Loading...
+Microphone is not available.  ==>  Microphone is not available.
+Password  ==>  Password
+Passwords do not match  ==>  Passwords do not match
+Profile  ==>  Profile
+Register to save your sessions and preferences.  ==>  Register to save your sessions and preferences.
+Repeat password  ==>  Repeat password
+Select Language  ==>  Select Language
+Sending  ==>  Sending
+Sign in to continue  ==>  Sign in to continue
+Sign Out  ==>  Sign Out
+Signing in...  ==>  Signing in...
+Welcome Back  ==>  Welcome Back
+Your browser does not support voice recording. Please use Chrome or another modern browser.  ==>  Your browser does not support voice recording. Please use Chrome or another modern browser.

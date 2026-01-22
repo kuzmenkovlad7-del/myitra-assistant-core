@@ -39,6 +39,7 @@ function extractAnswer(data: any): string {
 
   if (Array.isArray(data) && data.length > 0) {
     const first = data[0] ?? {}
+
     return (
       first.text ||
       first.response ||
@@ -1228,15 +1229,15 @@ if (res.status === 402) {
           ? t("Listening… you can speak.")
           : t("Waiting... you can start speaking at any moment.")
 
+  const __props: any = (typeof arguments !== "undefined" ? (arguments as any)[0] : undefined)
+  const controlledOpen: boolean | undefined = typeof __props?.open === "boolean" ? __props.open : undefined
+  const extOnOpenChange: ((v: boolean) => void) | undefined = typeof __props?.onOpenChange === "function" ? __props.onOpenChange : undefined
+
+
   return (
     <Dialog
-      open={isOpen}
-      onOpenChange={(open) => {
-        if (!open) {
-          endCall()
-          onClose()
-        }
-      }}
+      open={controlledOpen ?? isOpen}
+      onOpenChange={(v) => { extOnOpenChange?.(v); if (!v) { if (typeof onClose === "function") onClose(); } }}
     >
       <DialogContent className="max-w-xl border-none bg-transparent p-0">
         <div className="overflow-hidden rounded-3xl bg-white shadow-xl shadow-slate-900/10">

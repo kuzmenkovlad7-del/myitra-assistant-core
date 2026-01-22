@@ -51,7 +51,7 @@ export function HomeHero() {
 
           <p className="mb-7 max-w-lg text-sm text-slate-600 sm:text-base">
             {t(
-              "TurbotaAI listens carefully, asks gentle clarifying questions and helps you take the next step at your own pace.",
+              t("TurbotaAI listens carefully, asks gentle clarifying questions and helps you take the next step at your own pace."),
             )}
           </p>
 
@@ -91,7 +91,7 @@ export function HomeHero() {
           <div className="relative z-10 flex items-end">
             <Image
               src="/ai-psychology-hero.png"
-              alt="TurbotaAI AI companion"
+              alt={t("TurbotaAI — AI companion")}
               width={520}
               height={720}
               priority

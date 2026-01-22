@@ -5,6 +5,7 @@ import { Mail, Clock, Globe, Shield } from "lucide-react"
 import { useLanguage } from "@/lib/i18n/language-context"
 import ContactForm from "@/components/contact-form"
 import { AutoTranslate } from "@/components/auto-translate"
+import { MerchantDetailsCard } from "@/components/merchant-details"
 
 export default function ContactsPage() {
   const { t } = useLanguage()
@@ -111,6 +112,12 @@ export default function ContactsPage() {
             </div>
           </div>
         </section>
+      
+        {/* WayForPay: company contact details */}
+        <div className="mt-10">
+          <MerchantDetailsCard />
+        </div>
+
       </main>
     </AutoTranslate>
   )

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useLanguage } from "@/lib/i18n/language-context";
 
 type SubSummary = {
   ok: boolean
@@ -24,6 +25,7 @@ function fmt(v: string | null) {
 }
 
 export default function SubscriptionClient() {
+  const { t } = useLanguage()
   const router = useRouter()
 
   const [loading, setLoading] = useState(true)
@@ -130,7 +132,7 @@ export default function SubscriptionClient() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-12">
       <div className="mb-8 flex items-center justify-between">
-        <h1 className="text-4xl font-semibold">Subscription</h1>
+        <h1 className="text-4xl font-semibold">{t("Subscription")}</h1>
 
         <div className="flex items-center gap-3">
           <Button
@@ -153,8 +155,8 @@ export default function SubscriptionClient() {
       <div className="grid gap-6 md:grid-cols-2">
         <Card className="rounded-2xl border border-slate-200">
           <CardHeader>
-            <CardTitle className="text-2xl">Manage</CardTitle>
-            <CardDescription>Monthly recurring subscription</CardDescription>
+            <CardTitle className="text-2xl">{t("Manage")}</CardTitle>
+            <CardDescription>{t("Monthly recurring subscription")}</CardDescription>
           </CardHeader>
 
           <CardContent className="text-sm text-slate-700">
@@ -168,9 +170,9 @@ export default function SubscriptionClient() {
               <>
                 <div className="grid gap-3">
                   <div className="rounded-xl border border-slate-200 bg-white p-4">
-                    <div className="text-xs text-slate-500">Access until</div>
+                    <div className="text-xs text-slate-500">{t("Access until")}</div>
                     <div className="mt-1 text-base font-semibold">{fmt(data?.accessUntil ?? null)}</div>
-                    <div className="mt-3 text-xs text-slate-500">Paid until / Promo until</div>
+                    <div className="mt-3 text-xs text-slate-500">{t("Paid until / Promo until")}</div>
                     <div className="mt-1 text-sm text-slate-700">
                       Paid: {fmt(data?.paidUntil ?? null)}<br />
                       Promo: {fmt(data?.promoUntil ?? null)}
@@ -178,7 +180,7 @@ export default function SubscriptionClient() {
                   </div>
 
                   <div className="rounded-xl border border-slate-200 bg-white p-4">
-                    <div className="text-xs text-slate-500">Auto-renew</div>
+                    <div className="text-xs text-slate-500">{t("Auto-renew")}</div>
                     <div className="mt-1 text-sm">
                       {autoRenew ? "Enabled" : "Disabled"}
                     </div>
@@ -224,7 +226,7 @@ export default function SubscriptionClient() {
                     <input
                       value={promoCode}
                       onChange={(e) => setPromoCode(e.target.value)}
-                      placeholder="Enter promo code"
+                      placeholder={t("Enter promo code")}
                       className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none"
                     />
                     <Button
@@ -254,8 +256,8 @@ export default function SubscriptionClient() {
 
         <Card className="rounded-2xl border border-slate-200">
           <CardHeader>
-            <CardTitle className="text-2xl">Getting started</CardTitle>
-            <CardDescription>Production recurring flow</CardDescription>
+            <CardTitle className="text-2xl">{t("Getting started")}</CardTitle>
+            <CardDescription>{t("Production recurring flow")}</CardDescription>
           </CardHeader>
 
           <CardContent className="space-y-2 text-sm text-slate-700">
@@ -272,7 +274,7 @@ export default function SubscriptionClient() {
               <span className="font-medium">Resume:</span> sends RESUME to WayForPay and re-enables future charges.
             </div>
             <div className="pt-4 text-xs text-slate-500">
-              Access in the app is controlled by paidUntil and promoUntil in profiles.
+              {t("Access in the app is controlled by paidUntil and promoUntil in profiles.")}
             </div>
           </CardContent>
         </Card>
