@@ -43,7 +43,7 @@ interface AICharacter {
 const AI_CHARACTERS: AICharacter[] = [
   {
     id: "dr-alexander",
-    name: "Alex",
+    name: "Leo",
     gender: "male",
     description:
       "Calm AI companion for everyday conversations and support",
@@ -71,7 +71,7 @@ const AI_CHARACTERS: AICharacter[] = [
   },
 {
     id: "dr-sophia",
-    name: "Leo",
+    name: "Alex",
     gender: "female",
     description:
       "Clinical specialist specializing in anxiety, depression, and workplace stress management",
@@ -1821,8 +1821,8 @@ if (res.status === 402) {
   const bodyClass = "flex-1 min-h-0 overflow-hidden p-3 sm:p-4 flex flex-col touch-pan-y"
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-5xl flex flex-col h-[100dvh] sm:h-[90vh] max-h-none sm:max-h-[860px] overflow-hidden">
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 sm:p-6">
+      <div className="bg-white rounded-3xl shadow-xl w-[calc(100vw-1.5rem)] max-w-[540px] flex flex-col h-[600px] overflow-hidden md:w-[calc(100vw-4rem)] md:max-w-4xl md:h-[720px]">
         <div className="p-3 sm:p-4 border-b flex items-center justify-between rounded-t-xl relative bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 text-white">
           <div className="flex flex-col flex-1 min-w-0 pr-2">
             <h3 className="font-semibold text-base sm:text-lg truncate flex items-center gap-2">
@@ -1852,7 +1852,7 @@ if (res.status === 402) {
 
         <div className={bodyClass}>
           {!isCallActive ? (
-            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center">
+            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-stretch justify-start">
               <div className="text-center mb-6 sm:mb-8 px-2">
                 <h3 className="text-xl sm:text-2xl font-semibold mb-2 sm:mb-3">
                   {t("Choose Your AI specialist")}
@@ -1862,7 +1862,7 @@ if (res.status === 402) {
                 </p>
               </div>
 
-              <div className="mb-6 bg-blue-50 p-4 rounded-lg w-full max-w-xs text-center mx-2">
+              <div className="mb-6 bg-blue-50 p-4 rounded-lg w-full max-w-sm md:max-w-md text-center mx-auto">
                 <p className="text-sm font-medium text-blue-700 mb-1">
                   {t("Video call language")}:
                 </p>
@@ -1875,7 +1875,7 @@ if (res.status === 402) {
                 </p>
               </div>
 
-              <div className="w-full max-w-4xl px-2">
+              <div className="w-full max-w-4xl px-2 mx-auto">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {AI_CHARACTERS.map((character) => (
                     <button
@@ -1935,7 +1935,7 @@ if (res.status === 402) {
                 </div>
               </div>
 
-              <div className="mt-6 sm:mt-8 w-full max-w-md px-2 pb-3">
+              <div className="mt-6 sm:mt-8 w-full max-w-md px-2 pb-3 mx-auto">
                 <Button
                   className="w-full bg-primary-600 hover:bg-primary-700 text-white text-base sm:text-lg py-4 sm:py-6 min-h-[56px]"
                   onClick={startCall}
@@ -1952,7 +1952,7 @@ if (res.status === 402) {
             <div className="flex-1 min-h-0 grid grid-rows-[auto_minmax(0,1fr)] gap-3 sm:gap-4 sm:grid-rows-none sm:flex sm:flex-row">
               {/* LEFT: VIDEO (mobile fixed height, never collapses) */}
               <div className="row-start-1 w-full sm:w-2/3 flex flex-col min-h-0">
-                <div className="relative w-full h-[38vh] min-h-[220px] max-h-[420px] sm:h-auto sm:flex-1 bg-white rounded-lg overflow-hidden">
+                <div className="relative w-full flex-1 bg-white rounded-lg overflow-hidden">
                   <div className="absolute inset-0 bg-white overflow-hidden">
                     {hasEnhancedVideo ? (
                       <>

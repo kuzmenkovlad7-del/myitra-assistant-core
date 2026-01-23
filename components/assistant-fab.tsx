@@ -107,7 +107,8 @@ export default function AssistantFab() {
                 onClick={() => setPanelOpen(false)}
               />
 
-              <div className="absolute right-4 top-4 bottom-[76px] w-[380px] max-w-[calc(100vw-32px)] rounded-2xl bg-white shadow-2xl border border-black/5 pointer-events-auto overflow-hidden">
+              {/* Убрали border (обводку) */}
+              <div className="absolute right-4 top-4 bottom-[76px] w-[380px] max-w-[calc(100vw-32px)] rounded-2xl bg-white shadow-2xl pointer-events-auto overflow-hidden">
                 <div className="h-14 px-4 flex items-center justify-between bg-gradient-to-r from-violet-500 to-indigo-500 text-white">
                   <div className="flex items-center gap-2">
                     <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/15">
@@ -121,7 +122,7 @@ export default function AssistantFab() {
 
                   <button
                     onClick={() => setPanelOpen(false)}
-                    className="h-9 w-9 rounded-xl hover:bg-white/15 inline-flex items-center justify-center"
+                    className="h-9 w-9 rounded-xl hover:bg-white/15 inline-flex items-center justify-center focus:outline-none focus:ring-0"
                     aria-label="Close"
                   >
                     <X className="h-5 w-5" />
@@ -131,7 +132,7 @@ export default function AssistantFab() {
                 <div className="p-4 h-[calc(100%-56px)] flex flex-col gap-3">
                   <button
                     onClick={openChat}
-                    className="w-full rounded-2xl border border-black/10 bg-white hover:bg-black/[0.02] p-4 text-left flex items-center gap-3"
+                    className="w-full rounded-2xl border border-black/10 bg-white hover:bg-black/[0.02] p-4 text-left flex items-center gap-3 focus:outline-none focus:ring-0"
                   >
                     <span className="h-11 w-11 rounded-2xl bg-violet-50 flex items-center justify-center">
                       <MessageCircle className="h-5 w-5 text-violet-600" />
@@ -144,7 +145,7 @@ export default function AssistantFab() {
 
                   <button
                     onClick={openVoice}
-                    className="w-full rounded-2xl border border-black/10 bg-white hover:bg-black/[0.02] p-4 text-left flex items-center gap-3"
+                    className="w-full rounded-2xl border border-black/10 bg-white hover:bg-black/[0.02] p-4 text-left flex items-center gap-3 focus:outline-none focus:ring-0"
                   >
                     <span className="h-11 w-11 rounded-2xl bg-indigo-50 flex items-center justify-center">
                       <Phone className="h-5 w-5 text-indigo-600" />
@@ -157,7 +158,7 @@ export default function AssistantFab() {
 
                   <button
                     onClick={openVideo}
-                    className="w-full rounded-2xl border border-black/10 bg-white hover:bg-black/[0.02] p-4 text-left flex items-center gap-3"
+                    className="w-full rounded-2xl border border-black/10 bg-white hover:bg-black/[0.02] p-4 text-left flex items-center gap-3 focus:outline-none focus:ring-0"
                   >
                     <span className="h-11 w-11 rounded-2xl bg-sky-50 flex items-center justify-center">
                       <Video className="h-5 w-5 text-sky-600" />
@@ -172,17 +173,19 @@ export default function AssistantFab() {
             </div>
           )}
 
-          {/* FAB button */}
+          {/* FAB button (уменьшили примерно в 2 раза визуально) */}
           <div className="fixed bottom-4 right-4 z-40">
             <button
               onClick={() => setPanelOpen((v) => !v)}
-              className="h-14 px-5 rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 text-white shadow-xl flex items-center gap-3"
+              className="h-10 px-3 rounded-full bg-gradient-to-r from-violet-500 to-indigo-500 text-white shadow-xl flex items-center gap-2 text-sm focus:outline-none focus:ring-0"
             >
-              <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/15">
-                <Sparkles className="h-5 w-5" />
+              <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
+                <Sparkles className="h-4 w-4" />
               </span>
               <span className="font-semibold">{copy.fab}</span>
-              <ChevronDown className={`h-4 w-4 opacity-90 transition ${panelOpen ? "rotate-180" : ""}`} />
+              <ChevronDown
+                className={`h-4 w-4 opacity-90 transition ${panelOpen ? "rotate-180" : ""}`}
+              />
             </button>
           </div>
         </>
