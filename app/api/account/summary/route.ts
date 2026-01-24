@@ -220,6 +220,7 @@ export async function GET() {
     access,
     unlimited,
     trial_questions_left: trialLeft,
+    trial_left: trialLeft,
     trialLeft,
     paidUntil,
     promoUntil,
