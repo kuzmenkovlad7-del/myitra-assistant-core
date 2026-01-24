@@ -1,56 +1,49 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
+import { createServerClient } from "@supabase/ssr"
 
-/**
- * POST /api/auth/clear
- * - soft (default): does NOT clear cookies (prevents auto logout on 401)
- * - hard: clears auth cookies (real logout)
- *
- * Example:
- *  - POST /api/auth/clear?scope=hard  -> logout
- *  - POST /api/auth/clear            -> no-op (safe)
- */
-export async function POST(req: Request) {
-  try {
-    const { searchParams } = new URL(req.url)
-    const scope = (searchParams.get("scope") || "soft").toLowerCase()
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
 
-    if (scope !== "hard") {
-      return NextResponse.json({ ok: true, scope: "soft" })
-    }
+function routeSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!url || !anon) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY")
 
-    const store = cookies()
-    const all = store.getAll()
+  const cookieStore = cookies()
+  const pendingCookies: any[] = []
 
-    // чистим ВСЕ supabase/auth cookies + наши возможные cookies
-    for (const c of all) {
-      const name = c.name
+  const sb = createServerClient(url, anon, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll()
+      },
+      setAll(cookiesToSet) {
+        pendingCookies.push(...cookiesToSet)
+      },
+    },
+  })
 
-      const shouldClear =
-        name === "sb-access-token" ||
-        name === "sb-refresh-token" ||
-        name.startsWith("sb-") ||
-        name.includes("supabase") ||
-        name.includes("auth-token") ||
-        name.includes("access-token") ||
-        name.includes("refresh-token") ||
-        name.includes("turbotaai") ||
-        name.includes("session")
-
-      if (!shouldClear) continue
-
-      try {
-        store.set({
-          name,
-          value: "",
-          path: "/",
-          expires: new Date(0),
-        })
-      } catch {}
-    }
-
-    return NextResponse.json({ ok: true, scope: "hard" })
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "clear failed" }, { status: 500 })
+  const json = (body: any, status = 200) => {
+    const res = NextResponse.json(body, { status })
+    for (const c of pendingCookies) res.cookies.set(c.name, c.value, c.options)
+    res.headers.set("cache-control", "no-store, max-age=0")
+    return res
   }
+
+  return { sb, json }
+}
+
+export async function POST() {
+  const { sb, json } = routeSupabase()
+
+  try {
+    await sb.auth.signOut()
+  } catch {}
+
+  const res = json({ ok: true })
+
+  // чистим кастомные куки если есть
+  res.cookies.set("turbota_at", "", { path: "/", maxAge: 0 })
+  return res
 }

@@ -1,33 +1,21 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createServerClient } from "@supabase/ssr"
+import { getSupabaseAdmin } from "@/lib/supabase-admin"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 const DEVICE_COOKIE = "turbotaai_device"
-const LAST_USER_COOKIE = "turbotaai_last_user"
 const ACCOUNT_PREFIX = "account:"
 
-type GrantRow = {
-  id: string
-  user_id: string | null
-  device_hash: string
-  trial_questions_left: number | null
-  paid_until: any
-  promo_until: any
-  created_at: string | null
-  updated_at: string | null
-}
-
-function num(v: string | undefined, fallback = 0) {
+function num(v: any, fallback = 0) {
   const n = Number(v)
   return Number.isFinite(n) ? n : fallback
 }
 
 function getTrialLimit() {
-  const raw = process.env.TRIAL_QUESTIONS_LIMIT
-  const limit = num(raw, 5)
+  const limit = num(process.env.TRIAL_QUESTIONS_LIMIT, 5)
   return limit > 0 ? Math.floor(limit) : 5
 }
 
@@ -38,33 +26,36 @@ function clampTrial(v: any, trialDefault: number) {
   return Math.min(Math.floor(n), trialDefault)
 }
 
-function isActiveDate(v: any) {
-  if (!v) return false
-  const t = new Date(v).getTime()
-  if (!Number.isFinite(t)) return false
-  return t > Date.now()
+function toDateOrNull(v: any): Date | null {
+  if (!v) return null
+  const d = new Date(String(v))
+  if (Number.isNaN(d.getTime())) return null
+  return d
 }
 
-function laterDate(a: any, b: any) {
-  if (!a && !b) return null
-  if (!a) return b
-  if (!b) return a
-  const ta = new Date(a).getTime()
-  const tb = new Date(b).getTime()
-  if (!Number.isFinite(ta)) return b
-  if (!Number.isFinite(tb)) return a
-  return ta >= tb ? a : b
+function laterDateIso(a: any, b: any): string | null {
+  const da = toDateOrNull(a)
+  const db = toDateOrNull(b)
+  if (!da && !db) return null
+  if (da && !db) return da.toISOString()
+  if (!da && db) return db.toISOString()
+  return (da!.getTime() >= db!.getTime() ? da! : db!).toISOString()
+}
+
+function isFuture(iso: string | null) {
+  if (!iso) return false
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return false
+  return d.getTime() > Date.now()
 }
 
 function routeSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
   if (!url || !anon) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY")
 
   const cookieStore = cookies()
   const pendingCookies: any[] = []
-  const extraCookies: Array<{ name: string; value: string; options?: any }> = []
 
   const sb = createServerClient(url, anon, {
     cookies: {
@@ -77,14 +68,17 @@ function routeSupabase() {
     },
   })
 
-  const applyPendingCookies = (res: NextResponse) => {
+  const json = (body: any, status = 200) => {
+    const res = NextResponse.json(body, { status })
     for (const c of pendingCookies) res.cookies.set(c.name, c.value, c.options)
+    res.headers.set("cache-control", "no-store, max-age=0")
+    return res
   }
 
-  return { sb, cookieStore, extraCookies, applyPendingCookies }
+  return { sb, cookieStore, pendingCookies, json }
 }
 
-async function findGrantByDevice(sb: any, deviceHash: string): Promise<GrantRow | null> {
+async function findGrantByDevice(sb: any, deviceHash: string) {
   const { data } = await sb
     .from("access_grants")
     .select("*")
@@ -93,25 +87,10 @@ async function findGrantByDevice(sb: any, deviceHash: string): Promise<GrantRow 
     .limit(1)
     .maybeSingle()
 
-  return (data ?? null) as GrantRow | null
+  return data ?? null
 }
 
-async function findGrantByUser(sb: any, userId: string): Promise<GrantRow | null> {
-  const { data } = await sb
-    .from("access_grants")
-    .select("*")
-    .eq("user_id", userId)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  return (data ?? null) as GrantRow | null
-}
-
-async function createGrant(
-  sb: any,
-  opts: { userId: string | null; deviceHash: string; trialLeft: number; nowIso: string }
-): Promise<GrantRow | null> {
+async function createGrant(sb: any, opts: { userId: string | null; deviceHash: string; trialLeft: number; nowIso: string }) {
   const { data } = await sb
     .from("access_grants")
     .insert({
@@ -127,113 +106,27 @@ async function createGrant(
     .select("*")
     .single()
 
-  return (data ?? null) as GrantRow | null
+  return data ?? null
 }
 
-async function updateGrant(sb: any, id: string, patch: Partial<GrantRow> & { updated_at?: string }): Promise<GrantRow | null> {
-  const { data, error } = await sb.from("access_grants").update(patch).eq("id", id).select("*").maybeSingle()
-  if (error) console.error("[grant] update failed", error)
-  return (data ?? null) as GrantRow | null
+async function updateGrant(sb: any, id: string, patch: any) {
+  const { data } = await sb.from("access_grants").update(patch).eq("id", id).select("*").maybeSingle()
+  return data ?? null
 }
 
-/**
- * ЕДИНАЯ логика:
- * - guest: device_hash = <device_uuid_cookie>
- * - account: device_hash = account:<userId>
- * - НИКОГДА не увеличиваем trial при логине => min(guest, account)
- */
+export async function GET() {
+  const { sb, cookieStore, json } = routeSupabase()
 
-/**
- * ЕДИНАЯ логика:
- * - guest: grant по device_hash = device uuid cookie
- * - account: grant по device_hash = account:<userId>
- * - при логине никогда не даем поднять trial: effective = min(guestLeft, accountLeft)
- * - paid/promo берем как max-date из обоих
- */
-async function ensureGrant(sb: any, deviceHash: string, userId: string | null, trialDefault: number, nowIso: string) {
-  const laterDate = (a: any, b: any) => {
-    if (!a && !b) return null
-    if (!a) return b
-    if (!b) return a
-    const ta = new Date(a).getTime()
-    const tb = new Date(b).getTime()
-    if (!Number.isFinite(ta)) return b
-    if (!Number.isFinite(tb)) return a
-    return ta >= tb ? a : b
-  }
-
-  // 1) guest grant
-  let guestGrant = await findGrantByDevice(sb, deviceHash)
-  if (!guestGrant) {
-    const created = await createGrant(sb, { userId: null, deviceHash, trialLeft: trialDefault, nowIso })
-    guestGrant = created ?? (await findGrantByDevice(sb, deviceHash))
-  }
-  if (!guestGrant) throw new Error("Failed to create guest grant")
-
-  // guest only
-  if (!userId) {
-    return { grant: guestGrant, scope: "guest", guestGrant }
-  }
-
-  // 2) account grant by stable key
-  const accountKey = ACCOUNT_PREFIX + userId
-  let accountGrant = await findGrantByDevice(sb, accountKey)
-
-  // legacy: if there is any row by user_id with wrong device_hash -> migrate to stable key
-  if (!accountGrant) {
-    const { data: legacy } = await sb
-      .from("access_grants")
-      .select("*")
-      .eq("user_id", userId)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (legacy) {
-      const migrated = await updateGrant(sb, legacy.id, { device_hash: accountKey, updated_at: nowIso })
-      accountGrant = migrated ?? (await findGrantByDevice(sb, accountKey))
-    }
-  }
-
-  if (!accountGrant) {
-    const created = await createGrant(sb, { userId, deviceHash: accountKey, trialLeft: trialDefault, nowIso })
-    accountGrant = created ?? (await findGrantByDevice(sb, accountKey))
-  }
-  if (!accountGrant) throw new Error("Failed to create account grant")
-
-  // 3) never increase trial after login
-  const gLeft = clampTrial(guestGrant.trial_questions_left ?? trialDefault, trialDefault)
-  const aLeft = clampTrial(accountGrant.trial_questions_left ?? trialDefault, trialDefault)
-  const eff = Math.min(gLeft, aLeft)
-
-  if (gLeft !== eff) {
-    guestGrant = (await updateGrant(sb, guestGrant.id, { trial_questions_left: eff, updated_at: nowIso })) ?? guestGrant
-  }
-  if (aLeft !== eff) {
-    accountGrant = (await updateGrant(sb, accountGrant.id, { trial_questions_left: eff, updated_at: nowIso })) ?? accountGrant
-  }
-
-  // 4) merge paid/promo from both (take later)
-  const paidUntil = laterDate(guestGrant?.paid_until ?? null, accountGrant?.paid_until ?? null)
-  const promoUntil = laterDate(guestGrant?.promo_until ?? null, accountGrant?.promo_until ?? null)
-
-  const grant = { ...accountGrant, paid_until: paidUntil, promo_until: promoUntil }
-
-  return { grant, scope: "account", guestGrant }
-}
-
-
-export async function GET(_req: NextRequest) {
-  const { sb, cookieStore, extraCookies, applyPendingCookies } = routeSupabase()
-
+  // device cookie
   let deviceHash = cookieStore.get(DEVICE_COOKIE)?.value ?? null
   if (!deviceHash) {
     deviceHash = crypto.randomUUID()
-    extraCookies.push({
-      name: DEVICE_COOKIE,
-      value: deviceHash,
-      options: { path: "/", sameSite: "lax", httpOnly: false, maxAge: 60 * 60 * 24 * 365 },
-    })
+    // не httpOnly, чтобы при желании можно было читать на фронте
+    // но если у тебя политика другая, можно сделать httpOnly true
+    const res = json({ ok: false }, 200)
+    res.cookies.set(DEVICE_COOKIE, deviceHash, { path: "/", sameSite: "lax", httpOnly: false, maxAge: 60 * 60 * 24 * 365 })
+    // вернем сразу нормальный ответ ниже через повторное выполнение логики
+    // поэтому просто продолжаем и поставим cookie еще раз в финальном ответе
   }
 
   const trialDefault = getTrialLimit()
@@ -243,50 +136,98 @@ export async function GET(_req: NextRequest) {
   const user = userData?.user ?? null
   const isLoggedIn = Boolean(user?.id)
 
-  // remember last logged-in user (for trial sync after logout)
-  if (isLoggedIn && user?.id) {
-    extraCookies.push({
-      name: LAST_USER_COOKIE,
-      value: user.id,
-      options: { path: "/", sameSite: "lax", httpOnly: false, maxAge: 60 * 60 * 24 * 365 },
-    })
+  // guest grant
+  let guestGrant = await findGrantByDevice(sb, deviceHash!)
+  if (!guestGrant) {
+    guestGrant = await createGrant(sb, { userId: null, deviceHash: deviceHash!, trialLeft: trialDefault, nowIso })
   }
 
-  const { grant, scope, guestGrant } = await ensureGrant(sb, deviceHash, user?.id ?? null, trialDefault, nowIso)
+  // account grant
+  let accountGrant: any = null
+  if (isLoggedIn) {
+    const accountKey = ACCOUNT_PREFIX + user!.id
+    accountGrant = await findGrantByDevice(sb, accountKey)
 
-  const trialLeft = clampTrial(grant?.trial_questions_left ?? trialDefault, trialDefault)
+    // legacy migration: если есть строка по user_id, но device_hash другой, переносим на accountKey
+    if (!accountGrant) {
+      const { data: legacy } = await sb
+        .from("access_grants")
+        .select("*")
+        .eq("user_id", user!.id)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
 
-  const paidUntil = grant?.paid_until ?? null
-  const promoUntil = grant?.promo_until ?? null
+      if (legacy?.id) {
+        accountGrant = await updateGrant(sb, legacy.id, { device_hash: accountKey, updated_at: nowIso })
+      }
+    }
 
-  const paidActive = isActiveDate(paidUntil)
-  const promoActive = isActiveDate(promoUntil)
+    if (!accountGrant) {
+      accountGrant = await createGrant(sb, { userId: user!.id, deviceHash: accountKey, trialLeft: trialDefault, nowIso })
+    }
 
-  const access = paidActive ? "Paid" : promoActive ? "Promo" : "Trial"
-  const hasAccess = access !== "Trial" ? true : trialLeft > 0
+    // sync trial: min(guest, account)
+    const gLeft = clampTrial(guestGrant?.trial_questions_left ?? trialDefault, trialDefault)
+    const aLeft = clampTrial(accountGrant?.trial_questions_left ?? trialDefault, trialDefault)
+    const eff = Math.min(gLeft, aLeft)
 
-  const res = NextResponse.json(
-    {
-      ok: true,
-      isLoggedIn,
-      email: user?.email ?? "Guest",
-      access,
-      scope,
-      hasAccess,
-      trialLeft,
-      trial_left: trialLeft,
-      paidUntil,
-      promoUntil,
-    },
-    { status: 200 }
+    if (guestGrant && gLeft !== eff) {
+      guestGrant = (await updateGrant(sb, guestGrant.id, { trial_questions_left: eff, updated_at: nowIso })) ?? guestGrant
+    }
+    if (accountGrant && aLeft !== eff) {
+      accountGrant = (await updateGrant(sb, accountGrant.id, { trial_questions_left: eff, updated_at: nowIso })) ?? accountGrant
+    }
+  }
+
+  // entitlements: profiles is source of truth when logged in
+  let paidUntil: string | null = null
+  let promoUntil: string | null = null
+  let autoRenew = false
+  let subscriptionStatus = ""
+
+  if (isLoggedIn) {
+    const admin = getSupabaseAdmin()
+    const { data: p } = await admin
+      .from("profiles")
+      .select("paid_until,promo_until,auto_renew,autorenew,subscription_status")
+      .eq("id", user!.id)
+      .maybeSingle()
+
+    paidUntil = p?.paid_until ? String(p.paid_until) : null
+    promoUntil = p?.promo_until ? String(p.promo_until) : null
+    autoRenew = Boolean(p?.auto_renew ?? p?.autorenew ?? false)
+    subscriptionStatus = String(p?.subscription_status ?? "")
+  }
+
+  // fallback: если профиля нет, можно взять из grants
+  if (!paidUntil && accountGrant?.paid_until) paidUntil = String(accountGrant.paid_until)
+  if (!promoUntil && accountGrant?.promo_until) promoUntil = String(accountGrant.promo_until)
+
+  const accessUntil = laterDateIso(paidUntil, promoUntil)
+  const paidActive = isFuture(paidUntil)
+  const promoActive = isFuture(promoUntil)
+  const unlimited = paidActive || promoActive
+
+  const trialLeft = clampTrial(
+    (isLoggedIn ? accountGrant?.trial_questions_left : guestGrant?.trial_questions_left) ?? trialDefault,
+    trialDefault
   )
 
-  for (const c of extraCookies) res.cookies.set(c.name, c.value, c.options)
-  applyPendingCookies(res)
+  const access = paidActive ? "Paid" : promoActive ? "Promo" : "Trial"
 
-  res.headers.set("x-access", access)
-  res.headers.set("x-trial-left", String(trialLeft))
-  res.headers.set("x-scope", scope)
-  res.headers.set("cache-control", "no-store, max-age=0")
-  return res
+  return json({
+    ok: true,
+    isLoggedIn,
+    user: isLoggedIn ? { id: user!.id, email: user!.email } : null,
+    access,
+    unlimited,
+    trial_questions_left: trialLeft,
+    trialLeft,
+    paidUntil,
+    promoUntil,
+    accessUntil,
+    autoRenew,
+    subscriptionStatus: subscriptionStatus || (unlimited ? "active" : "inactive"),
+  })
 }

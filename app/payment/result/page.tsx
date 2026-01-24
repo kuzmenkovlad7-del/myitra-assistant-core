@@ -10,6 +10,7 @@ type StatusResp = {
   status?: string
   state?: string
   orderStatus?: string
+  transactionStatus?: string | null
   access?: string | null
   paid_until?: string | null
   promo_until?: string | null
@@ -21,9 +22,17 @@ function normalizeStatus(d: any): "approved" | "pending" | "failed" | "unknown" 
   const s = String(d?.status || d?.state || d?.orderStatus || "").toLowerCase()
   if (!s) return "unknown"
 
+  // paid
   if (["approved", "success", "paid", "ok", "completed"].some((x) => s.includes(x))) return "approved"
-  if (["pending", "processing", "wait"].some((x) => s.includes(x))) return "pending"
-  if (["declined", "failed", "error", "rejected", "canceled", "cancelled"].some((x) => s.includes(x))) return "failed"
+
+  // pending variants
+  if (["pending", "processing", "inprocessing", "wait"].some((x) => s.includes(x))) return "pending"
+  if (["created", "invoice_created", "invoice"].some((x) => s.includes(x))) return "pending"
+
+  // failed
+  if (["declined", "failed", "error", "rejected", "canceled", "cancelled", "refunded", "expired"].some((x) => s.includes(x))) {
+    return "failed"
+  }
 
   return "unknown"
 }
@@ -60,21 +69,11 @@ export default function PaymentResultPage() {
     }
 
     try {
-      let r = await fetch(`/api/billing/orders/status?orderReference=${encodeURIComponent(orderReference)}`, {
+      const r = await fetch(`/api/billing/orders/status?orderReference=${encodeURIComponent(orderReference)}`, {
         method: "GET",
         cache: "no-store",
         credentials: "include",
       })
-
-      if (r.status === 405 || r.status === 404) {
-        r = await fetch(`/api/billing/orders/status`, {
-          method: "POST",
-          cache: "no-store",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orderReference }),
-        })
-      }
 
       const data = (await r.json().catch(() => ({} as any))) as StatusResp
       setDetails(data)
@@ -82,7 +81,6 @@ export default function PaymentResultPage() {
       const st = normalizeStatus(data)
       setStatus(st)
     } catch {
-      // временно считаем pending, чтобы не пугать юзера
       setStatus("pending")
       setDetails({ ok: false, errorCode: "NETWORK" })
     }
@@ -93,7 +91,6 @@ export default function PaymentResultPage() {
     fetchStatus()
   }, [fetchStatus])
 
-  // авто-переход когда approved
   useEffect(() => {
     if (status !== "approved") return
     const t = setTimeout(() => {
@@ -102,10 +99,9 @@ export default function PaymentResultPage() {
     return () => clearTimeout(t)
   }, [status, router])
 
-  // polling пока pending
   useEffect(() => {
     if (status !== "pending") return
-    if (attempt >= 20) return // ~40 сек
+    if (attempt >= 20) return
     const t = setTimeout(() => {
       setAttempt((a) => a + 1)
       fetchStatus()
@@ -134,10 +130,17 @@ export default function PaymentResultPage() {
                 <span className="font-medium">{status}</span>
               </div>
 
-              {details?.access ? (
+              {details?.status ? (
                 <div className="mt-2 flex items-center justify-between">
-                  <span className="text-slate-500">Access</span>
-                  <span className="font-medium">{String(details.access)}</span>
+                  <span className="text-slate-500">Raw</span>
+                  <span className="font-medium">{String(details.status)}</span>
+                </div>
+              ) : null}
+
+              {details?.transactionStatus ? (
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="text-slate-500">Tx</span>
+                  <span className="font-medium">{String(details.transactionStatus)}</span>
                 </div>
               ) : null}
             </div>
