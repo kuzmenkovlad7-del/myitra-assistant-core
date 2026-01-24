@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { createServerClient } from "@supabase/ssr"
+import { randomUUID } from "crypto"
 import { getSupabaseAdmin } from "@/lib/supabase-admin"
 
 export const runtime = "nodejs"
@@ -75,7 +76,7 @@ function routeSupabase() {
     return res
   }
 
-  return { sb, cookieStore, pendingCookies, json }
+  return { sb, cookieStore, json }
 }
 
 async function findGrantByDevice(sb: any, deviceHash: string) {
@@ -83,7 +84,7 @@ async function findGrantByDevice(sb: any, deviceHash: string) {
     .from("access_grants")
     .select("*")
     .eq("device_hash", deviceHash)
-    .order("created_at", { ascending: false })
+    .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle()
 
@@ -94,7 +95,7 @@ async function createGrant(sb: any, opts: { userId: string | null; deviceHash: s
   const { data } = await sb
     .from("access_grants")
     .insert({
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       user_id: opts.userId,
       device_hash: opts.deviceHash,
       trial_questions_left: opts.trialLeft,
@@ -117,20 +118,16 @@ async function updateGrant(sb: any, id: string, patch: any) {
 export async function GET() {
   const { sb, cookieStore, json } = routeSupabase()
 
-  // device cookie
-  let deviceHash = cookieStore.get(DEVICE_COOKIE)?.value ?? null
-  if (!deviceHash) {
-    deviceHash = crypto.randomUUID()
-    // не httpOnly, чтобы при желании можно было читать на фронте
-    // но если у тебя политика другая, можно сделать httpOnly true
-    const res = json({ ok: false }, 200)
-    res.cookies.set(DEVICE_COOKIE, deviceHash, { path: "/", sameSite: "lax", httpOnly: false, maxAge: 60 * 60 * 24 * 365 })
-    // вернем сразу нормальный ответ ниже через повторное выполнение логики
-    // поэтому просто продолжаем и поставим cookie еще раз в финальном ответе
-  }
-
   const trialDefault = getTrialLimit()
   const nowIso = new Date().toISOString()
+
+  // device cookie
+  let deviceHash = cookieStore.get(DEVICE_COOKIE)?.value ?? null
+  let needSetDeviceCookie = false
+  if (!deviceHash) {
+    deviceHash = randomUUID()
+    needSetDeviceCookie = true
+  }
 
   const { data: userData } = await sb.auth.getUser()
   const user = userData?.user ?? null
@@ -148,7 +145,7 @@ export async function GET() {
     const accountKey = ACCOUNT_PREFIX + user!.id
     accountGrant = await findGrantByDevice(sb, accountKey)
 
-    // legacy migration: если есть строка по user_id, но device_hash другой, переносим на accountKey
+    // legacy migration: есть запись по user_id → переносим на accountKey
     if (!accountGrant) {
       const { data: legacy } = await sb
         .from("access_grants")
@@ -180,7 +177,7 @@ export async function GET() {
     }
   }
 
-  // entitlements: profiles is source of truth when logged in
+  // entitlements: profiles source of truth when logged in
   let paidUntil: string | null = null
   let promoUntil: string | null = null
   let autoRenew = false
@@ -200,7 +197,7 @@ export async function GET() {
     subscriptionStatus = String(p?.subscription_status ?? "")
   }
 
-  // fallback: если профиля нет, можно взять из grants
+  // fallback: если профиля нет, берем из grants
   if (!paidUntil && accountGrant?.paid_until) paidUntil = String(accountGrant.paid_until)
   if (!promoUntil && accountGrant?.promo_until) promoUntil = String(accountGrant.promo_until)
 
@@ -216,7 +213,7 @@ export async function GET() {
 
   const access = paidActive ? "Paid" : promoActive ? "Promo" : "Trial"
 
-  return json({
+  const payload = {
     ok: true,
     isLoggedIn,
     user: isLoggedIn ? { id: user!.id, email: user!.email } : null,
@@ -229,5 +226,16 @@ export async function GET() {
     accessUntil,
     autoRenew,
     subscriptionStatus: subscriptionStatus || (unlimited ? "active" : "inactive"),
-  })
+  }
+
+  const res = json(payload)
+  if (needSetDeviceCookie) {
+    res.cookies.set(DEVICE_COOKIE, deviceHash!, {
+      path: "/",
+      sameSite: "lax",
+      httpOnly: false,
+      maxAge: 60 * 60 * 24 * 365,
+    })
+  }
+  return res
 }
