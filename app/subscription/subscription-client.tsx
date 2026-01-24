@@ -19,6 +19,15 @@ type Summary = {
   promo_until?: string | null
 }
 
+type SubStatus = {
+  ok?: boolean
+  status?: string
+  state?: string
+  active?: boolean
+  suspended?: boolean
+  errorCode?: string
+}
+
 function isActive(v: any) {
   if (!v) return false
   const d = new Date(String(v))
@@ -34,6 +43,19 @@ function formatDate(v: any) {
   const mm = String(d.getMonth() + 1).padStart(2, "0")
   const yyyy = d.getFullYear()
   return `${dd}.${mm}.${yyyy}`
+}
+
+function normalizeAuto(s: SubStatus | null): "active" | "inactive" | "unknown" {
+  if (!s) return "unknown"
+
+  if (typeof s.active === "boolean") return s.active ? "active" : "inactive"
+  if (typeof s.suspended === "boolean") return s.suspended ? "inactive" : "active"
+
+  const t = String(s.status || s.state || "").toLowerCase()
+  if (!t) return "unknown"
+  if (["active", "running", "enabled", "ok"].some((x) => t.includes(x))) return "active"
+  if (["suspend", "paused", "stop", "cancel", "disabled"].some((x) => t.includes(x))) return "inactive"
+  return "unknown"
 }
 
 export default function SubscriptionClient() {
@@ -53,13 +75,27 @@ export default function SubscriptionClient() {
         monthly: "Щомісячна підписка",
         how: "Як це працює",
         auto: "Автоматичне продовження",
+
         access: "Доступ",
-        active: "Активний",
-        inactive: "Неактивний",
+        accessPaid: "Підписка",
+        accessPromo: "Промокод",
+        accessFree: "Безкоштовно",
+
         until: "До",
         autosub: "Автосписання",
+        autoActive: "Активне",
+        autoInactive: "Неактивне",
+        autoUnknown: "Невідомо",
         notApply: "Не застосовується",
+
         payBtn: "Оформити підписку",
+        payActive: "Підписка активна",
+
+        cancelSub: "Скасувати підписку",
+        resumeSub: "Відновити підписку",
+        msgOkSubCancel: "Автосписання скасовано",
+        msgOkSubResume: "Автосписання відновлено",
+
         promoTitle: "Промокод",
         promoActive: "Промокод активний",
         promoPlaceholder: "Введіть промокод",
@@ -67,11 +103,14 @@ export default function SubscriptionClient() {
         cancelPromo: "Скасувати промокод",
         msgOkCancel: "Промокод скасовано",
         msgOkApply: "Промокод активовано",
+
         err_INVALID_PROMO: "Невірний промокод",
         err_EMPTY_CODE: "Введіть промокод",
         err_PAY_FAILED: "Не вдалося створити оплату. Спробуйте ще раз",
         err_AUTH_REQUIRED: "Увійдіть, щоб оформити підписку",
         err_GENERIC: "Сталася помилка. Спробуйте ще раз",
+        err_SUB_FAILED: "Не вдалося змінити підписку. Спробуйте ще раз",
+
         howText:
           "Підписка активується після першої успішної оплати.\nДалі вона автоматично продовжується щомісяця, поки ви не скасуєте її.\nСкасувати можна у будь-який момент. Доступ збережеться до кінця оплаченого періоду.\nЗа потреби підписку можна відновити пізніше.\nОплата обробляється через WayForPay.",
       },
@@ -80,14 +119,28 @@ export default function SubscriptionClient() {
         manage: "Управление",
         monthly: "Ежемесячная подписка",
         how: "Как это работает",
-        auto: "Автоматическое продление",
+        auto: "Автопродление",
+
         access: "Доступ",
-        active: "Активен",
-        inactive: "Неактивен",
+        accessPaid: "Подписка",
+        accessPromo: "Промокод",
+        accessFree: "Бесплатно",
+
         until: "До",
         autosub: "Автосписание",
+        autoActive: "Активно",
+        autoInactive: "Неактивно",
+        autoUnknown: "Неизвестно",
         notApply: "Не применяется",
+
         payBtn: "Оформить подписку",
+        payActive: "Подписка активна",
+
+        cancelSub: "Отменить подписку",
+        resumeSub: "Возобновить подписку",
+        msgOkSubCancel: "Автосписание отменено",
+        msgOkSubResume: "Автосписание возобновлено",
+
         promoTitle: "Промокод",
         promoActive: "Промокод активен",
         promoPlaceholder: "Введите промокод",
@@ -95,11 +148,14 @@ export default function SubscriptionClient() {
         cancelPromo: "Отменить промокод",
         msgOkCancel: "Промокод отменён",
         msgOkApply: "Промокод активирован",
+
         err_INVALID_PROMO: "Неверный промокод",
         err_EMPTY_CODE: "Введите промокод",
         err_PAY_FAILED: "Не удалось создать оплату. Попробуйте ещё раз",
         err_AUTH_REQUIRED: "Войдите, чтобы оформить подписку",
         err_GENERIC: "Произошла ошибка. Попробуйте ещё раз",
+        err_SUB_FAILED: "Не удалось изменить подписку. Попробуйте ещё раз",
+
         howText:
           "Подписка активируется после первой успешной оплаты.\nДалее она автоматически продлевается каждый месяц, пока вы не отмените её.\nОтменить можно в любой момент. Доступ сохранится до конца оплаченного периода.\nПри необходимости подписку можно возобновить позже.\nОплата обрабатывается через WayForPay.",
       },
@@ -109,13 +165,27 @@ export default function SubscriptionClient() {
         monthly: "Monthly subscription",
         how: "How it works",
         auto: "Auto-renewal",
+
         access: "Access",
-        active: "Active",
-        inactive: "Inactive",
+        accessPaid: "Subscription",
+        accessPromo: "Promo",
+        accessFree: "Free",
+
         until: "Until",
         autosub: "Auto charge",
+        autoActive: "Active",
+        autoInactive: "Inactive",
+        autoUnknown: "Unknown",
         notApply: "Not applicable",
+
         payBtn: "Get subscription",
+        payActive: "Subscription active",
+
+        cancelSub: "Cancel subscription",
+        resumeSub: "Resume subscription",
+        msgOkSubCancel: "Auto-renew canceled",
+        msgOkSubResume: "Auto-renew resumed",
+
         promoTitle: "Promo code",
         promoActive: "Promo active",
         promoPlaceholder: "Enter promo code",
@@ -123,11 +193,14 @@ export default function SubscriptionClient() {
         cancelPromo: "Cancel promo",
         msgOkCancel: "Promo canceled",
         msgOkApply: "Promo activated",
+
         err_INVALID_PROMO: "Invalid promo code",
         err_EMPTY_CODE: "Enter a promo code",
         err_PAY_FAILED: "Failed to create payment. Try again",
         err_AUTH_REQUIRED: "Sign in to subscribe",
         err_GENERIC: "Something went wrong. Try again",
+        err_SUB_FAILED: "Failed to change subscription. Try again",
+
         howText:
           "Subscription becomes active after the first successful payment.\nThen it renews monthly until you cancel it.\nYou can cancel anytime. Access stays until the end of the paid period.\nYou can resume later.\nPayments are processed via WayForPay.",
       },
@@ -136,6 +209,8 @@ export default function SubscriptionClient() {
   }, [lang])
 
   const [summary, setSummary] = useState<Summary | null>(null)
+  const [subStatus, setSubStatus] = useState<SubStatus | null>(null)
+
   const [promoCode, setPromoCode] = useState("")
   const [msg, setMsg] = useState<string>("")
   const [loading, setLoading] = useState(false)
@@ -150,20 +225,40 @@ export default function SubscriptionClient() {
     setSummary(data || {})
   }
 
+  async function loadSubStatus() {
+    const r = await fetch("/api/billing/subscription/status", {
+      method: "GET",
+      cache: "no-store",
+      credentials: "include",
+    })
+    const data = await r.json().catch(() => ({} as any))
+    setSubStatus(data || {})
+  }
+
   useEffect(() => {
     loadSummary().catch(() => setSummary({ ok: false, errorCode: "SUMMARY_FAILED" }))
+    loadSubStatus().catch(() => setSubStatus({ ok: false, errorCode: "STATUS_FAILED" }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id])
 
   const paidActive = isActive(summary?.paid_until)
   const promoActive = isActive(summary?.promo_until)
 
-  const statusLabel = paidActive || promoActive ? copy.active : copy.inactive
+  const accessTypeLabel = paidActive
+    ? copy.accessPaid
+    : promoActive
+    ? copy.accessPromo
+    : copy.accessFree
+
   const untilLabel = paidActive
     ? formatDate(summary?.paid_until)
     : promoActive
     ? formatDate(summary?.promo_until)
     : "—"
+
+  const autoState = paidActive ? normalizeAuto(subStatus) : "unknown"
+  const autoLabel =
+    !paidActive ? copy.notApply : autoState === "active" ? copy.autoActive : autoState === "inactive" ? copy.autoInactive : copy.autoUnknown
 
   function errorText(code?: string) {
     if (!code) return ""
@@ -221,11 +316,12 @@ export default function SubscriptionClient() {
     setMsg("")
     setLoading(true)
     try {
+      const code = String(promoCode || "").trim()
       const r = await fetch("/api/billing/promo/redeem", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: promoCode }),
+        body: JSON.stringify({ code }),
       })
 
       const data = await r.json().catch(() => ({} as any))
@@ -234,6 +330,8 @@ export default function SubscriptionClient() {
         setMsg(copy.msgOkApply)
         setPromoCode("")
         await loadSummary()
+        // важное: чтобы Header/Profile точно обновились
+        window.location.reload()
       } else {
         setMsg(errorText(data?.errorCode))
       }
@@ -258,6 +356,7 @@ export default function SubscriptionClient() {
       if (data?.ok) {
         setMsg(copy.msgOkCancel)
         await loadSummary()
+        window.location.reload()
       } else {
         setMsg(errorText(data?.errorCode))
       }
@@ -267,6 +366,61 @@ export default function SubscriptionClient() {
       setLoading(false)
     }
   }
+
+  async function cancelSubscription() {
+    setMsg("")
+    setLoading(true)
+    try {
+      const r = await fetch("/api/billing/subscription/cancel", {
+        method: "POST",
+        credentials: "include",
+      })
+
+      const data = await r.json().catch(() => ({} as any))
+
+      if (data?.ok) {
+        setMsg(copy.msgOkSubCancel)
+        await loadSummary()
+        await loadSubStatus()
+        window.location.reload()
+      } else {
+        setMsg(errorText(data?.errorCode) || copy.err_SUB_FAILED)
+      }
+    } catch {
+      setMsg(copy.err_SUB_FAILED)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function resumeSubscription() {
+    setMsg("")
+    setLoading(true)
+    try {
+      const r = await fetch("/api/billing/subscription/resume", {
+        method: "POST",
+        credentials: "include",
+      })
+
+      const data = await r.json().catch(() => ({} as any))
+
+      if (data?.ok) {
+        setMsg(copy.msgOkSubResume)
+        await loadSummary()
+        await loadSubStatus()
+        window.location.reload()
+      } else {
+        setMsg(errorText(data?.errorCode) || copy.err_SUB_FAILED)
+      }
+    } catch {
+      setMsg(copy.err_SUB_FAILED)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const showCancelSubBtn = paidActive && autoState === "active"
+  const showResumeSubBtn = paidActive && autoState === "inactive"
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 lg:px-10 xl:px-16">
@@ -283,7 +437,7 @@ export default function SubscriptionClient() {
             <div className="rounded-2xl border border-slate-200 p-4">
               <div className="flex items-center justify-between">
                 <span className="text-slate-500">{copy.access}</span>
-                <span className="font-medium">{statusLabel}</span>
+                <span className="font-medium">{accessTypeLabel}</span>
               </div>
 
               <div className="mt-2 flex items-center justify-between">
@@ -293,7 +447,7 @@ export default function SubscriptionClient() {
 
               <div className="mt-2 flex items-center justify-between">
                 <span className="text-slate-500">{copy.autosub}</span>
-                <span className="font-medium">{copy.notApply}</span>
+                <span className="font-medium">{autoLabel}</span>
               </div>
             </div>
 
@@ -307,10 +461,32 @@ export default function SubscriptionClient() {
               variant="outline"
               className="w-full rounded-full border border-slate-200"
               onClick={createInvoice}
-              disabled={loading}
+              disabled={loading || paidActive}
             >
-              {copy.payBtn}
+              {paidActive ? copy.payActive : copy.payBtn}
             </Button>
+
+            {showCancelSubBtn ? (
+              <Button
+                variant="outline"
+                className="w-full rounded-full border border-slate-200"
+                onClick={cancelSubscription}
+                disabled={loading}
+              >
+                {copy.cancelSub}
+              </Button>
+            ) : null}
+
+            {showResumeSubBtn ? (
+              <Button
+                variant="outline"
+                className="w-full rounded-full border border-slate-200"
+                onClick={resumeSubscription}
+                disabled={loading}
+              >
+                {copy.resumeSub}
+              </Button>
+            ) : null}
 
             <div className="pt-2">
               <div className="mb-2 text-slate-500">{copy.promoTitle}</div>
@@ -342,7 +518,7 @@ export default function SubscriptionClient() {
                     variant="outline"
                     className="h-11 rounded-full border border-slate-200 px-6"
                     onClick={applyPromo}
-                    disabled={loading}
+                    disabled={loading || paidActive}
                   >
                     {copy.apply}
                   </Button>

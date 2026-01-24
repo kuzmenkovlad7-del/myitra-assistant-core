@@ -1,168 +1,173 @@
-"use client";
+"use client"
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { CheckCircle2, Loader2, RefreshCw, XCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
-type BillingStatus = "paid" | "failed" | "processing" | "invoice_created" | "not_found";
+type StatusResp = {
+  ok?: boolean
+  status?: string
+  state?: string
+  orderStatus?: string
+  access?: string | null
+  paid_until?: string | null
+  promo_until?: string | null
+  errorCode?: string
+  message?: string
+}
 
-function normStatus(s: any): BillingStatus {
-  if (s === "paid" || s === "failed" || s === "processing" || s === "invoice_created" || s === "not_found") return s;
-  return "processing";
+function normalizeStatus(d: any): "approved" | "pending" | "failed" | "unknown" {
+  const s = String(d?.status || d?.state || d?.orderStatus || "").toLowerCase()
+  if (!s) return "unknown"
+
+  if (["approved", "success", "paid", "ok", "completed"].some((x) => s.includes(x))) return "approved"
+  if (["pending", "processing", "wait"].some((x) => s.includes(x))) return "pending"
+  if (["declined", "failed", "error", "rejected", "canceled", "cancelled"].some((x) => s.includes(x))) return "failed"
+
+  return "unknown"
 }
 
 export default function PaymentResultPage() {
-  const sp = useSearchParams();
-  const orderReference = (sp.get("orderReference") || "").trim();
-  const debug = sp.get("debug") === "1";
+  const sp = useSearchParams()
+  const router = useRouter()
 
-  const [status, setStatus] = useState<BillingStatus>("processing");
-  const [loading, setLoading] = useState(false);
-  const [lastTx, setLastTx] = useState<string | null>(null);
+  const orderReference = sp.get("orderReference") || sp.get("order_reference") || ""
+  const [status, setStatus] = useState<"idle" | "pending" | "approved" | "failed" | "unknown">("idle")
+  const [details, setDetails] = useState<StatusResp | null>(null)
+  const [attempt, setAttempt] = useState(0)
 
-  const pollsRef = useRef(0);
-  const stoppedRef = useRef(false);
+  const title = useMemo(() => {
+    if (status === "approved") return "Оплата успішна"
+    if (status === "failed") return "Оплата не пройшла"
+    if (status === "pending") return "Перевіряємо оплату..."
+    return "Результат оплати"
+  }, [status])
 
-  const fetchStatus = async () => {
-    if (!orderReference) return;
+  const desc = useMemo(() => {
+    if (!orderReference) return "Немає номера замовлення. Поверніться на підписку та спробуйте ще раз."
+    if (status === "approved") return "Доступ оновлено. Переходимо до керування підпискою."
+    if (status === "failed") return "Оплата не підтвердилася. Спробуйте ще раз."
+    if (status === "pending") return "Зазвичай це займає декілька секунд."
+    return "Очікуємо підтвердження."
+  }, [status, orderReference])
+
+  const fetchStatus = useCallback(async () => {
+    if (!orderReference) {
+      setStatus("failed")
+      setDetails({ ok: false, errorCode: "NO_ORDER_REFERENCE" })
+      return
+    }
 
     try {
-      const r = await fetch(`/api/billing/orders/status?orderReference=${encodeURIComponent(orderReference)}${debug ? "&debug=1" : ""}`, {
+      let r = await fetch(`/api/billing/orders/status?orderReference=${encodeURIComponent(orderReference)}`, {
+        method: "GET",
         cache: "no-store",
-      });
-      const j: any = await r.json();
+        credentials: "include",
+      })
 
-      if (!j?.ok) {
-        setStatus("failed");
-        return;
+      if (r.status === 405 || r.status === 404) {
+        r = await fetch(`/api/billing/orders/status`, {
+          method: "POST",
+          cache: "no-store",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ orderReference }),
+        })
       }
 
-      setStatus(normStatus(j.status));
-      setLastTx(j.lastTransactionStatus || null);
+      const data = (await r.json().catch(() => ({} as any))) as StatusResp
+      setDetails(data)
 
-      console.info("[payment-result] status", j);
-    } catch (e) {
-      console.warn("[payment-result] fetchStatus error", e);
+      const st = normalizeStatus(data)
+      setStatus(st)
+    } catch {
+      // временно считаем pending, чтобы не пугать юзера
+      setStatus("pending")
+      setDetails({ ok: false, errorCode: "NETWORK" })
     }
-  };
-
-  const forceCheck = async () => {
-    if (!orderReference) return;
-
-    setLoading(true);
-    try {
-      const r = await fetch(`/api/billing/wayforpay/check?orderReference=${encodeURIComponent(orderReference)}`, {
-        cache: "no-store",
-      });
-      const j: any = await r.json().catch(() => null);
-      console.info("[payment-result] forceCheck", j);
-    } catch (e) {
-      console.warn("[payment-result] forceCheck error", e);
-    } finally {
-      setLoading(false);
-      await fetchStatus();
-    }
-  };
+  }, [orderReference])
 
   useEffect(() => {
-    if (!orderReference) {
-      setStatus("failed");
-      return;
-    }
+    setStatus("pending")
+    fetchStatus()
+  }, [fetchStatus])
 
-    pollsRef.current = 0;
-    stoppedRef.current = false;
-
-    fetchStatus();
-  }, [orderReference]);
-
+  // авто-переход когда approved
   useEffect(() => {
-    if (!orderReference) return;
-    if (stoppedRef.current) return;
-
-    if (status === "paid" || status === "failed") {
-      stoppedRef.current = true;
-      return;
-    }
-
-    if (pollsRef.current >= 5) return;
-    pollsRef.current += 1;
-
+    if (status !== "approved") return
     const t = setTimeout(() => {
-      fetchStatus();
-    }, 2000);
+      router.replace("/subscription?paid=1")
+    }, 700)
+    return () => clearTimeout(t)
+  }, [status, router])
 
-    return () => clearTimeout(t);
-  }, [status, orderReference]);
-
-  const ui = useMemo(() => {
-    if (status === "paid") {
-      return {
-        title: "Оплата прошла успешно",
-        subtitle: "Доступ активирован. Можно переходить в кабинет.",
-        icon: <CheckCircle2 className="h-7 w-7 text-green-600" />,
-      };
-    }
-
-    if (status === "failed") {
-      return {
-        title: "Оплата не прошла",
-        subtitle: "Оплата не подтверждена. Если списание было — нажмите Проверить ещё раз.",
-        icon: <XCircle className="h-7 w-7 text-red-600" />,
-      };
-    }
-
-    return {
-      title: "Проверяем оплату",
-      subtitle: "Подождите пару секунд. Если не обновится — нажмите Проверить ещё раз.",
-      icon: <Loader2 className="h-7 w-7 animate-spin text-muted-foreground" />,
-    };
-  }, [status]);
+  // polling пока pending
+  useEffect(() => {
+    if (status !== "pending") return
+    if (attempt >= 20) return // ~40 сек
+    const t = setTimeout(() => {
+      setAttempt((a) => a + 1)
+      fetchStatus()
+    }, 2000)
+    return () => clearTimeout(t)
+  }, [status, attempt, fetchStatus])
 
   return (
-    <div className="flex min-h-[70vh] items-center justify-center px-4 py-10">
-      <div className="w-full max-w-md rounded-2xl border bg-card p-6 shadow-xl">
-        <div className="flex items-start gap-3">
-          <div className="mt-0.5">{ui.icon}</div>
+    <main className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6 lg:px-10">
+      <Card className="rounded-2xl">
+        <CardHeader>
+          <CardTitle className="text-2xl">{title}</CardTitle>
+          <CardDescription>{desc}</CardDescription>
+        </CardHeader>
 
-          <div className="flex-1">
-            <h1 className="text-xl font-semibold text-card-foreground">{ui.title}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">{ui.subtitle}</p>
+        <CardContent className="space-y-4 text-sm text-slate-700">
+          {orderReference ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Order</span>
+                <span className="font-mono text-xs">{orderReference}</span>
+              </div>
 
-            {orderReference ? (
-              <p className="mt-2 text-xs text-muted-foreground/70">
-                orderReference: {orderReference}
-                {lastTx ? ` · tx: ${lastTx}` : ""}
-              </p>
-            ) : null}
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-slate-500">Status</span>
+                <span className="font-medium">{status}</span>
+              </div>
+
+              {details?.access ? (
+                <div className="mt-2 flex items-center justify-between">
+                  <span className="text-slate-500">Access</span>
+                  <span className="font-medium">{String(details.access)}</span>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" className="rounded-full border border-slate-200" onClick={fetchStatus}>
+              Оновити статус
+            </Button>
+
+            <Button className="rounded-full" onClick={() => window.location.assign("/subscription")}>
+              Перейти до підписки
+            </Button>
+
+            <Button variant="ghost" className="rounded-full" onClick={() => window.location.assign("/pricing")}>
+              Тарифи
+            </Button>
           </div>
-        </div>
 
-        <div className="mt-5 flex gap-3">
-          <Button asChild className="flex-1">
-            <Link href="/profile">В кабинет</Link>
-          </Button>
-          <Button asChild variant="outline" className="flex-1">
-            <Link href="/">На главную</Link>
-          </Button>
-        </div>
+          {details?.errorCode ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs text-slate-600">
+              {String(details.errorCode)}
+            </div>
+          ) : null}
 
-        <Button
-          variant="ghost"
-          className="mt-3 w-full gap-2"
-          onClick={forceCheck}
-          disabled={loading || !orderReference}
-        >
-          <RefreshCw className="h-4 w-4" />
-          {loading ? "Проверяем..." : "Проверить ещё раз"}
-        </Button>
-
-        <div className="mt-5 text-center text-xs text-muted-foreground">
-          support@turbotaai.com
-        </div>
-      </div>
-    </div>
-  );
+          <div className="text-xs text-slate-500">
+            Якщо статус довго не оновлюється, відкрийте Підписку і перевірте доступ у Профілі.
+          </div>
+        </CardContent>
+      </Card>
+    </main>
+  )
 }
