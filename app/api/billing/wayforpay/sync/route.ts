@@ -1,168 +1,131 @@
 import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
-import { cookies } from "next/headers"
-import { getSupabaseAdmin } from "@/lib/supabase-admin"
+import { createClient } from "@supabase/supabase-js"
 
-export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
 
-const DEVICE_COOKIE = "turbotaai_device"
-
-function hmacMd5(str: string, key: string) {
-  return crypto.createHmac("md5", key).update(str).digest("hex")
+function pickEnv(name: string, fallback = "") {
+  const v = (process.env[name] || "").trim()
+  return v || fallback
 }
 
-function envAny(...keys: string[]) {
-  for (const k of keys) {
-    const v = String(process.env[k] || "").trim()
-    if (v) return v
-  }
-  return ""
+function mustEnv(name: string) {
+  const v = (process.env[name] || "").trim()
+  if (!v) throw new Error(`Missing env: ${name}`)
+  return v
 }
 
-function getDeviceFromCookie() {
-  const jar = cookies()
-  return String(jar.get(DEVICE_COOKIE)?.value || "").trim()
+function hmacMd5(data: string, secret: string) {
+  return crypto.createHmac("md5", secret).update(data, "utf8").digest("hex")
 }
 
-function setDeviceCookie(res: NextResponse, deviceHash: string) {
-  res.cookies.set(DEVICE_COOKIE, deviceHash, {
-    path: "/",
-    sameSite: "lax",
-    httpOnly: false,
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 60 * 60 * 24 * 365,
-  })
+function normalizeStatus(txStatus: string) {
+  const s = (txStatus || "").toLowerCase()
+  if (s === "approved") return "paid"
+  if (s === "pending" || s === "inprocessing") return "pending"
+  if (s === "refunded" || s === "voided" || s === "expired" || s === "declined") return "failed"
+  return txStatus || "unknown"
 }
 
-function toDateOrNull(v: any) {
-  if (!v) return null
-  const d = new Date(String(v))
-  if (Number.isNaN(d.getTime())) return null
-  return d
+function supabaseAdmin() {
+  const url = mustEnv("SUPABASE_URL")
+  const key =
+    pickEnv("SUPABASE_SERVICE_ROLE_KEY") ||
+    pickEnv("SUPABASE_SERVICE_ROLE") ||
+    pickEnv("SUPABASE_ANON_KEY") ||
+    pickEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+
+  if (!key) throw new Error("Missing env: SUPABASE_SERVICE_ROLE_KEY (or ANON key fallback)")
+  return createClient(url, key, { auth: { persistSession: false } })
 }
 
-async function extendDeviceGrant(admin: any, deviceHash: string, days: number) {
-  const now = new Date()
-  const nowIso = now.toISOString()
+async function wayforpayCheckStatus(orderReference: string) {
+  const merchantAccount = mustEnv("WAYFORPAY_MERCHANT_ACCOUNT")
+  const secretKey = mustEnv("WAYFORPAY_SECRET_KEY")
+  const apiUrl = pickEnv("WAYFORPAY_API_URL", "https://api.wayforpay.com/api")
 
-  const { data: existing } = await admin
-    .from("access_grants")
-    .select("id, paid_until")
-    .eq("device_hash", deviceHash)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  // CHECK_STATUS signature = HMAC_MD5("merchantAccount;orderReference", SecretKey)
+  const signature = hmacMd5(`${merchantAccount};${orderReference}`, secretKey)
 
-  const currentPaid = toDateOrNull(existing?.paid_until)
-  const base = currentPaid && currentPaid.getTime() > now.getTime() ? currentPaid : now
-  const next = new Date(base.getTime() + days * 24 * 60 * 60 * 1000).toISOString()
-
-  if (existing?.id) {
-    await admin
-      .from("access_grants")
-      .update({ paid_until: next, trial_questions_left: 0, updated_at: nowIso })
-      .eq("id", existing.id)
-  } else {
-    await admin.from("access_grants").insert({
-      id: crypto.randomUUID(),
-      user_id: null,
-      device_hash: deviceHash,
-      trial_questions_left: 0,
-      paid_until: next,
-      promo_until: null,
-      created_at: nowIso,
-      updated_at: nowIso,
-    } as any)
-  }
-
-  return next
-}
-
-export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => null)) as any
-  const orderReference = String(body?.orderReference ?? "").trim()
-
-  if (!orderReference) {
-    return NextResponse.json({ ok: false, message: "orderReference is required" }, { status: 200 })
-  }
-
-  const merchantAccount = envAny("WAYFORPAY_MERCHANT_ACCOUNT", "WFP_MERCHANT_ACCOUNT")
-  const secretKey = envAny("WAYFORPAY_SECRET_KEY", "WFP_SECRET_KEY")
-
-  if (!merchantAccount || !secretKey) {
-    return NextResponse.json({ ok: false, message: "WayForPay env is missing" }, { status: 200 })
-  }
-
-  const signStr = [merchantAccount, orderReference].join(";")
-  const merchantSignature = hmacMd5(signStr, secretKey)
-
-  const wfpBody = {
+  const payload: any = {
     transactionType: "CHECK_STATUS",
     merchantAccount,
     orderReference,
-    merchantSignature,
+    merchantSignature: signature,
     apiVersion: 1,
   }
 
-  const r = await fetch("https://api.wayforpay.com/api", {
+  const r = await fetch(apiUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(wfpBody),
+    body: JSON.stringify(payload),
     cache: "no-store",
-  }).catch(() => null)
+  })
 
-  const json: any = await r?.json().catch(() => null)
-  const status = String(json?.transactionStatus ?? json?.status ?? "").trim()
+  const json = await r.json().catch(() => ({}))
+  return { httpOk: r.ok, httpStatus: r.status, json }
+}
 
-  if (!status) {
-    return NextResponse.json({ ok: false, message: "No status from WayForPay", debug: json ?? null }, { status: 200 })
+async function upsertBillingOrder(orderReference: string, patch: any) {
+  try {
+    const sb = supabaseAdmin()
+    await sb
+      .from("billing_orders")
+      .upsert(
+        {
+          order_reference: orderReference,
+          ...patch,
+        },
+        { onConflict: "order_reference" }
+      )
+  } catch (e) {
+    console.error("[sync] billing_orders upsert failed:", e)
+  }
+}
+
+async function handler(req: NextRequest) {
+  const url = new URL(req.url)
+
+  const orderReference =
+    (url.searchParams.get("orderReference") || "").trim() ||
+    (req.cookies.get("ta_last_order")?.value || "").trim()
+
+  if (!orderReference) {
+    return NextResponse.json({ ok: false, error: "orderReference is required" }, { status: 400 })
   }
 
-  // ✅ Только Approved активирует доступ
-  if (String(status || "").toLowerCase() === "approved") {
-    const admin = getSupabaseAdmin()
-    const nowIso = new Date().toISOString()
+  const { httpOk, httpStatus, json } = await wayforpayCheckStatus(orderReference)
 
-    // пытаемся взять deviceHash из billing_orders.raw (самое надежное)
-    let deviceHash = ""
+  const txStatus = String(json?.transactionStatus || json?.status || "").trim()
+  const state = normalizeStatus(txStatus)
 
-    try {
-      const { data: rows } = await admin
-        .from("billing_orders")
-        .select("raw, user_id")
-        .eq("order_reference", orderReference)
-        .order("updated_at", { ascending: false })
-        .limit(1)
+  // пишем в базу всегда, чтобы не было пусто
+  await upsertBillingOrder(orderReference, {
+    status: state,
+    currency: json?.currency || null,
+    amount: typeof json?.amount === "number" ? json.amount : Number(json?.amount || 0) || null,
+    raw: json || null,
+  })
 
-      const row: any = (rows || [])[0]
-      deviceHash = String(row?.raw?.deviceHash || "").trim()
-    } catch {}
+  return NextResponse.json(
+    {
+      ok: true,
+      orderReference,
+      state,
+      transactionStatus: txStatus || null,
+      httpOk,
+      httpStatus,
+      wayforpay: json || null,
+    },
+    { status: 200, headers: { "cache-control": "no-store" } }
+  )
+}
 
-    if (!deviceHash) deviceHash = getDeviceFromCookie()
-    if (!deviceHash) deviceHash = crypto.randomUUID()
+export async function GET(req: NextRequest) {
+  return handler(req)
+}
 
-    const paidUntil = await extendDeviceGrant(admin, deviceHash, 30)
-
-    // обновляем billing_orders статус
-    try {
-      await admin
-        .from("billing_orders")
-        .update({
-          status: "paid",
-          raw: { sync_status: json, paidUntil, last_event: "sync", updated_at: nowIso },
-          updated_at: nowIso,
-        } as any)
-        .eq("order_reference", orderReference)
-    } catch {}
-
-    const res = NextResponse.json({ ok: true, status, paid_until: paidUntil, device_hash: deviceHash }, { status: 200 })
-
-    // ✅ ВАЖНО: ставим правильную cookie, иначе summary не увидит доступ
-    setDeviceCookie(res, deviceHash)
-
-    return res
-  }
-
-  return NextResponse.json({ ok: false, status, message: `Статус: ${status}` }, { status: 200 })
+export async function POST(req: NextRequest) {
+  return handler(req)
 }
