@@ -228,7 +228,11 @@ export default function PricingPage() {
       try {
         const r = await fetch("/api/account/summary", { cache: "no-store", credentials: "include" })
         const d = await r.json().catch(() => ({}))
-        if (alive) setSummary(d)
+
+      try {
+        if (d?.orderReference) localStorage.setItem("ta_last_order_ref", String(d.orderReference))
+      } catch {}
+if (alive) setSummary(d)
       } catch {
         if (alive) setSummary(null)
       } finally {
@@ -262,7 +266,11 @@ export default function PricingPage() {
       })
 
       const d = await r.json().catch(() => ({}))
-      if (!r.ok || !d?.invoiceUrl) {
+
+      try {
+        if (d?.orderReference) localStorage.setItem("ta_last_order_ref", String(d.orderReference))
+      } catch {}
+if (!r.ok || !d?.invoiceUrl) {
         throw new Error(d?.error || copy.payFailed)
       }
 
@@ -295,7 +303,11 @@ export default function PricingPage() {
       })
 
       const d = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(d?.error || "Promo activation failed")
+
+      try {
+        if (d?.orderReference) localStorage.setItem("ta_last_order_ref", String(d.orderReference))
+      } catch {}
+if (!r.ok) throw new Error(d?.error || "Promo activation failed")
 
       setPromoMsg(copy.promoOk)
 

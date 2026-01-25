@@ -13,7 +13,11 @@ type AuthContextValue = {
   isLoading: boolean
   isDemo: boolean
   signInWithPassword: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>
-  signUpWithPassword: (email: string, password: string, fullName?: string) => Promise<{ ok: boolean; error?: string; needsEmailConfirm?: boolean }>
+  signUpWithPassword: (
+    email: string,
+    password: string,
+    fullName?: string
+  ) => Promise<{ ok: boolean; error?: string; needsEmailConfirm?: boolean }>
   signOut: () => Promise<void>
 }
 
@@ -21,17 +25,23 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 const DEMO_KEY = "turbotaai_demo_user"
 
+// ✅ ВАЖНО: больше не вызываем /api/auth/clear автоматически, чтобы не выбивало сессии
 async function syncServerToken(accessToken: string | null) {
+  if (!accessToken) return
   try {
-    if (accessToken) {
-      await fetch("/api/auth/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ access_token: accessToken }),
-      })
-    } else {
-      await fetch("/api/auth/clear", { method: "POST" })
-    }
+    await fetch("/api/auth/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ access_token: accessToken }),
+    })
+  } catch {
+    // ignore
+  }
+}
+
+async function clearServerToken() {
+  try {
+    await fetch("/api/auth/clear", { method: "POST", headers: { "x-ta-logout": "1" } })
   } catch {
     // ignore
   }
@@ -76,6 +86,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       isLoading,
       isDemo,
+
       signInWithPassword: async (email, password) => {
         if (isDemo) {
           const u = { email: (email || "guest@demo.turbotaai.com").trim() }
@@ -95,6 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return { ok: false, error: e?.message || "Sign-in failed" }
         }
       },
+
       signUpWithPassword: async (email, password, fullName) => {
         if (isDemo) {
           const u = { email: (email || "guest@demo.turbotaai.com").trim() }
@@ -113,26 +125,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             },
           })
           if (error) return { ok: false, error: error.message }
-          // если включено подтверждение email, session может быть null
           const needsEmailConfirm = !data.session
           return { ok: true, needsEmailConfirm }
         } catch (e: any) {
           return { ok: false, error: e?.message || "Sign-up failed" }
         }
       },
+
       signOut: async () => {
         if (isDemo) {
           setUser(null)
           window.localStorage.removeItem(DEMO_KEY)
-          await syncServerToken(null)
+          await clearServerToken()
           return
         }
+
         try {
           const supabase = getSupabaseBrowser()
           await supabase.auth.signOut()
         } finally {
           setUser(null)
-          await syncServerToken(null)
+          await clearServerToken()
         }
       },
     }

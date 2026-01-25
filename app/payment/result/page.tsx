@@ -2,109 +2,113 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Loader2, CheckCircle2, AlertCircle } from "lucide-react"
 
-type SyncState = "idle" | "loading" | "ok" | "fail"
+type State = "checking" | "ok" | "fail"
 
 export default function PaymentResultPage() {
   const router = useRouter()
   const sp = useSearchParams()
 
   const orderReference = useMemo(() => {
-    const v = sp.get("orderReference")
-    return (v ?? "").trim()
+    const q = String(sp.get("orderReference") || "").trim()
+    if (q) return q
+
+    try {
+      const a = String(localStorage.getItem("ta_last_order_ref") || "").trim()
+      if (a) return a
+    } catch {}
+
+    return ""
   }, [sp])
 
-  const [state, setState] = useState<SyncState>("idle")
-  const [msg, setMsg] = useState<string>("")
+  const [state, setState] = useState<State>("checking")
+  const [msg, setMsg] = useState("Проверяем оплату…")
+  const [attempt, setAttempt] = useState(1)
 
   useEffect(() => {
-    if (!orderReference) {
-      setState("fail")
-      setMsg("Не знайдено номер замовлення. Поверніться в профіль і оновіть сторінку.")
-      return
-    }
+    let alive = true
 
-    let cancelled = false
-
-    ;(async () => {
-      setState("loading")
-      setMsg("Перевіряємо оплату...")
-
-      const res = await fetch(`/api/billing/wayforpay/sync?orderReference=${encodeURIComponent(orderReference)}`, {
-        cache: "no-store",
-      }).catch(() => null)
-
-      const json: any = await res?.json().catch(() => null)
-
-      if (cancelled) return
-
-      if (json?.ok) {
-        setState("ok")
-        setMsg("Оплата підтверджена. Доступ оновлено.")
-        setTimeout(() => router.replace("/profile?paid=1"), 800)
+    async function run() {
+      if (!orderReference) {
+        setState("fail")
+        setMsg("Чек-код не найден. Вернитесь на тарифы и повторите оплату.")
         return
       }
 
-      setState("fail")
-      setMsg(json?.message || "Не вдалося підтвердити оплату. Спробуйте оновити сторінку або відкрийте профіль.")
-    })()
+      setState("checking")
+      setMsg("Проверяем оплату…")
 
+      for (let i = 0; i < 10; i++) {
+        if (!alive) return
+        setAttempt(i + 1)
+
+        const r = await fetch("/api/billing/wayforpay/sync", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ orderReference }),
+          cache: "no-store",
+          credentials: "include",
+        }).catch(() => null)
+
+        const json: any = await r?.json().catch(() => null)
+
+        if (json?.ok) {
+          setState("ok")
+          setMsg("Оплата подтверждена. Доступ активирован. Перенаправляем в профиль…")
+
+          try {
+            window.dispatchEvent(new Event("turbota:refresh"))
+          } catch {}
+
+          setTimeout(() => router.replace("/profile"), 700)
+          return
+        }
+
+        const status = String(json?.status || "")
+        setMsg(status ? `Ожидание подтверждения… (${status})` : "Ожидание подтверждения…")
+        await new Promise((x) => setTimeout(x, 1200))
+      }
+
+      setState("fail")
+      setMsg("Оплата пока не подтверждена. Если вы оплатили, нажмите Проверить снова.")
+    }
+
+    run()
     return () => {
-      cancelled = true
+      alive = false
     }
   }, [orderReference, router])
 
   return (
-    <div className="mx-auto max-w-xl px-4 py-10">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl">Результат оплати</CardTitle>
-          <CardDescription className="break-all">Замовлення: {orderReference || "—"}</CardDescription>
-        </CardHeader>
+    <div className="min-h-[70vh] flex items-center justify-center px-4">
+      <div className="w-full max-w-md rounded-2xl border bg-white p-6 shadow-sm">
+        <h1 className="text-xl font-semibold">Результат оплаты</h1>
 
-        <CardContent className="space-y-4">
-          {state === "loading" ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>{msg}</span>
-            </div>
+        <div className="mt-2 text-sm text-gray-600">
+          Чек-код: <span className="font-mono text-gray-900">{orderReference || "—"}</span>
+        </div>
+
+        <div className="mt-4 rounded-xl bg-gray-50 p-4 text-sm text-gray-800">
+          {msg}
+          {state === "checking" ? (
+            <div className="mt-2 text-xs text-gray-500">Попытка: {attempt}/10</div>
           ) : null}
+        </div>
 
-          {state === "ok" ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <CheckCircle2 className="h-4 w-4" />
-              <span>{msg}</span>
-            </div>
-          ) : null}
-
-          {state === "fail" ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <AlertCircle className="h-4 w-4" />
-              <span>{msg}</span>
-            </div>
-          ) : null}
-
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="border border-slate-200"
-              onClick={() => router.push("/profile")}
+        {state === "fail" ? (
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={() => location.reload()}
+              className="flex-1 rounded-xl bg-black px-4 py-2 text-white"
             >
-              Відкрити профіль
-            </Button>
-
-            <Button
-              className="bg-slate-900 text-white hover:bg-slate-800"
-              onClick={() => router.push("/pricing")}
-            >
-              Тарифи
-            </Button>
+              Проверить снова
+            </button>
+            <button onClick={() => router.replace("/pricing")} className="flex-1 rounded-xl border px-4 py-2">
+              Тарифы
+            </button>
           </div>
-        </CardContent>
-      </Card>
+        ) : null}
+      </div>
     </div>
   )
 }

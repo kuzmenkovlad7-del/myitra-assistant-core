@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSupabaseAdmin } from "@/lib/supabase-admin"
 import { makeServiceWebhookSignature, makeServiceResponseSignature } from "@/lib/wayforpay"
+import crypto from "crypto"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -37,7 +38,6 @@ function mapTxStatusToBillingStatus(txStatusRaw: any): BillingStatus {
   if (s === "inprocessing" || s === "processing" || s === "pending") return "processing"
   if (s === "created" || s === "invoice_created") return "invoice_created"
 
-  // declined / expired / refunded / reversed / chargeback / unknown
   return "failed"
 }
 
@@ -54,13 +54,49 @@ function addDays(base: Date, days: number): Date {
   return d
 }
 
-async function extendPaidUntil(admin: any, userId: string, days: number) {
+async function extendDeviceGrant(admin: any, deviceHash: string, days: number) {
+  const now = new Date()
+  const nowIso = now.toISOString()
+
+  const { data: existing } = await admin
+    .from("access_grants")
+    .select("id, paid_until")
+    .eq("device_hash", deviceHash)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const currentPaid = toDateOrNull(existing?.paid_until)
+  const base = currentPaid && currentPaid.getTime() > now.getTime() ? currentPaid : now
+  const nextPaidUntil = addDays(base, days).toISOString()
+
+  if (existing?.id) {
+    await admin
+      .from("access_grants")
+      .update({ paid_until: nextPaidUntil, trial_questions_left: 0, updated_at: nowIso })
+      .eq("id", existing.id)
+  } else {
+    await admin.from("access_grants").insert({
+      id: crypto.randomUUID(),
+      user_id: null,
+      device_hash: deviceHash,
+      trial_questions_left: 0,
+      paid_until: nextPaidUntil,
+      promo_until: null,
+      created_at: nowIso,
+      updated_at: nowIso,
+    } as any)
+  }
+
+  return nextPaidUntil
+}
+
+async function extendPaidUntilProfile(admin: any, userId: string, days: number) {
   const nowIso = new Date().toISOString()
 
-  // читаем текущий paid_until из profiles
   const { data: prof } = await admin
     .from("profiles")
-    .select("paid_until,promo_until,auto_renew,autorenew,subscription_status")
+    .select("paid_until")
     .eq("id", userId)
     .maybeSingle()
 
@@ -68,29 +104,9 @@ async function extendPaidUntil(admin: any, userId: string, days: number) {
   const base = currentPaid && currentPaid.getTime() > Date.now() ? currentPaid : new Date()
   const nextPaidUntil = addDays(base, days).toISOString()
 
-  // обновляем profiles разными вариантами полей
-  const payloadVariants = [
-    { paid_until: nextPaidUntil, auto_renew: true, subscription_status: "active", updated_at: nowIso },
-    { paid_until: nextPaidUntil, autorenew: true, subscription_status: "active", updated_at: nowIso },
-    { paid_until: nextPaidUntil, auto_renew: true, subscription_status: "active" },
-    { paid_until: nextPaidUntil, autorenew: true, subscription_status: "active" },
-  ]
+  await admin.from("profiles").update({ paid_until: nextPaidUntil, subscription_status: "active", updated_at: nowIso } as any).eq("id", userId)
 
-  let updated = false
-  for (const payload of payloadVariants) {
-    const r = await admin.from("profiles").update(payload).eq("id", userId)
-    if (!r?.error) {
-      updated = true
-      break
-    }
-  }
-
-  // дублируем paid_until в access_grants для надежности логики в агенте
-  const accountKey = `account:${userId}`
-  await admin.from("access_grants").update({ paid_until: nextPaidUntil, updated_at: nowIso }).eq("user_id", userId)
-  await admin.from("access_grants").update({ paid_until: nextPaidUntil, updated_at: nowIso }).eq("device_hash", accountKey)
-
-  return { nextPaidUntil, updated }
+  return nextPaidUntil
 }
 
 export async function POST(req: NextRequest) {
@@ -98,25 +114,16 @@ export async function POST(req: NextRequest) {
   const payload = parseJsonOrForm(text)
 
   const orderReference = String(payload?.orderReference ?? payload?.order_reference ?? "").trim()
-  const merchantAccount = String(payload?.merchantAccount ?? "").trim()
-  const amount = payload?.amount ?? null
-  const currency = payload?.currency ?? null
   const txStatus = payload?.transactionStatus ?? payload?.transaction_status ?? null
 
-  const secretKey =
-    process.env.WAYFORPAY_SECRET_KEY ||
-    process.env.WFP_SECRET_KEY ||
-    ""
-
+  const secretKey = String(process.env.WAYFORPAY_SECRET_KEY || process.env.WFP_SECRET_KEY || "").trim()
   const expectedSignature = secretKey ? makeServiceWebhookSignature(secretKey, payload) : ""
   const gotSignature = String(payload?.merchantSignature ?? payload?.merchant_signature ?? "").trim()
 
-  // если нет базовых полей, отвечаем accept, но ничего не меняем
   if (!orderReference) {
     return NextResponse.json({ ok: true })
   }
 
-  // если есть secretKey, валидируем подпись
   if (secretKey && expectedSignature && gotSignature) {
     if (toLower(expectedSignature) !== toLower(gotSignature)) {
       console.error("[wfp][webhook] bad signature", { orderReference })
@@ -128,7 +135,6 @@ export async function POST(req: NextRequest) {
   const nextStatus = mapTxStatusToBillingStatus(txStatus)
   const nowIso = new Date().toISOString()
 
-  // находим заказ
   const { data: existingRows } = await admin
     .from("billing_orders")
     .select("order_reference,user_id,status,raw,updated_at")
@@ -138,6 +144,7 @@ export async function POST(req: NextRequest) {
 
   const existing = (existingRows || [])[0] as any
   const userId = existing?.user_id ?? null
+  const deviceHash = String(existing?.raw?.deviceHash || "").trim()
 
   const mergedRaw = {
     ...(existing?.raw || {}),
@@ -159,17 +166,23 @@ export async function POST(req: NextRequest) {
         user_id: userId,
         status: nextStatus,
         raw: mergedRaw,
-        amount: amount ? Number(amount) : null,
-        currency: currency ? String(currency) : null,
+        updated_at: nowIso,
       } as any)
   }
 
-  // если оплата успешна и user_id известен, продлеваем доступ
-  if (nextStatus === "paid" && userId) {
-    await extendPaidUntil(admin, String(userId), 30)
+  // ✅ если оплачено — активируем либо user, либо guest device
+  if (nextStatus === "paid") {
+    try {
+      if (userId) {
+        await extendPaidUntilProfile(admin, String(userId), 30)
+      } else if (deviceHash) {
+        await extendDeviceGrant(admin, deviceHash, 30)
+      }
+    } catch (e: any) {
+      console.error("[wfp][webhook] activation failed", String(e?.message || e))
+    }
   }
 
-  // правильный ответ WayForPay, чтобы не было ретраев
   const status = "accept"
   const time = Math.floor(Date.now() / 1000)
   const signature = secretKey ? makeServiceResponseSignature(secretKey, orderReference, status, time) : ""
@@ -180,7 +193,6 @@ export async function POST(req: NextRequest) {
     time,
     signature,
     ok: true,
-    merchantAccount,
     nextStatus,
   })
 }

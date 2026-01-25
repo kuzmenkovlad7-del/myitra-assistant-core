@@ -1,80 +1,101 @@
 import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
+import { cookies } from "next/headers"
+import { getSupabaseAdmin } from "@/lib/supabase-admin"
 
+export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
+const DEVICE_COOKIE = "turbotaai_device"
+
 function hmacMd5(str: string, key: string) {
-  return crypto.createHmac("md5", key).update(str, "utf8").digest("hex")
+  return crypto.createHmac("md5", key).update(str).digest("hex")
 }
 
-function esc(v: any) {
-  return String(v ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
+function pickEnv(...keys: string[]) {
+  for (const k of keys) {
+    const v = String(process.env[k] || "").trim()
+    if (v) return v
+  }
+  return ""
 }
 
-function planConfig(planId: string) {
-  // Можно потом расширить
-  const testAmount = Number(process.env.WAYFORPAY_TEST_AMOUNT_UAH ?? 1)
+function ensureDeviceHash() {
+  const jar = cookies()
+  let v = String(jar.get(DEVICE_COOKIE)?.value || "").trim()
+  if (v) return v
 
-  if (planId === "yearly") {
-    return {
-      planId: "yearly",
-      title: "TurbotaAI Yearly",
-      amount: testAmount,
-      currency: "UAH",
-    }
-  }
+  v = crypto.randomUUID()
+  jar.set(DEVICE_COOKIE, v, {
+    path: "/",
+    sameSite: "lax",
+    httpOnly: false,
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 60 * 60 * 24 * 365,
+  })
+  return v
+}
 
-  return {
-    planId: "monthly",
-    title: "TurbotaAI Monthly",
-    amount: testAmount,
-    currency: "UAH",
-  }
+function esc(s: any) {
+  return String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;")
+}
+
+function amountForPlan(planId: string) {
+  const test = Number(pickEnv("WAYFORPAY_TEST_AMOUNT_UAH") || 0)
+  if (Number.isFinite(test) && test > 0) return test
+
+  // если потом добавишь тарифы — вот тут логика
+  const monthly = Number(pickEnv("WAYFORPAY_MONTHLY_AMOUNT") || 0)
+  if (planId === "monthly" && Number.isFinite(monthly) && monthly > 0) return monthly
+
+  return 1
 }
 
 export async function GET(req: NextRequest) {
-  const planId = String(req.nextUrl.searchParams.get("planId") || "monthly").trim() || "monthly"
+  const origin = req.nextUrl.origin
+  const sp = req.nextUrl.searchParams
 
-  const merchantAccount = String(process.env.WAYFORPAY_MERCHANT_ACCOUNT || "").trim()
-  const secretKey = String(process.env.WAYFORPAY_SECRET_KEY || "").trim()
-  const merchantDomainName = String(process.env.WAYFORPAY_MERCHANT_DOMAIN_NAME || "").trim()
+  const planId = String(sp.get("planId") || "monthly").trim() || "monthly"
+  const orderReference =
+    String(sp.get("orderReference") || "").trim() ||
+    `ta_${planId}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`
 
-  if (!merchantAccount || !secretKey || !merchantDomainName) {
+  const deviceHash = ensureDeviceHash()
+
+  const merchantAccount = pickEnv("WAYFORPAY_MERCHANT_ACCOUNT", "WFP_MERCHANT_ACCOUNT")
+  const secretKey = pickEnv("WAYFORPAY_SECRET_KEY", "WFP_SECRET_KEY")
+  const merchantDomainName =
+    pickEnv("WAYFORPAY_MERCHANT_DOMAIN_NAME", "WAYFORPAY_MERCHANT_DOMAIN") || req.nextUrl.hostname
+
+  if (!merchantAccount || !secretKey) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "WayForPay env missing",
-        need: ["WAYFORPAY_MERCHANT_ACCOUNT", "WAYFORPAY_SECRET_KEY", "WAYFORPAY_MERCHANT_DOMAIN_NAME"],
-      },
-      { status: 500 }
+      { ok: false, error: "WayForPay env missing" },
+      { status: 200 }
     )
   }
 
-  const plan = planConfig(planId)
-
-  const orderReference = `ta_${plan.planId}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`
-  const orderDate = Math.floor(Date.now() / 1000)
-
-  const amount = Number(plan.amount)
-  const currency = String(plan.currency)
-
-  const productName = [plan.title]
+  const amount = amountForPlan(planId)
+  const currency = "UAH"
+  const productName = ["TurbotaAI Monthly"]
   const productCount = [1]
   const productPrice = [amount]
 
-  // returnUrl и serviceUrl (callback) по доке Purchase
-  // returnUrl вернет пользователя назад на сайт после оплаты
-  // serviceUrl дергается сервером WFP и подтверждает оплату
-  const returnBase = String(process.env.WAYFORPAY_RETURN_URL || `${req.nextUrl.origin}/payment/return`).trim()
-  const serviceUrl = String(process.env.WAYFORPAY_WEBHOOK_URL || `${req.nextUrl.origin}/api/billing/wayforpay/webhook`).trim()
+  const orderDate = Math.floor(Date.now() / 1000)
 
-  const returnUrl = `${returnBase}?orderReference=${encodeURIComponent(orderReference)}`
+  // ✅ Всегда возвращаем на /payment/return → /payment/result
+  const returnUrlBase = pickEnv("WAYFORPAY_RETURN_URL") || `${origin}/payment/return`
+  const ret = new URL(returnUrlBase)
+  ret.searchParams.set("orderReference", orderReference)
+  const returnUrl = ret.toString()
 
-  // Подпись по доке Purchase: merchantAccount;merchantDomainName;orderReference;orderDate;amount;currency;...arrays...
+  // ✅ Webhook только сюда
+  const serviceUrl = pickEnv("WAYFORPAY_WEBHOOK_URL") || `${origin}/api/billing/wayforpay/webhook`
+
   const signStr = [
     merchantAccount,
     merchantDomainName,
@@ -89,29 +110,53 @@ export async function GET(req: NextRequest) {
 
   const merchantSignature = hmacMd5(signStr, secretKey)
 
-  // Важно: merchantTransactionType = SALE, чтобы не было холда и странных откатов
-  // В WayForPay есть AUTO/AUTH/SALE, нам нужен SALE для реального списания
-  // Это есть в доках Create invoice и Purchase. :contentReference[oaicite:1]{index=1}
+  // ✅ Сохраняем заказ (для guest важно сохранить deviceHash)
+  try {
+    const admin = getSupabaseAdmin()
+    const nowIso = new Date().toISOString()
+
+    await admin.from("billing_orders").insert({
+      order_reference: orderReference,
+      user_id: null,
+      status: "invoice_created",
+      amount: Number(amount),
+      currency,
+      raw: {
+        planId,
+        deviceHash,
+        created_at: nowIso,
+        last_event: "purchase",
+      },
+      updated_at: nowIso,
+    } as any)
+  } catch {
+    // ignore
+  }
+
   const fields: Record<string, any> = {
     merchantAccount,
     merchantDomainName,
-    merchantSignature,
     orderReference,
     orderDate,
     amount,
     currency,
-    "productName[]": productName[0],
-    "productCount[]": productCount[0],
-    "productPrice[]": productPrice[0],
+    merchantSignature,
     returnUrl,
     serviceUrl,
     language: "RU",
     merchantTransactionType: "SALE",
   }
 
-  const inputs = Object.entries(fields)
+  const baseInputs = Object.entries(fields)
     .map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`)
     .join("\n")
+
+  const arrInputs =
+    productName.map((v) => `<input type="hidden" name="productName[]" value="${esc(v)}">`).join("\n") +
+    "\n" +
+    productCount.map((v) => `<input type="hidden" name="productCount[]" value="${esc(v)}">`).join("\n") +
+    "\n" +
+    productPrice.map((v) => `<input type="hidden" name="productPrice[]" value="${esc(v)}">`).join("\n")
 
   const html = `<!doctype html>
 <html lang="ru">
@@ -126,7 +171,8 @@ export async function GET(req: NextRequest) {
     <div style="opacity: .7; font-size: 14px;">Если ничего не происходит, нажмите кнопку ниже.</div>
 
     <form id="wfpForm" method="POST" action="https://secure.wayforpay.com/pay" style="margin-top: 16px;">
-      ${inputs}
+      ${baseInputs}
+      ${arrInputs}
       <button type="submit" style="padding: 12px 16px; border-radius: 12px; border: 1px solid #ddd; background: #111; color: #fff; width: 100%;">
         Перейти к оплате
       </button>
@@ -150,7 +196,7 @@ export async function GET(req: NextRequest) {
     },
   })
 
-  // Сохраняем чек-код на устройстве
+  // ✅ чек-код на устройстве (чтобы /payment/result мог восстановить)
   res.cookies.set("ta_last_order", orderReference, {
     path: "/",
     maxAge: 60 * 60 * 24 * 30,
