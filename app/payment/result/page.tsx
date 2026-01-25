@@ -3,27 +3,26 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 
-type State = "checking" | "ok" | "fail"
+function readCookie(name: string) {
+  if (typeof document === "undefined") return ""
+  const m = document.cookie.match(new RegExp("(^| )" + name.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&") + "=([^;]+)"))
+  return m ? decodeURIComponent(m[2]) : ""
+}
 
 export default function PaymentResultPage() {
   const router = useRouter()
   const sp = useSearchParams()
 
+  const [state, setState] = useState<"checking" | "ok" | "fail">("checking")
+  const [msg, setMsg] = useState("Підтверджуємо оплату…")
+  const [attempt, setAttempt] = useState(0)
+
   const orderReference = useMemo(() => {
     const q = String(sp.get("orderReference") || "").trim()
     if (q) return q
-
-    try {
-      const a = String(localStorage.getItem("ta_last_order_ref") || "").trim()
-      if (a) return a
-    } catch {}
-
-    return ""
+    const c = readCookie("ta_last_order")
+    return String(c || "").trim()
   }, [sp])
-
-  const [state, setState] = useState<State>("checking")
-  const [msg, setMsg] = useState("Проверяем оплату…")
-  const [attempt, setAttempt] = useState(1)
 
   useEffect(() => {
     let alive = true
@@ -31,46 +30,38 @@ export default function PaymentResultPage() {
     async function run() {
       if (!orderReference) {
         setState("fail")
-        setMsg("Чек-код не найден. Вернитесь на тарифы и повторите оплату.")
+        setMsg("Не вдалося прочитати чек-код оплати. Спробуйте ще раз або поверніться в профіль.")
         return
       }
 
-      setState("checking")
-      setMsg("Проверяем оплату…")
-
-      for (let i = 0; i < 10; i++) {
+      for (let i = 1; i <= 10; i++) {
         if (!alive) return
-        setAttempt(i + 1)
+        setAttempt(i)
+        setState("checking")
+        setMsg(i <= 2 ? "Підтверджуємо оплату…" : `Очікуємо підтвердження… (спроба ${i}/10)`)
 
-        const r = await fetch("/api/billing/wayforpay/sync", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ orderReference }),
-          cache: "no-store",
-          credentials: "include",
-        }).catch(() => null)
+        try {
+          const r = await fetch(`/api/billing/wayforpay/sync?orderReference=${encodeURIComponent(orderReference)}`, {
+            method: "GET",
+            cache: "no-store",
+          })
+          const json: any = await r.json().catch(() => null)
 
-        const json: any = await r?.json().catch(() => null)
+          if (json?.ok) {
+            setState("ok")
+            setMsg("Оплату підтверджено. Доступ активовано ✅")
+            setTimeout(() => {
+              router.replace("/profile?paid=1")
+            }, 600)
+            return
+          }
+        } catch {}
 
-        if (json?.ok) {
-          setState("ok")
-          setMsg("Оплата подтверждена. Доступ активирован. Перенаправляем в профиль…")
-
-          try {
-            window.dispatchEvent(new Event("turbota:refresh"))
-          } catch {}
-
-          setTimeout(() => router.replace("/profile"), 700)
-          return
-        }
-
-        const status = String(json?.status || "")
-        setMsg(status ? `Ожидание подтверждения… (${status})` : "Ожидание подтверждения…")
         await new Promise((x) => setTimeout(x, 1200))
       }
 
       setState("fail")
-      setMsg("Оплата пока не подтверждена. Если вы оплатили, нажмите Проверить снова.")
+      setMsg("Оплату поки не підтверджено. Якщо Ви оплатили, натисніть Перевірити знову.")
     }
 
     run()
@@ -82,7 +73,7 @@ export default function PaymentResultPage() {
   return (
     <div className="min-h-[70vh] flex items-center justify-center px-4">
       <div className="w-full max-w-md rounded-2xl border bg-white p-6 shadow-sm">
-        <h1 className="text-xl font-semibold">Результат оплаты</h1>
+        <h1 className="text-xl font-semibold">Результат оплати</h1>
 
         <div className="mt-2 text-sm text-gray-600">
           Чек-код: <span className="font-mono text-gray-900">{orderReference || "—"}</span>
@@ -91,7 +82,7 @@ export default function PaymentResultPage() {
         <div className="mt-4 rounded-xl bg-gray-50 p-4 text-sm text-gray-800">
           {msg}
           {state === "checking" ? (
-            <div className="mt-2 text-xs text-gray-500">Попытка: {attempt}/10</div>
+            <div className="mt-2 text-xs text-gray-500">Спроба: {attempt}/10</div>
           ) : null}
         </div>
 
@@ -101,12 +92,18 @@ export default function PaymentResultPage() {
               onClick={() => location.reload()}
               className="flex-1 rounded-xl bg-black px-4 py-2 text-white"
             >
-              Проверить снова
+              Перевірити знову
             </button>
             <button onClick={() => router.replace("/pricing")} className="flex-1 rounded-xl border px-4 py-2">
-              Тарифы
+              Тарифи
             </button>
           </div>
+        ) : null}
+
+        {state === "ok" ? (
+          <button onClick={() => router.replace("/profile?paid=1")} className="mt-4 w-full rounded-xl bg-black px-4 py-2 text-white">
+            Перейти в профіль
+          </button>
         ) : null}
       </div>
     </div>
