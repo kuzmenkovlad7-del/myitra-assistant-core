@@ -266,7 +266,7 @@ export default function PricingPage() {
         throw new Error(d?.error || copy.payFailed)
       }
 
-      window.open(d.invoiceUrl, "_blank", "noopener,noreferrer")
+      window.location.assign(String(d?.invoiceUrl ?? d?.url ?? ""))
       setPayMsg(copy.invoiceOpened)
     } catch (e: any) {
       setPayMsg(e?.message || copy.payFailed)
