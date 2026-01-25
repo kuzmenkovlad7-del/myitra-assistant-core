@@ -17,7 +17,7 @@ import { useLanguage } from "@/lib/i18n/language-context"
 
 type AnyObj = Record<string, any>
 
-const PRICE_UAH = 499
+const PRICE_UAH = 1
 const CURRENCY = "UAH"
 
 function isActiveDate(v: any) {
@@ -228,11 +228,7 @@ export default function PricingPage() {
       try {
         const r = await fetch("/api/account/summary", { cache: "no-store", credentials: "include" })
         const d = await r.json().catch(() => ({}))
-
-      try {
-        if (d?.orderReference) localStorage.setItem("ta_last_order_ref", String(d.orderReference))
-      } catch {}
-if (alive) setSummary(d)
+        if (alive) setSummary(d)
       } catch {
         if (alive) setSummary(null)
       } finally {
@@ -266,15 +262,11 @@ if (alive) setSummary(d)
       })
 
       const d = await r.json().catch(() => ({}))
-
-      try {
-        if (d?.orderReference) localStorage.setItem("ta_last_order_ref", String(d.orderReference))
-      } catch {}
-if (!r.ok || !d?.invoiceUrl) {
+      if (!r.ok || !d?.invoiceUrl) {
         throw new Error(d?.error || copy.payFailed)
       }
 
-      window.location.assign(String(d?.invoiceUrl ?? d?.url ?? ""))
+      window.open(d.invoiceUrl, "_blank", "noopener,noreferrer")
       setPayMsg(copy.invoiceOpened)
     } catch (e: any) {
       setPayMsg(e?.message || copy.payFailed)
@@ -303,11 +295,7 @@ if (!r.ok || !d?.invoiceUrl) {
       })
 
       const d = await r.json().catch(() => ({}))
-
-      try {
-        if (d?.orderReference) localStorage.setItem("ta_last_order_ref", String(d.orderReference))
-      } catch {}
-if (!r.ok) throw new Error(d?.error || "Promo activation failed")
+      if (!r.ok) throw new Error(d?.error || "Promo activation failed")
 
       setPromoMsg(copy.promoOk)
 

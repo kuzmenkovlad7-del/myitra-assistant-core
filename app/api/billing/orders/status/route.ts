@@ -32,29 +32,35 @@ function pickBestStatus(statuses: BillingStatus[]): BillingStatus {
   return "failed"
 }
 
-function safeJson(raw: any) {
-  if (!raw) return null
-  if (typeof raw === "object") return raw
-  if (typeof raw === "string") {
-    try {
-      return JSON.parse(raw)
-    } catch {
-      return null
-    }
-  }
-  return null
-}
-
 function hmacMd5(str: string, key: string) {
   return crypto.createHmac("md5", key).update(str, "utf8").digest("hex")
 }
 
 function mapWayforpayTxToStatus(txStatus?: string | null): BillingStatus {
   const s = toLower(txStatus)
-  if (s === "approved" || s === "paid" || s === "success") return "paid"
+  if (s === "approved" || s === "paid" || s === "success" || s === "successful") return "paid"
   if (s === "inprocessing" || s === "processing" || s === "pending") return "processing"
   if (s === "created") return "invoice_created"
   return "failed"
+}
+
+async function getUserIdFromSession() {
+  const url = String(process.env.NEXT_PUBLIC_SUPABASE_URL || "").trim()
+  const anon = String(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim()
+  if (!url || !anon) return null
+
+  const cookieStore = cookies()
+  const sb = createServerClient(url, anon, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll()
+      },
+      setAll() {},
+    },
+  })
+
+  const { data } = await sb.auth.getUser().catch(() => ({ data: null as any }))
+  return data?.user?.id ? String(data.user.id) : null
 }
 
 async function wayforpayCheck(orderReference: string) {
@@ -69,7 +75,7 @@ async function wayforpayCheck(orderReference: string) {
     ""
 
   if (!merchantAccount || !secretKey) {
-    return { ok: false, error: "missing_wayforpay_env" as const }
+    return { ok: false as const, error: "missing_wayforpay_env" as const }
   }
 
   const signStr = `${merchantAccount};${orderReference}`
@@ -91,10 +97,10 @@ async function wayforpayCheck(orderReference: string) {
   })
 
   const json = await r.json().catch(() => null)
-  if (!r.ok || !json) return { ok: false, error: "wayforpay_check_failed" as const }
+  if (!r.ok || !json) return { ok: false as const, error: "wayforpay_check_failed" as const }
 
   const txStatus = json.transactionStatus || json.status || null
-  return { ok: true, txStatus, raw: json }
+  return { ok: true as const, txStatus: String(txStatus || ""), raw: json }
 }
 
 function toDateOrNull(v: any): Date | null {
@@ -104,65 +110,69 @@ function toDateOrNull(v: any): Date | null {
   return d
 }
 
-function addDays(base: Date, days: number): Date {
+function addDays(base: Date, days: number) {
   const d = new Date(base)
   d.setDate(d.getDate() + days)
   return d
 }
 
-async function extendPaidUntil(admin: any, userId: string, days: number) {
-  const nowIso = new Date().toISOString()
-
-  const { data: prof } = await admin
-    .from("profiles")
-    .select("paid_until")
-    .eq("id", userId)
+async function upsertGrant(admin: any, deviceHash: string, userId: string | null, days: number, nowIso: string) {
+  const { data: existing } = await admin
+    .from("access_grants")
+    .select("id, paid_until")
+    .eq("device_hash", deviceHash)
+    .order("updated_at", { ascending: false })
+    .limit(1)
     .maybeSingle()
 
-  const currentPaid = toDateOrNull(prof?.paid_until)
-  const base = currentPaid && currentPaid.getTime() > Date.now() ? currentPaid : new Date()
-  const nextPaidUntil = addDays(base, days).toISOString()
+  const now = new Date()
+  const currentPaid = toDateOrNull(existing?.paid_until)
+  const base = currentPaid && currentPaid.getTime() > now.getTime() ? currentPaid : now
+  const nextPaid = addDays(base, days).toISOString()
 
-  const payloadVariants = [
-    { paid_until: nextPaidUntil, auto_renew: true, subscription_status: "active", updated_at: nowIso },
-    { paid_until: nextPaidUntil, autorenew: true, subscription_status: "active", updated_at: nowIso },
-    { paid_until: nextPaidUntil, auto_renew: true, subscription_status: "active" },
-    { paid_until: nextPaidUntil, autorenew: true, subscription_status: "active" },
-  ]
-
-  for (const payload of payloadVariants) {
-    const r = await admin.from("profiles").update(payload).eq("id", userId)
-    if (!r?.error) break
+  if (existing?.id) {
+    await admin
+      .from("access_grants")
+      .update({ user_id: userId, paid_until: nextPaid, trial_questions_left: 0, updated_at: nowIso })
+      .eq("id", existing.id)
+  } else {
+    await admin.from("access_grants").insert({
+      id: crypto.randomUUID(),
+      user_id: userId,
+      device_hash: deviceHash,
+      trial_questions_left: 0,
+      paid_until: nextPaid,
+      promo_until: null,
+      created_at: nowIso,
+      updated_at: nowIso,
+    } as any)
   }
 
-  const accountKey = `account:${userId}`
-  await admin.from("access_grants").update({ paid_until: nextPaidUntil, updated_at: nowIso }).eq("user_id", userId)
-  await admin.from("access_grants").update({ paid_until: nextPaidUntil, updated_at: nowIso }).eq("device_hash", accountKey)
-
-  return nextPaidUntil
+  return nextPaid
 }
 
-async function getUserIdFromSession() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url || !anon) return null
+async function activatePaid(admin: any, orderReference: string, userId: string | null, deviceHash: string | null) {
+  const nowIso = new Date().toISOString()
+  const days = 30
 
-  const cookieStore = cookies()
-  const pendingCookies: any[] = []
+  if (deviceHash) {
+    await upsertGrant(admin, deviceHash, null, days, nowIso).catch(() => null)
+  }
 
-  const sb = createServerClient(url, anon, {
-    cookies: {
-      getAll() {
-        return cookieStore.getAll()
-      },
-      setAll(cookiesToSet) {
-        pendingCookies.push(...cookiesToSet)
-      },
-    },
-  })
+  if (userId) {
+    await upsertGrant(admin, `account:${userId}`, userId, days, nowIso).catch(() => null)
 
-  const { data } = await sb.auth.getUser()
-  return data?.user?.id ?? null
+    await admin
+      .from("profiles")
+      .update({
+        subscription_status: "active",
+        auto_renew: true,
+        wfp_order_reference: orderReference,
+        updated_at: nowIso,
+      } as any)
+      .eq("id", userId)
+      .catch(() => null)
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -171,6 +181,7 @@ export async function GET(req: NextRequest) {
   const orderReference =
     (url.searchParams.get("orderReference") ||
       url.searchParams.get("order_reference") ||
+      cookies().get("ta_last_order")?.value ||
       "").trim()
 
   const debug = url.searchParams.get("debug") === "1"
@@ -180,17 +191,17 @@ export async function GET(req: NextRequest) {
   }
 
   const admin = getSupabaseAdmin()
+  const nowIso = new Date().toISOString()
 
   // читаем из БД
   const read = await admin
     .from("billing_orders")
-    .select("status, updated_at, raw, user_id, amount, currency")
+    .select("status, updated_at, raw, user_id, amount, currency, plan_id, device_hash, created_at")
     .eq("order_reference", orderReference)
     .order("updated_at", { ascending: false })
     .limit(20)
 
   if (read.error) {
-    console.error("[billing][status] db error", { orderReference, error: read.error })
     return NextResponse.json({ ok: false, error: "db_error" }, { status: 500 })
   }
 
@@ -199,26 +210,26 @@ export async function GET(req: NextRequest) {
   let best = pickBestStatus(statuses)
 
   const last = rows[0] as any
-  let raw = safeJson(last?.raw)
-  let lastTx =
+  const raw = last?.raw || {}
+
+  // userId: если пусто в заказе, пробуем взять из сессии
+  let userId = last?.user_id ? String(last.user_id) : null
+  if (!userId) {
+    userId = await getUserIdFromSession().catch(() => null)
+  }
+
+  // если не paid — проверяем в WFP и обновляем
+  let txStatus: string | null =
     raw?.check?.transactionStatus ||
     raw?.webhook?.transactionStatus ||
     raw?.transactionStatus ||
     null
 
-  // userId: из заказа или (если нет) из сессии (чтобы можно было восстановиться)
-  let userId = last?.user_id ? String(last.user_id) : null
-  if (!userId) {
-    const sessionUserId = await getUserIdFromSession().catch(() => null)
-    if (sessionUserId) userId = String(sessionUserId)
-  }
-
-  // если не paid — делаем CHECK_STATUS и сохраняем
   if (best !== "paid") {
     const chk = await wayforpayCheck(orderReference)
     if (chk.ok) {
-      const next = mapWayforpayTxToStatus(chk.txStatus as any)
-      const nowIso = new Date().toISOString()
+      txStatus = chk.txStatus || null
+      const next = mapWayforpayTxToStatus(txStatus)
 
       const mergedRaw = {
         ...(raw || {}),
@@ -227,45 +238,41 @@ export async function GET(req: NextRequest) {
         last_event: "check",
       }
 
-      if (rows.length > 0) {
-        await admin
-          .from("billing_orders")
-          .update({
-            status: next,
-            raw: mergedRaw,
-            // если user_id пустой в заказе — фиксируем
-            ...(userId ? { user_id: userId } : {}),
-            updated_at: nowIso,
-          } as any)
-          .eq("order_reference", orderReference)
-      } else {
-        // если записи не было — создаём
-        await admin
-          .from("billing_orders")
-          .insert({
+      // обязательные колонки (чтобы точно не падало)
+      await admin
+        .from("billing_orders")
+        .upsert(
+          {
             order_reference: orderReference,
             user_id: userId,
+            device_hash: last?.device_hash ?? raw?.deviceHash ?? null,
+            plan_id: last?.plan_id ?? raw?.planId ?? "monthly",
+            amount: Number(last?.amount ?? chk.raw?.amount ?? 1),
+            currency: String(last?.currency ?? chk.raw?.currency ?? "UAH"),
             status: next,
             raw: mergedRaw,
-          } as any)
-      }
+            created_at: last?.created_at || nowIso,
+            updated_at: nowIso,
+          } as any,
+          { onConflict: "order_reference" }
+        )
 
       best = next
-      raw = mergedRaw
-      lastTx = chk.txStatus as any
 
-      // если стало paid и user_id известен — продлеваем доступ
-      if (best === "paid" && userId) {
-        await extendPaidUntil(admin, userId, 30)
+      if (best === "paid") {
+        await activatePaid(admin, orderReference, userId, String(last?.device_hash ?? raw?.deviceHash ?? "") || null)
       }
     }
+  } else {
+    // paid уже есть — на всякий случай активируем доступ
+    await activatePaid(admin, orderReference, userId, String(last?.device_hash ?? raw?.deviceHash ?? "") || null).catch(() => null)
   }
 
   const payload: any = {
     ok: true,
     orderReference,
     status: best,
-    transactionStatus: lastTx,
+    transactionStatus: txStatus,
   }
 
   if (debug) {
@@ -273,7 +280,6 @@ export async function GET(req: NextRequest) {
       rows: rows.length,
       statuses,
       lastUpdatedAt: last?.updated_at || null,
-      lastEvent: raw?.last_event || null,
       userId: userId || null,
     }
   }

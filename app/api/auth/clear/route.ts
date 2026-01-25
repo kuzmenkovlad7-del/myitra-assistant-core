@@ -1,49 +1,26 @@
-import { NextResponse } from "next/server"
-import { cookies } from "next/headers"
-import { createServerClient } from "@supabase/ssr"
+import { NextRequest, NextResponse } from "next/server"
 
-export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-function routeSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url || !anon) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY")
+export async function POST(req: NextRequest) {
+  // Только явный logout по кнопке
+  const okHeader = req.headers.get("x-ta-logout") === "1"
+  const res = NextResponse.json({ ok: true, cleared: okHeader }, { status: 200 })
 
-  const cookieStore = cookies()
-  const pendingCookies: any[] = []
+  if (!okHeader) return res
 
-  const sb = createServerClient(url, anon, {
-    cookies: {
-      getAll() {
-        return cookieStore.getAll()
-      },
-      setAll(cookiesToSet) {
-        pendingCookies.push(...cookiesToSet)
-      },
-    },
-  })
+  // чистим только auth cookies (sb-*)
+  const cookies = req.cookies.getAll()
+  for (const c of cookies) {
+    const name = c.name
 
-  const json = (body: any, status = 200) => {
-    const res = NextResponse.json(body, { status })
-    for (const c of pendingCookies) res.cookies.set(c.name, c.value, c.options)
-    res.headers.set("cache-control", "no-store, max-age=0")
-    return res
+    // оставляем device/технические куки приложения
+    if (name.startsWith("ta_")) continue
+
+    if (name.startsWith("sb-") || name.includes("supabase") || name.includes("auth")) {
+      res.cookies.set(name, "", { path: "/", maxAge: 0 })
+    }
   }
 
-  return { sb, json }
-}
-
-export async function POST() {
-  const { sb, json } = routeSupabase()
-
-  try {
-    await sb.auth.signOut()
-  } catch {}
-
-  const res = json({ ok: true })
-
-  // чистим кастомные куки если есть
-  res.cookies.set("turbota_at", "", { path: "/", maxAge: 0 })
   return res
 }

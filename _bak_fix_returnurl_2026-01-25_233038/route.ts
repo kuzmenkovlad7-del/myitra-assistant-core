@@ -29,14 +29,14 @@ function ensureDeviceHash() {
   jar.set(DEVICE_COOKIE, v, {
     path: "/",
     sameSite: "lax",
-    httpOnly: true,
+    httpOnly: false,
     secure: process.env.NODE_ENV === "production",
     maxAge: 60 * 60 * 24 * 365,
   })
   return v
 }
 
-// без replaceAll, чтобы TS build не падал
+// ✅ FIX: без replaceAll, чтобы TS build не падал
 function esc(s: any) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -47,15 +47,13 @@ function esc(s: any) {
 }
 
 function amountForPlan(planId: string) {
-  // тестовая сумма имеет приоритет если задана
   const test = Number(pickEnv("WAYFORPAY_TEST_AMOUNT_UAH") || 0)
   if (Number.isFinite(test) && test > 0) return test
 
   const monthly = Number(pickEnv("WAYFORPAY_MONTHLY_AMOUNT") || 0)
   if (planId === "monthly" && Number.isFinite(monthly) && monthly > 0) return monthly
 
-  // fallback
-  return 499
+  return 1
 }
 
 export async function GET(req: NextRequest) {
@@ -80,20 +78,19 @@ export async function GET(req: NextRequest) {
 
   const amount = amountForPlan(planId)
   const currency = "UAH"
-
   const productName = ["TurbotaAI Monthly"]
   const productCount = [1]
   const productPrice = [amount]
 
   const orderDate = Math.floor(Date.now() / 1000)
 
-  // ✅ returnUrl: всегда абсолютный
-  const returnUrlBase = pickEnv("WAYFORPAY_RETURN_URL") || "/payment/result"
-  const ret = new URL(returnUrlBase, origin)
+  // ✅ Всегда возвращаем на /payment/return → /payment/result
+  const returnUrlBase = pickEnv("WAYFORPAY_RETURN_URL") || `${origin}/payment/return`
+  const ret = new URL(returnUrlBase)
   ret.searchParams.set("orderReference", orderReference)
   const returnUrl = ret.toString()
 
-  // ✅ webhook url
+  // ✅ Webhook только сюда
   const serviceUrl = pickEnv("WAYFORPAY_WEBHOOK_URL") || `${origin}/api/billing/wayforpay/webhook`
 
   const signStr = [
@@ -110,33 +107,25 @@ export async function GET(req: NextRequest) {
 
   const merchantSignature = hmacMd5(signStr, secretKey)
 
-  // ✅ Сохраняем заказ в БД (все обязательные поля)
+  // ✅ Сохраняем заказ (для guest важно сохранить deviceHash)
   try {
     const admin = getSupabaseAdmin()
     const nowIso = new Date().toISOString()
 
-    await admin
-      .from("billing_orders")
-      .upsert(
-        {
-          order_reference: orderReference,
-          user_id: null,
-          device_hash: deviceHash,
-          plan_id: planId,
-          amount: Number(amount),
-          currency,
-          status: "invoice_created",
-          raw: {
-            planId,
-            deviceHash,
-            created_at: nowIso,
-            last_event: "purchase",
-          },
-          created_at: nowIso,
-          updated_at: nowIso,
-        } as any,
-        { onConflict: "order_reference" }
-      )
+    await admin.from("billing_orders").insert({
+      order_reference: orderReference,
+      user_id: null,
+      status: "invoice_created",
+      amount: Number(amount),
+      currency,
+      raw: {
+        planId,
+        deviceHash,
+        created_at: nowIso,
+        last_event: "purchase",
+      },
+      updated_at: nowIso,
+    } as any)
   } catch {
     // ignore
   }
@@ -204,6 +193,7 @@ export async function GET(req: NextRequest) {
     },
   })
 
+  // ✅ чек-код на устройстве (чтобы /payment/result мог восстановить)
   res.cookies.set("ta_last_order", orderReference, {
     path: "/",
     maxAge: 60 * 60 * 24 * 30,

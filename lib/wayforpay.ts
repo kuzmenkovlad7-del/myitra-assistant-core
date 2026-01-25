@@ -1,62 +1,36 @@
 import crypto from "crypto"
 
-function hmacMd5(secret: string, s: string) {
-  return crypto.createHmac("md5", secret).update(s, "utf8").digest("hex")
+function norm(v: any) {
+  return String(v ?? "").trim()
 }
 
-/**
- * Create Invoice signature:
- * merchantAccount;merchantDomainName;orderReference;orderDate;amount;currency;productName...;productCount...;productPrice...
- */
-export function makeCreateInvoiceSignature(secret: string, params: {
-  merchantAccount: string
-  merchantDomainName: string
-  orderReference: string
-  orderDate: number
-  amount: number | string
-  currency: string
-  productName: string[]
-  productCount: Array<number | string>
-  productPrice: Array<number | string>
-}) {
-  const parts = [
-    params.merchantAccount,
-    params.merchantDomainName,
-    params.orderReference,
-    params.orderDate,
-    params.amount,
-    params.currency,
-    ...params.productName,
-    ...params.productCount,
-    ...params.productPrice,
-  ].map(String)
+// WayForPay signature line:
+// merchantAccount;orderReference;amount;currency;authCode;cardPan;transactionStatus;reasonCode
+export function makeServiceWebhookSignature(secretKey: string, payload: any) {
+  const merchantAccount = norm(payload?.merchantAccount ?? payload?.merchant_account)
+  const orderReference = norm(payload?.orderReference ?? payload?.order_reference)
+  const amount = norm(payload?.amount)
+  const currency = norm(payload?.currency)
+  const authCode = norm(payload?.authCode ?? payload?.auth_code)
+  const cardPan = norm(payload?.cardPan ?? payload?.card_pan)
+  const transactionStatus = norm(payload?.transactionStatus ?? payload?.transaction_status)
+  const reasonCode = norm(payload?.reasonCode ?? payload?.reason_code)
 
-  return hmacMd5(secret, parts.join(";"))
+  const signLine = [
+    merchantAccount,
+    orderReference,
+    amount,
+    currency,
+    authCode,
+    cardPan,
+    transactionStatus,
+    reasonCode,
+  ].join(";")
+
+  return crypto.createHmac("md5", secretKey).update(signLine, "utf8").digest("hex")
 }
 
-/**
- * serviceUrl webhook signature:
- * merchantAccount;orderReference;amount;currency;authCode;cardPan;transactionStatus;reasonCode
- */
-export function makeServiceWebhookSignature(secret: string, payload: any) {
-  const parts = [
-    payload?.merchantAccount ?? "",
-    payload?.orderReference ?? "",
-    payload?.amount ?? "",
-    payload?.currency ?? "",
-    payload?.authCode ?? "",
-    payload?.cardPan ?? "",
-    payload?.transactionStatus ?? "",
-    payload?.reasonCode ?? "",
-  ].map(String)
-
-  return hmacMd5(secret, parts.join(";"))
-}
-
-/**
- * Merchant response signature:
- * orderReference;status;time
- */
-export function makeServiceResponseSignature(secret: string, orderReference: string, status: string, time: number) {
-  return hmacMd5(secret, [orderReference, status, time].join(";"))
+export function makeServiceResponseSignature(secretKey: string, orderReference: string, status: string, time: number) {
+  const line = `${orderReference};${status};${time}`
+  return crypto.createHmac("md5", secretKey).update(line, "utf8").digest("hex")
 }
