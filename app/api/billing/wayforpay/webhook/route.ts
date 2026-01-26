@@ -24,7 +24,6 @@ function pickEnv(...keys: string[]) {
   return ""
 }
 
-// ✅ ВАЖНО: берём секрет из тех переменных, которые реально есть на Vercel
 const SECRET_KEY = pickEnv(
   "WAYFORPAY_SECRET_KEY",
   "WAYFORPAY_MERCHANT_SECRET_KEY",
@@ -42,7 +41,7 @@ function s(v: any) {
 
 async function readAnyBody(req: NextRequest) {
   const raw = await req.text().catch(() => "")
-  if (!raw) return { body: null, raw: "" }
+  if (!raw) return { body: null as any, raw: "" }
 
   // JSON
   try {
@@ -50,11 +49,11 @@ async function readAnyBody(req: NextRequest) {
     return { body: j, raw }
   } catch {}
 
-  // x-www-form-urlencoded
+  // x-www-form-urlencoded (БЕЗ for..of entries, чтобы не ломать сборку)
   try {
     const sp = new URLSearchParams(raw)
     const obj: any = {}
-    for (const [k, v] of sp.entries()) {
+    sp.forEach((v, k) => {
       if (k.endsWith("[]")) {
         const kk = k.slice(0, -2)
         if (!Array.isArray(obj[kk])) obj[kk] = []
@@ -62,11 +61,19 @@ async function readAnyBody(req: NextRequest) {
       } else {
         obj[k] = v
       }
-    }
+    })
     return { body: obj, raw }
   } catch {}
 
   return { body: { raw }, raw }
+}
+
+function mapStatus(transactionStatus: string) {
+  const ts = String(transactionStatus || "").toLowerCase()
+  if (ts === "approved" || ts === "successful") return "paid"
+  if (ts === "declined") return "failed"
+  if (ts === "refunded") return "refunded"
+  return "pending"
 }
 
 function toDateOrNull(v: any): Date | null {
@@ -82,7 +89,6 @@ function addDays(base: Date, days: number) {
   return d
 }
 
-// ✅ выдаём доступ сразу в webhook
 async function activatePaid(
   admin: any,
   opts: { userId?: string | null; deviceHash?: string | null; days: number }
@@ -93,97 +99,91 @@ async function activatePaid(
   const userId = opts.userId || null
   const deviceHash = opts.deviceHash || null
 
-  const calcNext = (current: any) => {
-    const currentPaid = toDateOrNull(current?.paid_until)
-    const base = currentPaid && currentPaid.getTime() > now.getTime() ? currentPaid : now
+  const calcNextIso = async (currentPaidUntil: any) => {
+    const current = toDateOrNull(currentPaidUntil)
+    const base = current && current.getTime() > now.getTime() ? current : now
     return addDays(base, opts.days).toISOString()
   }
 
-  let nextPaidUntil: string | null = null
+  let paidUntilFinal: string | null = null
 
-  // 1) по user_id
+  // 1) user_id (если есть)
   if (userId) {
-    const { data: existing } = await admin
+    const { data: existing, error: e1 } = await admin
       .from("access_grants")
-      .select("id, paid_until")
+      .select("paid_until")
       .eq("user_id", userId)
       .limit(1)
       .maybeSingle()
 
-    const paidUntil = calcNext(existing)
-    nextPaidUntil = paidUntil
+    if (e1) console.error("access_grants select user_id error:", e1)
 
-    if (existing?.id) {
-      await admin
-        .from("access_grants")
-        .update({
-          paid_until: paidUntil,
+    const paidUntil = await calcNextIso(existing?.paid_until)
+    paidUntilFinal = paidUntil
+
+    const { error: e2 } = await admin
+      .from("access_grants")
+      .upsert(
+        {
+          user_id: userId,
+          device_hash: null,
           trial_questions_left: 0,
+          paid_until: paidUntil,
+          promo_until: null,
           updated_at: nowIso,
-        } as any)
-        .eq("id", existing.id)
-    } else {
-      await admin.from("access_grants").insert({
-        id: crypto.randomUUID(),
-        user_id: userId,
-        device_hash: null,
-        trial_questions_left: 0,
+          created_at: nowIso,
+        } as any,
+        { onConflict: "user_id" }
+      )
+
+    if (e2) console.error("access_grants upsert user_id error:", e2)
+
+    // profiles (для UI / summary)
+    const { error: e3 } = await admin
+      .from("profiles")
+      .update({
         paid_until: paidUntil,
-        promo_until: null,
-        created_at: nowIso,
+        subscription_status: "active",
         updated_at: nowIso,
       } as any)
-    }
+      .eq("id", userId)
 
-    // profiles
-    try {
-      await admin
-        .from("profiles")
-        .update({
-          paid_until: paidUntil,
-          subscription_status: "active",
-          updated_at: nowIso,
-        } as any)
-        .eq("id", userId)
-    } catch {}
+    if (e3) console.error("profiles update paid_until error:", e3)
   }
 
-  // 2) по device_hash (гостевой сценарий)
+  // 2) device_hash (гостевой сценарий)
   if (deviceHash) {
-    const { data: existingDev } = await admin
+    const { data: existingDev, error: e4 } = await admin
       .from("access_grants")
-      .select("id, paid_until")
+      .select("paid_until")
       .eq("device_hash", deviceHash)
       .limit(1)
       .maybeSingle()
 
-    const paidUntilDev = calcNext(existingDev)
-    if (!nextPaidUntil) nextPaidUntil = paidUntilDev
+    if (e4) console.error("access_grants select device_hash error:", e4)
 
-    if (existingDev?.id) {
-      await admin
-        .from("access_grants")
-        .update({
-          paid_until: paidUntilDev,
+    const paidUntilDev = await calcNextIso(existingDev?.paid_until)
+    if (!paidUntilFinal) paidUntilFinal = paidUntilDev
+
+    const { error: e5 } = await admin
+      .from("access_grants")
+      .upsert(
+        {
+          user_id: null,
+          device_hash: deviceHash,
           trial_questions_left: 0,
+          paid_until: paidUntilDev,
+          promo_until: null,
           updated_at: nowIso,
-        } as any)
-        .eq("id", existingDev.id)
-    } else {
-      await admin.from("access_grants").insert({
-        id: crypto.randomUUID(),
-        user_id: null,
-        device_hash: deviceHash,
-        trial_questions_left: 0,
-        paid_until: paidUntilDev,
-        promo_until: null,
-        created_at: nowIso,
-        updated_at: nowIso,
-      } as any)
-    }
+          created_at: nowIso,
+        } as any,
+        { onConflict: "device_hash" }
+      )
+
+    if (e5) console.error("access_grants upsert device_hash error:", e5)
   }
 
-  return { paid_until: nextPaidUntil }
+  return { paid_until: paidUntilFinal }
 }
 
 export async function POST(req: NextRequest) {
@@ -220,86 +220,76 @@ export async function POST(req: NextRequest) {
     signatureOk = expected === incomingSignature
   }
 
-  // Маппинг статуса
-  const ts = transactionStatus.toLowerCase()
-  let status = "pending"
-  if (ts === "approved" || ts === "successful") status = "paid"
-  if (ts === "declined") status = "failed"
-  if (ts === "refunded") status = "refunded"
+  const mappedStatus = mapStatus(transactionStatus)
 
-  // Если orderReference пустой — всё равно отвечаем accept, чтобы WFP не долбил ретраями
+  // Если orderReference пустой — отвечаем accept, чтобы WFP не долбил ретраями
   if (!orderReference) {
-    const time = Math.floor(Date.now() / 1000)
-    const respStatus = "accept"
-    const respSignStr = `;${respStatus};${time}`
-    const respSignature = SECRET_KEY ? hmacMd5(SECRET_KEY, respSignStr) : ""
-    return NextResponse.json({ status: "accept", time, signature: respSignature }, { status: 200 })
+    const time0 = Math.floor(Date.now() / 1000)
+    const respStatus0 = "accept"
+    const respSignature0 = SECRET_KEY ? hmacMd5(SECRET_KEY, `;${respStatus0};${time0}`) : ""
+    return NextResponse.json(
+      { status: "accept", time: time0, signature: respSignature0 },
+      { status: 200 }
+    )
   }
 
-  // 1) берём существующий заказ (там user_id/device_hash)
+  // 1) Получаем заказ (там user_id / device_hash / plan_id / raw)
   let orderUserId: string | null = null
   let orderDeviceHash: string | null = null
   let planId: string | null = null
   let prevRaw: any = null
 
-  try {
-    const { data: existing } = await admin
-      .from("billing_orders")
-      .select("user_id, device_hash, plan_id, raw")
-      .eq("order_reference", orderReference)
-      .limit(1)
-      .maybeSingle()
+  const { data: existingOrder, error: eOrder } = await admin
+    .from("billing_orders")
+    .select("user_id, device_hash, plan_id, raw")
+    .eq("order_reference", orderReference)
+    .limit(1)
+    .maybeSingle()
 
-    orderUserId = String(existing?.user_id || "").trim() || null
-    orderDeviceHash = String(existing?.device_hash || "").trim() || null
-    planId = String(existing?.plan_id || "").trim() || null
-    prevRaw = existing?.raw || null
-  } catch {}
+  if (eOrder) console.error("billing_orders select error:", eOrder)
 
-  // 2) апдейт заказа (НЕ затираем raw полностью)
-  try {
-    const mergedRaw = {
-      ...(prevRaw && typeof prevRaw === "object" ? prevRaw : {}),
-      callback: b,
-      callback_raw: raw,
-      last_callback_at: nowIso,
-      signature_ok: signatureOk,
-    }
+  orderUserId = String(existingOrder?.user_id || "").trim() || null
+  orderDeviceHash = String(existingOrder?.device_hash || "").trim() || null
+  planId = String(existingOrder?.plan_id || "").trim() || null
+  prevRaw = existingOrder?.raw || null
 
-    await admin
-      .from("billing_orders")
-      .update({
-        status,
+  // 2) Сохраняем callback в billing_orders (upsert)
+  const mergedRaw = {
+    ...(prevRaw && typeof prevRaw === "object" ? prevRaw : {}),
+    callback: b,
+    callback_raw: raw,
+    last_callback_at: nowIso,
+    signature_ok: signatureOk,
+    transactionStatus,
+    mappedStatus,
+  }
+
+  const { error: eUpsert } = await admin
+    .from("billing_orders")
+    .upsert(
+      {
+        order_reference: orderReference,
+        status: mappedStatus,
         raw: mergedRaw,
         amount: Number(amount || 0) || null,
         currency: currency || null,
         updated_at: nowIso,
-      } as any)
-      .eq("order_reference", orderReference)
-  } catch {
-    // если апдейт не прошёл — пробуем вставить минимум
-    try {
-      await admin.from("billing_orders").insert({
-        order_reference: orderReference,
-        status,
-        raw: { callback: b, callback_raw: raw, created_at: nowIso, signature_ok: signatureOk },
-        amount: Number(amount || 0) || null,
-        currency: currency || null,
         created_at: nowIso,
-        updated_at: nowIso,
-      } as any)
-    } catch {}
-  }
+      } as any,
+      { onConflict: "order_reference" }
+    )
 
-  // ✅ 3) если paid — выдаём доступ сразу тут
+  if (eUpsert) console.error("billing_orders upsert error:", eUpsert)
+
+  // ✅ 3) Если paid — выдаём доступ сразу тут
   let activatedPaidUntil: string | null = null
-  if (status === "paid") {
-    // если device_hash не нашли — попробуем взять из raw заказа (из purchase)
+  if (mappedStatus === "paid") {
     if (!orderDeviceHash && prevRaw?.deviceHash) {
       orderDeviceHash = String(prevRaw.deviceHash || "").trim() || null
     }
 
     const days = planId === "monthly" || !planId ? 30 : 30
+
     try {
       const activated = await activatePaid(admin, {
         userId: orderUserId,
@@ -307,7 +297,9 @@ export async function POST(req: NextRequest) {
         days,
       })
       activatedPaidUntil = activated?.paid_until || null
-    } catch {}
+    } catch (e: any) {
+      console.error("activatePaid error:", e?.message || e)
+    }
   }
 
   // 4) ОТВЕТ WAYFORPAY: accept + signature(orderReference;status;time)
@@ -315,6 +307,16 @@ export async function POST(req: NextRequest) {
   const respStatus = "accept"
   const respSignStr = `${orderReference};${respStatus};${time}`
   const respSignature = SECRET_KEY ? hmacMd5(SECRET_KEY, respSignStr) : ""
+
+  console.log("WFP webhook:", {
+    orderReference,
+    transactionStatus,
+    mappedStatus,
+    signatureOk,
+    orderUserId,
+    orderDeviceHash,
+    activatedPaidUntil,
+  })
 
   return NextResponse.json(
     {
@@ -325,7 +327,7 @@ export async function POST(req: NextRequest) {
       debug: {
         signatureOk,
         transactionStatus,
-        mappedStatus: status,
+        mappedStatus,
         activatedPaidUntil,
       },
     },
