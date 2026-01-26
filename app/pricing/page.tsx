@@ -14,15 +14,17 @@ type Summary = {
 function normalizeSummary(j: any): Summary {
   const signedIn = Boolean(j?.signedIn ?? j?.signed_in ?? j?.isSignedIn ?? j?.user?.id);
 
-  const rawAccess = String(
-    j?.access ??
-      j?.tier ??
-      j?.plan ??
-      j?.subscription?.tier ??
-      (j?.subscription?.active ? "paid" : "free") ??
-      (j?.isPaid ? "paid" : "free") ??
-      "free"
-  ).toLowerCase();
+  // 1) пробуем взять строковое поле доступа если оно есть
+  let rawAccess = String(
+    j?.access ?? j?.tier ?? j?.plan ?? j?.subscription?.tier ?? ""
+  )
+    .trim()
+    .toLowerCase();
+
+  // 2) если строкой не пришло — определяем по флагам
+  if (!rawAccess) {
+    rawAccess = (j?.subscription?.active || j?.isPaid) ? "paid" : "free";
+  }
 
   const accessLabel =
     rawAccess.includes("paid") || rawAccess.includes("premium") || rawAccess.includes("pro")
