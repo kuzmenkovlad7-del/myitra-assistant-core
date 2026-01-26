@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 function hmacMd5Hex(message: string, secret: string) {
-  // ВАЖНО: WayForPay ожидает lowercase hex
+  // WayForPay ожидает lowercase hex
   return crypto.createHmac("md5", secret).update(message, "utf8").digest("hex");
 }
 
@@ -32,12 +32,13 @@ function getCookie(req: Request, name: string) {
 }
 
 function htmlEscape(s: string) {
+  // ВАЖНО: без replaceAll (старый TS target)
   return String(s)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function hidden(name: string, value: string) {
@@ -68,10 +69,9 @@ async function handler(req: Request) {
   const monthlyPrice =
     Number(process.env.NEXT_PUBLIC_TA_MONTHLY_PRICE_UAH || process.env.MONTHLY_PRICE_UAH || 499);
 
-  const amountNumber =
-    planId === "monthly" ? monthlyPrice : monthlyPrice;
+  const amountNumber = planId === "monthly" ? monthlyPrice : monthlyPrice;
 
-  // ВАЖНО: amount и productPrice должны быть ОДИНАКОВЫМИ строками (toFixed(2))
+  // amount и productPrice должны быть одинаковыми строками (toFixed(2))
   const amount = Number(amountNumber || 0);
   const amountStr = amount.toFixed(2);
 
@@ -101,11 +101,10 @@ async function handler(req: Request) {
   console.log("[WFP PURCHASE] signString=", signString);
   console.log("[WFP PURCHASE] signature=", merchantSignature);
 
-  // optional device hash cookie
   const existingDeviceHash = getCookie(req, "ta_device_hash");
   const deviceHash = existingDeviceHash || crypto.randomUUID();
 
-  // Пишем заказ в Supabase СРАЗУ (чтобы видно было в таблице даже если оплата упадёт)
+  // Создаём запись в billing_orders сразу (видно в БД даже если оплата не прошла)
   try {
     const sb = getSupabaseAdmin();
     if (sb) {
