@@ -20,6 +20,15 @@ function pickEnv(...keys: string[]) {
   return ""
 }
 
+function esc(s: any) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
+}
+
 function ensureDeviceHash() {
   const jar = cookies()
   let v = String(jar.get(DEVICE_COOKIE)?.value || "").trim()
@@ -36,26 +45,45 @@ function ensureDeviceHash() {
   return v
 }
 
-// без replaceAll, чтобы TS build не падал
-function esc(s: any) {
-  return String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;")
-}
-
 function amountForPlan(planId: string) {
-  // тестовая сумма имеет приоритет если задана
   const test = Number(pickEnv("WAYFORPAY_TEST_AMOUNT_UAH") || 0)
   if (Number.isFinite(test) && test > 0) return test
 
   const monthly = Number(pickEnv("WAYFORPAY_MONTHLY_AMOUNT") || 0)
   if (planId === "monthly" && Number.isFinite(monthly) && monthly > 0) return monthly
 
-  // fallback
   return 499
+}
+
+function getAccessTokenFromCookies(): string | null {
+  const jar = cookies()
+  const all = jar.getAll()
+
+  for (const c of all) {
+    if (!c.name.includes("auth-token")) continue
+    try {
+      const j: any = JSON.parse(c.value)
+      if (j?.access_token) return String(j.access_token)
+      if (Array.isArray(j) && j[0]?.access_token) return String(j[0].access_token)
+    } catch {}
+  }
+
+  for (const c of all) {
+    if (c.name === "sb-access-token" || c.name.endsWith("access-token")) return String(c.value)
+  }
+
+  return null
+}
+
+async function resolveUserId(admin: any) {
+  try {
+    const token = getAccessTokenFromCookies()
+    if (!token) return null
+    const { data } = await admin.auth.getUser(token)
+    return data?.user?.id || null
+  } catch {
+    return null
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -78,6 +106,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "WayForPay env missing" }, { status: 200 })
   }
 
+  const userId = await resolveUserId(getSupabaseAdmin())
+
   const amount = amountForPlan(planId)
   const currency = "UAH"
 
@@ -87,13 +117,11 @@ export async function GET(req: NextRequest) {
 
   const orderDate = Math.floor(Date.now() / 1000)
 
-  // ✅ returnUrl: всегда абсолютный
   const returnUrlBase = pickEnv("WAYFORPAY_RETURN_URL") || "/payment/result"
   const ret = new URL(returnUrlBase, origin)
   ret.searchParams.set("orderReference", orderReference)
   const returnUrl = ret.toString()
 
-  // ✅ webhook url
   const serviceUrl = pickEnv("WAYFORPAY_WEBHOOK_URL") || `${origin}/api/billing/wayforpay/webhook`
 
   const signStr = [
@@ -110,7 +138,7 @@ export async function GET(req: NextRequest) {
 
   const merchantSignature = hmacMd5(signStr, secretKey)
 
-  // ✅ Сохраняем заказ в БД (все обязательные поля)
+  // сохраняем заказ в БД сразу с user_id если он есть
   try {
     const admin = getSupabaseAdmin()
     const nowIso = new Date().toISOString()
@@ -120,7 +148,7 @@ export async function GET(req: NextRequest) {
       .upsert(
         {
           order_reference: orderReference,
-          user_id: null,
+          user_id: userId,
           device_hash: deviceHash,
           plan_id: planId,
           amount: Number(amount),
@@ -129,6 +157,7 @@ export async function GET(req: NextRequest) {
           raw: {
             planId,
             deviceHash,
+            userId,
             created_at: nowIso,
             last_event: "purchase",
           },
@@ -137,9 +166,7 @@ export async function GET(req: NextRequest) {
         } as any,
         { onConflict: "order_reference" }
       )
-  } catch {
-    // ignore
-  }
+  } catch {}
 
   const fields: Record<string, any> = {
     merchantAccount,
