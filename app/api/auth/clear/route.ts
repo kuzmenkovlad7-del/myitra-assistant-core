@@ -1,25 +1,29 @@
-import { NextRequest, NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import { NextResponse } from "next/server"
 
 export const dynamic = "force-dynamic"
 
-export async function POST(req: NextRequest) {
-  // Только явный logout по кнопке
-  const okHeader = req.headers.get("x-ta-logout") === "1"
-  const res = NextResponse.json({ ok: true, cleared: okHeader }, { status: 200 })
+function delCookie(res: NextResponse, name: string) {
+  // host-only
+  res.cookies.set(name, "", { path: "/", maxAge: 0, sameSite: "lax" })
+  // cross-subdomain (если вдруг выставлялось с domain)
+  res.cookies.set(name, "", { path: "/", maxAge: 0, sameSite: "lax", domain: ".turbotaai.com" })
+}
 
-  if (!okHeader) return res
+export async function GET(req: Request) {
+  const url = new URL(req.url)
+  const next = url.searchParams.get("next") || "/"
 
-  // чистим только auth cookies (sb-*)
-  const cookies = req.cookies.getAll()
-  for (const c of cookies) {
-    const name = c.name
+  const res = NextResponse.redirect(new URL(next, url.origin))
 
-    // оставляем device/технические куки приложения
-    if (name.startsWith("ta_")) continue
+  // наши cookies
+  delCookie(res, "ta_last_order")
+  delCookie(res, "ta_device_hash")
 
-    if (name.startsWith("sb-") || name.includes("supabase") || name.includes("auth")) {
-      res.cookies.set(name, "", { path: "/", maxAge: 0 })
-    }
+  // supabase cookies (sb-*)
+  const all = cookies().getAll()
+  for (const c of all) {
+    if (c.name.startsWith("sb-")) delCookie(res, c.name)
   }
 
   return res
