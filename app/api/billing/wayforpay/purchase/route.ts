@@ -6,7 +6,6 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 function hmacMd5Hex(message: string, secret: string) {
-  // WayForPay ожидает lowercase hex
   return crypto.createHmac("md5", secret).update(message, "utf8").digest("hex");
 }
 
@@ -32,7 +31,6 @@ function getCookie(req: Request, name: string) {
 }
 
 function htmlEscape(s: string) {
-  // ВАЖНО: без replaceAll (старый TS target)
   return String(s)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -43,6 +41,11 @@ function htmlEscape(s: string) {
 
 function hidden(name: string, value: string) {
   return `<input type="hidden" name="${htmlEscape(name)}" value="${htmlEscape(value)}" />`;
+}
+
+function safeNumber(v: any) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : NaN;
 }
 
 async function handler(req: Request) {
@@ -66,12 +69,19 @@ async function handler(req: Request) {
 
   const currency = "UAH";
 
-  const monthlyPrice =
-    Number(process.env.NEXT_PUBLIC_TA_MONTHLY_PRICE_UAH || process.env.MONTHLY_PRICE_UAH || 499);
+  const monthlyPrice = safeNumber(
+    process.env.NEXT_PUBLIC_TA_MONTHLY_PRICE_UAH ||
+      process.env.MONTHLY_PRICE_UAH ||
+      499
+  );
 
-  const amountNumber = planId === "monthly" ? monthlyPrice : monthlyPrice;
+  // Тестовая сумма для проверки оплат без правки кода
+  // На Vercel можно поставить TA_WFP_TEST_AMOUNT_UAH=1 и потом удалить
+  const testAmount = safeNumber(process.env.TA_WFP_TEST_AMOUNT_UAH || process.env.WFP_TEST_AMOUNT_UAH);
 
-  // amount и productPrice должны быть одинаковыми строками (toFixed(2))
+  const amountNumberBase = planId === "monthly" ? monthlyPrice : monthlyPrice;
+  const amountNumber = Number.isFinite(testAmount) && testAmount > 0 ? testAmount : amountNumberBase;
+
   const amount = Number(amountNumber || 0);
   const amountStr = amount.toFixed(2);
 
@@ -104,7 +114,7 @@ async function handler(req: Request) {
   const existingDeviceHash = getCookie(req, "ta_device_hash");
   const deviceHash = existingDeviceHash || crypto.randomUUID();
 
-  // Создаём запись в billing_orders сразу (видно в БД даже если оплата не прошла)
+  // Создаём запись в billing_orders сразу
   try {
     const sb = getSupabaseAdmin();
     if (sb) {
@@ -148,7 +158,8 @@ async function handler(req: Request) {
     });
   }
 
-  const returnUrl = `${url.origin}/payment/result`;
+  // ВАЖНО: прокидываем orderReference в returnUrl
+  const returnUrl = `${url.origin}/payment/result?orderReference=${encodeURIComponent(orderReference)}`;
   const serviceUrl = `${url.origin}/api/billing/wayforpay/callback`;
 
   const baseInputs = [
@@ -180,7 +191,7 @@ async function handler(req: Request) {
 <body style="font-family: system-ui; padding: 24px;">
   <div style="max-width: 560px; margin: 0 auto;">
     <h2 style="margin: 0 0 8px;">Перенаправляємо на оплату…</h2>
-    <div style="opacity: .7; font-size: 14px;">Якщо нічого не відбувається — натисніть кнопку нижче.</div>
+    <div style="opacity: .7; font-size: 14px;">Якщо нічого не відбувається, натисніть кнопку нижче.</div>
 
     <form id="wfpForm" method="POST" action="https://secure.wayforpay.com/pay" accept-charset="utf-8" style="margin-top: 16px;">
       ${baseInputs}

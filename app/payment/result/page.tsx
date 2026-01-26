@@ -1,98 +1,75 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
-type CheckResp = {
-  ok?: boolean
-  status?: string
-  paid?: boolean
-  error?: string
-}
+type SyncResp = {
+  ok?: boolean;
+  state?: string;
+  orderReference?: string;
+  error?: string;
+};
 
 export default function PaymentResultPage() {
-  const router = useRouter()
-  const sp = useSearchParams()
-  const orderReference = sp.get("orderReference") || ""
+  const router = useRouter();
+  const sp = useSearchParams();
+  const orderReference = sp.get("orderReference") || "";
 
-  const [state, setState] = useState<"checking" | "ok" | "fail">("checking")
-  const [msg, setMsg] = useState("Перевіряємо оплату…")
-  const [attempt, setAttempt] = useState(0)
+  const [state, setState] = useState<"checking" | "ok" | "fail">("checking");
+  const [msg, setMsg] = useState("Перевіряємо оплату…");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    let alive = true
+    let alive = true;
 
-    async function syncAccess() {
-      if (!orderReference) return
-      const url = `/api/billing/wayforpay/sync?orderReference=${encodeURIComponent(orderReference)}`
-      try {
-        const r = await fetch(url, { method: "POST", cache: "no-store" })
-        if (r.status === 405) {
-          await fetch(url, { method: "GET", cache: "no-store" })
-        }
-      } catch {}
-    }
-
-    async function checkOnce() {
-      if (!orderReference) {
-        setState("fail")
-        setMsg("Не знайдено чек-код замовлення.")
-        return
-      }
+    async function syncOnce(): Promise<boolean> {
+      const base = "/api/billing/wayforpay/sync";
+      const url = orderReference ? `${base}?orderReference=${encodeURIComponent(orderReference)}` : base;
 
       try {
-        const r = await fetch(
-          `/api/billing/wayforpay/check?orderReference=${encodeURIComponent(orderReference)}`,
-          { cache: "no-store" }
-        )
-        const j = (await r.json()) as CheckResp
+        const r = await fetch(url, { method: "POST", cache: "no-store" });
+        const j = (await r.json().catch(() => ({}))) as SyncResp;
 
-        const paid =
-          j?.paid === true ||
-          String(j?.status || "").toLowerCase() === "paid" ||
-          String(j?.status || "").toLowerCase() === "approved"
+        if (j?.ok) return true;
 
-        if (paid) {
-          await syncAccess()
-          if (!alive) return
-          setState("ok")
-          setMsg("Оплату підтверджено. Доступ активовано ✅")
-          setTimeout(() => router.replace("/profile?paid=1"), 500)
-          return
-        }
-
-        if (!alive) return
-        setMsg("Оплату поки не підтверджено. Якщо Ви оплатили, зачекайте або натисніть Перевірити знову.")
-      } catch (e: any) {
-        if (!alive) return
-        setMsg("Помилка перевірки оплати. Натисніть Перевірити знову.")
+        return false;
+      } catch {
+        return false;
       }
     }
 
     async function run() {
-      setState("checking")
-      setMsg("Перевіряємо оплату…")
+      setState("checking");
+      setMsg("Перевіряємо оплату…");
 
       for (let i = 1; i <= 10; i++) {
-        if (!alive) return
-        setAttempt(i)
-        await checkOnce()
-        if (!alive) return
-        if (state === "ok") return
-        await new Promise((r) => setTimeout(r, 1500))
+        if (!alive) return;
+        setAttempt(i);
+
+        const ok = await syncOnce();
+        if (!alive) return;
+
+        if (ok) {
+          setState("ok");
+          setMsg("Оплату підтверджено. Доступ активовано.");
+          setTimeout(() => router.replace("/profile?paid=1"), 500);
+          return;
+        }
+
+        setMsg("Оплату поки не підтверджено. Якщо Ви оплатили, зачекайте або натисніть Перевірити знову.");
+        await new Promise((r) => setTimeout(r, 1500));
       }
 
-      if (!alive) return
-      setState("fail")
-      setMsg("Оплату не підтверджено. Якщо Ви оплатили — натисніть Перевірити знову.")
+      if (!alive) return;
+      setState("fail");
+      setMsg("Оплату не підтверджено. Якщо Ви оплатили, натисніть Перевірити знову.");
     }
 
-    run()
+    run();
     return () => {
-      alive = false
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderReference])
+      alive = false;
+    };
+  }, [orderReference, router]);
 
   return (
     <div className="min-h-[70vh] flex items-center justify-center px-4">
@@ -127,7 +104,11 @@ export default function PaymentResultPage() {
             Перейти в профіль
           </button>
         ) : null}
+
+        <div className="mt-4 text-xs text-gray-500">
+          Порада: щоб не втратити доступ при очищенні cookie, увійдіть або зареєструйтесь і привʼяжіть доступ до акаунта.
+        </div>
       </div>
     </div>
-  )
+  );
 }
