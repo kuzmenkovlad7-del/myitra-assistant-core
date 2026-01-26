@@ -1,126 +1,106 @@
-import { NextRequest, NextResponse } from "next/server"
-import crypto from "crypto"
-import { createClient } from "@supabase/supabase-js"
+import { NextResponse } from "next/server";
+import { createHmac } from "crypto";
+import { createClient } from "@supabase/supabase-js";
 
-export const runtime = "nodejs"
-export const dynamic = "force-dynamic"
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
-function pickEnv(name: string, fallback = "") {
-  const v = (process.env[name] || "").trim()
-  return v || fallback
+function hmacMd5HexUpper(str: string, key: string) {
+  return createHmac("md5", key).update(str, "utf8").digest("hex").toUpperCase();
 }
 
-function mustEnv(name: string) {
-  const v = (process.env[name] || "").trim()
-  if (!v) throw new Error(`Missing env: ${name}`)
-  return v
+function getSupabaseAdmin() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key, { auth: { persistSession: false } });
 }
 
-function hmacMd5(data: string, secret: string) {
-  return crypto.createHmac("md5", secret).update(data, "utf8").digest("hex")
-}
+export async function POST(req: Request) {
+  const secret = process.env.WFP_SECRET_KEY || process.env.WAYFORPAY_SECRET_KEY || "";
+  const body = await req.json().catch(() => null);
 
-function supabaseAdmin() {
-  const url = mustEnv("SUPABASE_URL")
-  const key =
-    pickEnv("SUPABASE_SERVICE_ROLE_KEY") ||
-    pickEnv("SUPABASE_SERVICE_ROLE") ||
-    pickEnv("SUPABASE_ANON_KEY") ||
-    pickEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+  console.log("[WFP CALLBACK] incoming:", body);
 
-  if (!key) throw new Error("Missing env: SUPABASE_SERVICE_ROLE_KEY (or ANON key fallback)")
-  return createClient(url, key, { auth: { persistSession: false } })
-}
+  const merchantAccount = String(body?.merchantAccount || "");
+  const orderReference = String(body?.orderReference || "");
+  const amount = body?.amount;
+  const currency = String(body?.currency || "");
+  const authCode = String(body?.authCode || "");
+  const cardPan = String(body?.cardPan || "");
+  const transactionStatus = String(body?.transactionStatus || "");
+  const reasonCode = String(body?.reasonCode || "");
+  const incomingSignature = String(body?.merchantSignature || "");
 
-function normalizeStatus(txStatus: string) {
-  const s = (txStatus || "").toLowerCase()
-  if (s === "approved") return "paid"
-  if (s === "pending" || s === "inprocessing") return "pending"
-  if (s === "refunded" || s === "voided" || s === "expired" || s === "declined") return "failed"
-  return txStatus || "unknown"
-}
-
-export async function POST(req: NextRequest) {
-  const secretKey = mustEnv("WAYFORPAY_SECRET_KEY")
-
-  let body: any = null
-  try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 })
+  // Проверка подписи (если secret есть)
+  let signatureOk = true;
+  if (secret && merchantAccount && orderReference) {
+    const signString = [
+      merchantAccount,
+      orderReference,
+      String(amount ?? ""),
+      currency,
+      authCode,
+      cardPan,
+      transactionStatus,
+      reasonCode,
+    ].join(";");
+    const expected = hmacMd5HexUpper(signString, secret);
+    signatureOk = expected === incomingSignature.toUpperCase();
+    console.log("[WFP CALLBACK] signature:", signatureOk ? "OK" : "BAD", { expected, incoming: incomingSignature });
   }
 
-  const orderReference = String(body?.orderReference || body?.ORDERREFERENCE || "").trim()
-  const merchantSignature = String(body?.merchantSignature || body?.MERCHANTSIGNATURE || "").trim()
+  // Обновляем заказ в Supabase
+  const sb = getSupabaseAdmin();
+  if (sb && orderReference) {
+    const finalStatus =
+      transactionStatus === "Approved"
+        ? "paid"
+        : transactionStatus
+        ? String(transactionStatus).toLowerCase()
+        : "callback_received";
 
-  if (!orderReference) {
-    return NextResponse.json({ ok: false, error: "Missing orderReference" }, { status: 400 })
-  }
+    const updatePayload: any = {
+      status: signatureOk ? finalStatus : "callback_signature_invalid",
+      raw: body,
+    };
 
-  // WayForPay signature line:
-  // merchantAccount;orderReference;amount;currency;authCode;cardPan;transactionStatus;reasonCode
-  const merchantAccount = String(body?.merchantAccount || "").trim()
-  const amount = String(body?.amount ?? "").trim()
-  const currency = String(body?.currency ?? "").trim()
-  const authCode = String(body?.authCode ?? "").trim()
-  const cardPan = String(body?.cardPan ?? "").trim()
-  const transactionStatus = String(body?.transactionStatus ?? "").trim()
-  const reasonCode = String(body?.reasonCode ?? "").trim()
-
-  const signLine = [
-    merchantAccount,
-    orderReference,
-    amount,
-    currency,
-    authCode,
-    cardPan,
-    transactionStatus,
-    reasonCode,
-  ].join(";")
-
-  const expectedSig = hmacMd5(signLine, secretKey)
-
-  // не блокируем оплату из-за пустых полей, но логируем
-  const sigOk = merchantSignature && expectedSig && merchantSignature === expectedSig
-
-  const state = normalizeStatus(transactionStatus)
-
-  try {
-    const sb = supabaseAdmin()
-    await sb
+    const { error } = await sb
       .from("billing_orders")
-      .upsert(
+      .update(updatePayload)
+      .eq("order_reference", orderReference);
+
+    if (error) {
+      console.log("[WFP CALLBACK] supabase update error:", error);
+      // если не нашли строку - пробуем вставить
+      const { error: insErr } = await sb.from("billing_orders").insert([
         {
           order_reference: orderReference,
-          status: state,
-          currency: currency || null,
-          amount: Number(amount || 0) || null,
-          raw: body || null,
+          plan_id: body?.planId || "monthly",
+          amount: Number(amount) || null,
+          currency: currency || "UAH",
+          status: signatureOk ? updatePayload.status : "callback_signature_invalid",
+          raw: body,
         },
-        { onConflict: "order_reference" }
-      )
-  } catch (e) {
-    console.error("[callback] DB upsert failed:", e)
+      ]);
+      if (insErr) console.log("[WFP CALLBACK] supabase insert error:", insErr);
+    }
   }
 
-  // IMPORTANT: respond ACCEPT to confirm
-  const time = Math.floor(Date.now() / 1000)
-  const status = "accept"
-  const respSig = hmacMd5(`${orderReference};${status};${time}`, secretKey)
+  // WayForPay ждёт ответ accept + signature по строке: orderReference;status;time
+  const time = Math.floor(Date.now() / 1000);
+  const status = "accept";
+  const respString = `${orderReference};${status};${time}`;
+  const signature = secret ? hmacMd5HexUpper(respString, secret) : "";
 
-  return NextResponse.json(
-    {
-      orderReference,
-      status,
-      time,
-      signature: respSig,
-      sigOk,
-    },
-    { status: 200 }
-  )
+  return NextResponse.json({
+    orderReference,
+    status,
+    time,
+    signature,
+  });
 }
 
 export async function GET() {
-  // чтобы случайно не было 405 на пинге
-  return NextResponse.json({ ok: true }, { status: 200 })
+  return NextResponse.json({ ok: true });
 }

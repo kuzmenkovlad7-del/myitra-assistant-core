@@ -2,124 +2,163 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
-type Summary = {
-  signedIn: boolean;
-  accessLabel: string;
-  questionsLeft: number;
-};
-
-function normalizeSummary(j: any): Summary {
-  const signedIn = Boolean(j?.signedIn ?? j?.signed_in ?? j?.isSignedIn ?? j?.user?.id);
-
-  // 1) пробуем взять строковое поле доступа если оно есть
-  let rawAccess = String(
-    j?.access ?? j?.tier ?? j?.plan ?? j?.subscription?.tier ?? ""
-  )
-    .trim()
-    .toLowerCase();
-
-  // 2) если строкой не пришло — определяем по флагам
-  if (!rawAccess) {
-    rawAccess = (j?.subscription?.active || j?.isPaid) ? "paid" : "free";
-  }
-
-  const accessLabel =
-    rawAccess.includes("paid") || rawAccess.includes("premium") || rawAccess.includes("pro")
-      ? "Платно"
-      : "Безкоштовно";
-
-  const q =
-    j?.questionsLeft ??
-    j?.questions_left ??
-    j?.questionsRemaining ??
-    j?.remainingQuestions ??
-    j?.remaining ??
-    j?.left ??
-    0;
-
-  const questionsLeft = Number.isFinite(Number(q)) ? Number(q) : 0;
-
-  return { signedIn, accessLabel, questionsLeft };
+function safeNumber(v: any): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
-export default function PricingPage() {
-  const PRICE_UAH = useMemo(() => {
-    const v = Number(process.env.NEXT_PUBLIC_PRICE_UAH ?? 499);
-    return Number.isFinite(v) && v > 0 ? v : 499;
-  }, []);
+function getPriceUAH(): number {
+  const raw = process.env.NEXT_PUBLIC_PRICE_UAH;
+  const n = raw ? Number(raw) : NaN;
+  if (Number.isFinite(n) && n > 0) return Math.round(n);
+  return 499;
+}
 
-  const CURRENCY = useMemo(() => {
-    const v = String(process.env.NEXT_PUBLIC_CURRENCY ?? "UAH").trim();
-    return v || "UAH";
-  }, []);
+type ProfileBox = {
+  loggedIn: boolean;
+  accessLabel: string;
+  questionsLeft: number | null;
+};
+
+export default function PricingPage() {
+  const priceUAH = useMemo(() => getPriceUAH(), []);
 
   const [promo, setPromo] = useState("");
-  const [summary, setSummary] = useState<Summary>({
-    signedIn: false,
+  const [box, setBox] = useState<ProfileBox>({
+    loggedIn: false,
     accessLabel: "Безкоштовно",
-    questionsLeft: 0,
+    questionsLeft: null,
   });
 
   useEffect(() => {
-    let alive = true;
+    let cancelled = false;
 
-    (async () => {
+    async function run() {
       try {
-        const r = await fetch("/api/account/summary", { cache: "no-store" });
-        const j = await r.json();
-        if (!alive) return;
-        setSummary(normalizeSummary(j));
-      } catch {
-        // ignore
-      }
-    })();
+        // 1) Кто залогинен?
+        let loggedIn = false;
+        try {
+          const r = await fetch("/api/account/summary", { cache: "no-store" });
+          if (r.ok) {
+            const j = await r.json().catch(() => null);
+            loggedIn = Boolean(j?.ok);
+          }
+        } catch {}
 
+        // 2) Сколько осталось вопросов (работает и без логина)
+        let questionsLeft: number | null = null;
+        let accessLabel = "Безкоштовно";
+
+        try {
+          const r = await fetch("/api/subscription/summary", { cache: "no-store" });
+          const j = await r.json().catch(() => null);
+
+          questionsLeft =
+            safeNumber(j?.questionsLeft) ??
+            safeNumber(j?.questions_left) ??
+            safeNumber(j?.remainingQuestions) ??
+            safeNumber(j?.remaining_questions) ??
+            safeNumber(j?.trialLeft) ??
+            safeNumber(j?.trial_left) ??
+            safeNumber(j?.remaining) ??
+            safeNumber(j?.left) ??
+            null;
+
+          const paid =
+            Boolean(j?.isPaid) ||
+            Boolean(j?.paid) ||
+            Boolean(j?.subscription?.active) ||
+            j?.plan === "paid" ||
+            j?.tier === "paid";
+
+          accessLabel = paid ? "Оплачено" : "Безкоштовно";
+        } catch {}
+
+        if (cancelled) return;
+        setBox({
+          loggedIn,
+          accessLabel,
+          questionsLeft: questionsLeft ?? 5,
+        });
+      } catch {
+        if (cancelled) return;
+        setBox((p) => ({ ...p, questionsLeft: 5 }));
+      }
+    }
+
+    run();
     return () => {
-      alive = false;
+      cancelled = true;
     };
   }, []);
 
   return (
-    <div className="min-h-[calc(100vh-80px)] px-4 py-10">
-      <div className="mx-auto max-w-6xl">
-        <h1 className="text-4xl font-bold tracking-tight">Тарифи</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Безлімітний доступ до чату, голосу та відео. Пробний режим має 5 запитань.
-        </p>
+    <div className="w-full">
+      <div className="mx-auto max-w-6xl px-4 py-10">
+        <div className="mb-6">
+          <h1 className="text-4xl font-semibold tracking-tight">Тарифи</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Безлімітний доступ до чату, голосу і відео. Пробний режим має 5 запитань.
+          </p>
+        </div>
 
-        <div className="mt-8 grid gap-6 lg:grid-cols-2">
-          {/* LEFT: PLAN */}
+        <div className="grid gap-6 lg:grid-cols-[1.1fr_.9fr]">
+          {/* LEFT: plan card */}
           <Card className="overflow-hidden">
             <CardHeader>
               <CardTitle className="text-2xl">Щомісяця</CardTitle>
               <CardDescription>Безлімітний доступ до чату, голосу і відео</CardDescription>
             </CardHeader>
 
-            <CardContent>
-              <div className="flex items-baseline gap-3">
-                <div className="text-6xl font-extrabold tracking-tight leading-none">
-                  {PRICE_UAH}
-                </div>
-                <div className="text-sm text-muted-foreground uppercase">{CURRENCY}</div>
+            <CardContent className="space-y-6">
+              {/* PRICE */}
+              <div className="flex items-end gap-3">
+                <div className="text-6xl font-bold leading-none">{priceUAH}</div>
+                <div className="pb-2 text-sm text-muted-foreground">UAH</div>
               </div>
 
-              <ul className="mt-6 space-y-2 text-sm text-muted-foreground">
+              <ul className="space-y-2 text-sm text-muted-foreground">
                 <li>• Безлімітна кількість запитів</li>
                 <li>• Чат, голос і відео</li>
                 <li>• Історія зберігається у профілі</li>
               </ul>
 
-              <div className="mt-6 rounded-2xl border bg-gradient-to-br from-slate-900 to-slate-700 p-6 text-white">
-                <div className="text-sm opacity-80">TurbotaAI</div>
-                <div className="mt-10 text-lg font-semibold opacity-90">TurbotaAI Monthly</div>
+              {/* BEAUTIFUL CARD (RESTORED) */}
+              <div className="rounded-2xl p-[1px] bg-gradient-to-br from-sky-500 via-blue-600 to-indigo-600">
+                <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0a3d7a] via-[#0f6fbf] to-[#0b7bc5] p-6 text-white">
+                  <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_top,white,transparent_40%)]" />
+
+                  <div className="relative flex items-center justify-between">
+                    <div className="text-sm font-medium opacity-90">TurbotaAI</div>
+                    <div className="h-8 w-12 rounded-md bg-gradient-to-br from-amber-200 via-yellow-400 to-amber-300 opacity-90" />
+                  </div>
+
+                  <div className="relative mt-10 text-xl font-semibold">TurbotaAI Monthly</div>
+                  <div className="relative mt-2 text-sm opacity-80">
+                    {priceUAH} UAH / місяць
+                  </div>
+
+                  <div className="relative mt-6 flex gap-2">
+                    <div className="h-2 w-2 rounded-full bg-white/80" />
+                    <div className="h-2 w-2 rounded-full bg-white/60" />
+                    <div className="h-2 w-2 rounded-full bg-white/40" />
+                  </div>
+                </div>
               </div>
+
+              <Button
+                className="w-full"
+                onClick={() => window.location.assign("/api/billing/wayforpay/purchase?planId=monthly")}
+              >
+                Оплатити {priceUAH} UAH
+              </Button>
             </CardContent>
           </Card>
 
-          {/* RIGHT: PROFILE + PROMO + MANAGE */}
+          {/* RIGHT: profile box */}
           <div className="space-y-6">
             <Card>
               <CardHeader>
@@ -128,15 +167,15 @@ export default function PricingPage() {
               </CardHeader>
 
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-y-3 text-sm">
+                <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="text-muted-foreground">Статус</div>
-                  <div className="text-right">{summary.signedIn ? "Вхід виконано" : "Не виконано"}</div>
+                  <div className="text-right">{box.loggedIn ? "Вхід виконано" : "Не виконано"}</div>
 
                   <div className="text-muted-foreground">Доступ</div>
-                  <div className="text-right">{summary.accessLabel}</div>
+                  <div className="text-right">{box.accessLabel}</div>
 
                   <div className="text-muted-foreground">Залишилось запитань</div>
-                  <div className="text-right">{summary.questionsLeft}</div>
+                  <div className="text-right">{box.questionsLeft ?? 5}</div>
                 </div>
 
                 <div className="flex gap-3">
@@ -186,6 +225,11 @@ export default function PricingPage() {
               </CardContent>
             </Card>
           </div>
+        </div>
+
+        <div className="mt-6 text-xs text-muted-foreground">
+          Якщо потрібно перевірити підпис WayForPay без оплати:{" "}
+          <span className="font-mono">/api/billing/wayforpay/purchase?planId=monthly&debug=1</span>
         </div>
       </div>
     </div>
