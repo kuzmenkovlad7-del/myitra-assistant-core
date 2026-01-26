@@ -23,9 +23,6 @@ function parseMoney2(raw: string) {
 }
 
 function getMonthlyPriceUah() {
-  // Серверная цена (для подписи) — БЕРЁМ ИЗ TA_MONTHLY_PRICE_UAH,
-  // если не задано — fallback на NEXT_PUBLIC_PRICE_UAH,
-  // если и там пусто — 499
   const raw =
     process.env.TA_MONTHLY_PRICE_UAH ||
     process.env.NEXT_PUBLIC_PRICE_UAH ||
@@ -62,7 +59,6 @@ async function handler(req: Request) {
   const productCount = "1";
   const productPrice = amount;
 
-  // ВАЖНО: signString строго по доке
   const signString = [
     merchantAccount,
     merchantDomainName,
@@ -77,7 +73,6 @@ async function handler(req: Request) {
 
   const merchantSignature = hmacMd5HexUpper(signString, secretKey);
 
-  // device hash (чтобы потом матчить пользователя)
   const existingDeviceHash = cookies().get("ta_device_hash")?.value;
   const deviceHash = existingDeviceHash || crypto.randomBytes(16).toString("hex");
 
@@ -95,12 +90,12 @@ async function handler(req: Request) {
     });
   }
 
-  const esc = (s: string) =>
+  const esc = (s: any) =>
     String(s)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;");
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
 
   const baseInputs = [
     ["merchantAccount", merchantAccount],
@@ -110,8 +105,6 @@ async function handler(req: Request) {
     ["orderDate", orderDate],
     ["amount", amount],
     ["currency", currency],
-
-    // Эти два поля очень желательно передать
     ["returnUrl", `${origin}/payment/return`],
     ["serviceUrl", `${origin}/api/billing/wayforpay/callback`],
   ]
