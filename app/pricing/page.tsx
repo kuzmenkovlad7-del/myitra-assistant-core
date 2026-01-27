@@ -1,175 +1,187 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { PLANS } from "@/lib/billing/plans"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { useAuth } from "@/lib/auth/auth-context"
+import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 
-function promoErrorText(httpStatus: number, data: any) {
-  const code = String(data?.errorCode || "").toUpperCase().trim()
-
-  if (httpStatus === 401 || code === "LOGIN_REQUIRED") return "Чтобы активировать промокод, нужно войти в аккаунт"
-  if (code === "EMPTY_CODE") return "Введите промокод"
-  if (code === "INVALID_PROMO") return "Промокод недействителен или уже неактивен"
-  if (code === "REDEEM_FAILED") return "Не удалось активировать промокод, попробуйте еще раз"
-
-  const msg = String(data?.error || data?.message || "").trim()
-  return msg || "Не удалось активировать промокод"
-}
-
-function formatIso(iso: string) {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString()
-}
+type Summary = any;
 
 export default function PricingPage() {
-  const router = useRouter()
-  const { user } = useAuth()
+  const [promo, setPromo] = useState("");
+  const [summary, setSummary] = useState<Summary | null>(null);
 
-  const [loadingPlan, setLoadingPlan] = useState<string | null>(null)
-  const [promo, setPromo] = useState("")
-  const [promoLoading, setPromoLoading] = useState(false)
-  const [promoMsg, setPromoMsg] = useState<string | null>(null)
+  const monthlyPrice = useMemo(() => {
+    const v =
+      Number((process.env.NEXT_PUBLIC_TA_MONTHLY_PRICE_UAH || "").toString()) ||
+      Number((process.env.NEXT_PUBLIC_MONTHLY_PRICE_UAH || "").toString()) ||
+      499;
+    return v;
+  }, []);
 
-  const startPayment = async (planId: string) => {
-    setLoadingPlan(planId)
-    try {
-      const res = await fetch("/api/billing/wayforpay/create-invoice", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId }),
+  const monthlyPriceLabel = useMemo(() => {
+    return new Intl.NumberFormat("uk-UA").format(monthlyPrice);
+  }, [monthlyPrice]);
+
+  const questionsLeft = useMemo(() => {
+    const n =
+      summary?.questionsLeft ??
+      summary?.questions_left ??
+      summary?.remainingQuestions ??
+      summary?.remaining_questions ??
+      summary?.limits?.questionsLeft ??
+      null;
+
+    return typeof n === "number" && Number.isFinite(n) ? n : 5;
+  }, [summary]);
+
+  const isPaid = useMemo(() => {
+    const v =
+      summary?.isPaid ??
+      summary?.paid ??
+      summary?.subscription?.active ??
+      summary?.subscriptionActive ??
+      summary?.plan === "paid";
+    return Boolean(v);
+  }, [summary]);
+
+  const loginStatus = useMemo(() => {
+    const v =
+      summary?.isLoggedIn ??
+      summary?.loggedIn ??
+      summary?.user?.id ??
+      summary?.user_id ??
+      summary?.email ??
+      null;
+    return Boolean(v);
+  }, [summary]);
+
+  useEffect(() => {
+    let mounted = true;
+    fetch("/api/account/summary", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => {
+        if (mounted) setSummary(j);
       })
-      const data = await res.json().catch(() => ({}))
-      if (!res.ok || !data?.invoiceUrl) throw new Error(String(data?.error || "Payment init failed"))
-      window.location.href = data.invoiceUrl
-    } catch (e: any) {
-      alert(String(e?.message || "Payment init failed"))
-    } finally {
-      setLoadingPlan(null)
-    }
-  }
-
-  const redeemPromo = async () => {
-    setPromoMsg(null)
-    setPromoLoading(true)
-    try {
-      const res = await fetch("/api/billing/promo/redeem", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: promo }),
-      })
-      const data = await res.json().catch(() => ({}))
-
-      if (!res.ok) {
-        setPromoMsg(promoErrorText(res.status, data))
-        return
-      }
-
-      const iso = String(data?.promo_until || data?.promoUntil || "").trim()
-      if (!iso) {
-        setPromoMsg("Промо активировано, но дата не пришла. Обновите профиль")
-      } else {
-        setPromoMsg(`Промо активировано до: ${formatIso(iso)}`)
-      }
-
-      try {
-        window.dispatchEvent(new Event("turbota:refresh"))
-      } catch {}
-    } catch (e: any) {
-      setPromoMsg(String(e?.message || "Promo failed"))
-    } finally {
-      setPromoLoading(false)
-    }
-  }
+      .catch(() => {
+        if (mounted) setSummary(null);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-14">
-      <div className="mb-10">
-        <h1 className="text-3xl font-semibold text-slate-900">Pricing</h1>
-        <p className="mt-2 text-slate-600">
-          Unlimited access to chat, voice and video sessions. Trial includes 5 questions.
+    <div className="container mx-auto max-w-6xl px-4 py-10">
+      <div className="mb-8">
+        <h1 className="text-4xl font-bold tracking-tight">Тарифи</h1>
+        <p className="mt-2 text-muted-foreground">
+          Безлімітний доступ до чату, голосу і відео. Пробний режим має 5 запитань.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        {PLANS.map((p) => (
-          <Card key={p.id} className="border-slate-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-2xl">{p.title}</CardTitle>
-              <CardDescription>{p.description}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="text-4xl font-semibold text-slate-900">
-                {p.amount} <span className="text-base font-medium text-slate-500">{p.currency}</span>
-              </div>
-
-              <ul className="text-sm text-slate-700 space-y-2">
-                <li>• Unlimited questions</li>
-                <li>• Chat, voice and video</li>
-                <li>• History saved in your profile</li>
-              </ul>
-
-              <Button
-                className="w-full"
-                onClick={() => startPayment(p.id)}
-                disabled={loadingPlan === p.id}
-              >
-                {loadingPlan === p.id ? "Opening payment..." : "Subscribe"}
-              </Button>
-
-              {!user ? (
-                <p className="text-xs text-slate-500">
-                  You can pay without login. For promo activation and history we recommend logging in.
-                </p>
-              ) : null}
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      <div className="mt-10 grid grid-cols-1 gap-6 md:grid-cols-2">
-        <Card className="border-slate-200">
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="overflow-hidden">
           <CardHeader>
-            <CardTitle>Promo for doctors</CardTitle>
-            <CardDescription>12 months free access by promo code</CardDescription>
+            <CardTitle className="text-2xl">Щомісяця</CardTitle>
+            <CardDescription>Безлімітний доступ до чату, голосу і відео</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="space-y-2">
-              <Label htmlFor="promo">Promo code</Label>
-              <Input id="promo" value={promo} onChange={(e) => setPromo(e.target.value)} placeholder="DOCTORS2026" />
+
+          <CardContent className="space-y-6">
+            <div className="flex items-end gap-3">
+              <div className="text-6xl font-semibold leading-none">{monthlyPriceLabel}</div>
+              <div className="pb-1 text-sm text-muted-foreground">UAH</div>
             </div>
 
-            <Button onClick={redeemPromo} disabled={promoLoading}>
-              {promoLoading ? "Activating..." : "Activate promo"}
-            </Button>
+            <ul className="space-y-2 text-sm text-muted-foreground">
+              <li>• Безлімітна кількість запитів</li>
+              <li>• Чат, голос і відео</li>
+              <li>• Історія зберігається у профілі</li>
+            </ul>
 
-            {promoMsg ? <p className="text-sm text-slate-700">{promoMsg}</p> : null}
+            <button
+              className="group relative w-full overflow-hidden rounded-2xl border bg-slate-950 p-6 text-left text-white"
+              onClick={() => window.location.assign("/api/billing/wayforpay/purchase?planId=monthly")}
+            >
+              <div className="absolute inset-0 opacity-70">
+                <div className="absolute -left-24 -top-24 h-60 w-60 rounded-full bg-indigo-500 blur-3xl" />
+                <div className="absolute -right-24 -bottom-24 h-60 w-60 rounded-full bg-fuchsia-500 blur-3xl" />
+              </div>
 
-            {!user ? (
-              <p className="text-xs text-slate-500">
-                Promo activation requires login.
-              </p>
-            ) : null}
+              <div className="relative">
+                <div className="text-xs opacity-80">TurbotaAI</div>
+                <div className="mt-2 text-lg font-semibold">TurbotaAI Monthly</div>
+                <div className="mt-3 text-sm opacity-80">
+                  Натисніть, щоб перейти до оплати
+                </div>
+              </div>
+            </button>
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200">
-          <CardHeader>
-            <CardTitle>Your profile</CardTitle>
-            <CardDescription>Check trial balance and history</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button variant="outline" className="w-full" onClick={() => router.push("/profile")}>
-              Open profile
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl">Ваш профіль</CardTitle>
+              <CardDescription>Перевірити доступ і історію</CardDescription>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="text-muted-foreground">Статус</div>
+                <div className="text-right">{loginStatus ? "Виконано" : "Не виконано"}</div>
+
+                <div className="text-muted-foreground">Доступ</div>
+                <div className="text-right">{isPaid ? "Підписка активна" : "Безкоштовно"}</div>
+
+                <div className="text-muted-foreground">Залишилось запитань</div>
+                <div className="text-right">{questionsLeft}</div>
+              </div>
+
+              <div className="flex gap-3">
+                <Button variant="outline" className="w-full" onClick={() => window.location.assign("/profile")}>
+                  Відкрити профіль
+                </Button>
+
+                <Button variant="outline" className="w-full" onClick={() => window.location.assign("/api/auth/logout")}>
+                  Вийти
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl">Промокод</CardTitle>
+              <CardDescription>12 місяців безкоштовного доступу за промокодом</CardDescription>
+            </CardHeader>
+
+            <CardContent className="flex gap-3">
+              <Input value={promo} onChange={(e) => setPromo(e.target.value)} placeholder="Промокод" />
+              <Button variant="outline" disabled={!promo.trim()}>
+                Активувати промо
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl">Керувати доступом</CardTitle>
+              <CardDescription>Підписка та промо у профілі</CardDescription>
+            </CardHeader>
+
+            <CardContent>
+              <Button className="w-full" onClick={() => window.location.assign("/profile")}>
+                Відкрити налаштування
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      <div className="mt-6 text-xs text-muted-foreground">
+        Для перевірки підпису WayForPay: <span className="font-mono">/api/billing/wayforpay/purchase?planId=monthly&debug=1</span>
       </div>
     </div>
-  )
+  );
 }
