@@ -10,6 +10,17 @@ export const dynamic = "force-dynamic"
 const DEVICE_COOKIE = "ta_device_hash"
 const ACCOUNT_PREFIX = "account:"
 
+type GrantRow = {
+  id: string
+  user_id: string | null
+  device_hash: string
+  trial_questions_left: number | null
+  paid_until: any
+  promo_until: any
+  created_at?: string | null
+  updated_at?: string | null
+}
+
 function num(v: any, fallback = 0) {
   const n = Number(v)
   return Number.isFinite(n) ? n : fallback
@@ -50,7 +61,7 @@ function isFuture(iso: string | null) {
   return d.getTime() > Date.now()
 }
 
-function routeSupabase() {
+function routeSessionSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   if (!url || !anon) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY")
@@ -79,7 +90,7 @@ function routeSupabase() {
   return { sb, cookieStore, json }
 }
 
-async function findGrantByDevice(admin: any, deviceHash: string) {
+async function findGrantByDevice(admin: any, deviceHash: string): Promise<GrantRow | null> {
   const { data } = await admin
     .from("access_grants")
     .select("*")
@@ -88,7 +99,7 @@ async function findGrantByDevice(admin: any, deviceHash: string) {
     .limit(1)
     .maybeSingle()
 
-  return data ?? null
+  return (data ?? null) as GrantRow | null
 }
 
 async function createGrant(admin: any, opts: { userId: string | null; deviceHash: string; trialLeft: number; nowIso: string }) {
@@ -107,22 +118,44 @@ async function createGrant(admin: any, opts: { userId: string | null; deviceHash
     .select("*")
     .single()
 
-  return data ?? null
+  return (data ?? null) as GrantRow | null
 }
 
 async function updateGrant(admin: any, id: string, patch: any) {
   const { data } = await admin.from("access_grants").update(patch).eq("id", id).select("*").maybeSingle()
-  return data ?? null
+  return (data ?? null) as GrantRow | null
+}
+
+async function ensureGrant(
+  admin: any,
+  deviceHash: string,
+  userId: string | null,
+  trialDefault: number,
+  nowIso: string
+): Promise<GrantRow> {
+  let g = await findGrantByDevice(admin, deviceHash)
+
+  if (!g) {
+    g = await createGrant(admin, { userId, deviceHash, trialLeft: trialDefault, nowIso })
+  }
+  if (!g) g = await findGrantByDevice(admin, deviceHash)
+  if (!g) throw new Error("GRANT_CREATE_FAILED")
+
+  if (userId && !g.user_id) {
+    const upd = await updateGrant(admin, g.id, { user_id: userId, updated_at: nowIso })
+    if (upd) g = upd
+  }
+
+  return g
 }
 
 export async function GET() {
-  const { sb, cookieStore, json } = routeSupabase()
+  const { sb, cookieStore, json } = routeSessionSupabase()
   const admin = getSupabaseAdmin()
 
   const trialDefault = getTrialLimit()
   const nowIso = new Date().toISOString()
 
-  // device cookie
   let deviceHash = cookieStore.get(DEVICE_COOKIE)?.value ?? null
   let needSetDeviceCookie = false
   if (!deviceHash) {
@@ -134,20 +167,18 @@ export async function GET() {
   const user = userData?.user ?? null
   const isLoggedIn = Boolean(user?.id)
 
-  // guest grant
-  let guestGrant = await findGrantByDevice(admin, deviceHash!)
-  if (!guestGrant) {
-    guestGrant = await createGrant(admin, { userId: null, deviceHash: deviceHash!, trialLeft: trialDefault, nowIso })
-  }
+  // guest grant always exists
+  let guestGrant = await ensureGrant(admin, deviceHash!, null, trialDefault, nowIso)
 
-  // account grant
-  let accountGrant: any = null
+  // account grant if logged in
+  let accountGrant: GrantRow | null = null
+  let accountHash: string | null = null
+
   if (isLoggedIn) {
-    const accountKey = ACCOUNT_PREFIX + user!.id
-    accountGrant = await findGrantByDevice(admin, accountKey)
+    accountHash = `${ACCOUNT_PREFIX}${user!.id}`
 
-    // legacy migration: есть запись по user_id → переносим на accountKey
-    if (!accountGrant) {
+    // legacy migration: если есть запись по user_id (например device_hash null/другой) — фиксируем на accountHash
+    try {
       const { data: legacy } = await admin
         .from("access_grants")
         .select("*")
@@ -156,87 +187,81 @@ export async function GET() {
         .limit(1)
         .maybeSingle()
 
-      if (legacy?.id) {
-        accountGrant = await updateGrant(admin, legacy.id, { device_hash: accountKey, updated_at: nowIso })
+      if (legacy?.id && String(legacy.device_hash || "") !== accountHash) {
+        await updateGrant(admin, legacy.id, { device_hash: accountHash, updated_at: nowIso })
       }
-    }
+    } catch {}
 
-    if (!accountGrant) {
-      accountGrant = await createGrant(admin, { userId: user!.id, deviceHash: accountKey, trialLeft: trialDefault, nowIso })
-    }
+    accountGrant = await ensureGrant(admin, accountHash, user!.id, trialDefault, nowIso)
 
-    // sync trial: min(guest, account)
+    // sync trial (min guest/account)
     const gLeft = clampTrial(guestGrant?.trial_questions_left ?? trialDefault, trialDefault)
     const aLeft = clampTrial(accountGrant?.trial_questions_left ?? trialDefault, trialDefault)
     const eff = Math.min(gLeft, aLeft)
 
-    if (guestGrant && gLeft !== eff) {
+    if (gLeft !== eff) {
       guestGrant = (await updateGrant(admin, guestGrant.id, { trial_questions_left: eff, updated_at: nowIso })) ?? guestGrant
     }
-    if (accountGrant && aLeft !== eff) {
-      accountGrant = (await updateGrant(admin, accountGrant.id, { trial_questions_left: eff, updated_at: nowIso })) ?? accountGrant
+    if (aLeft !== eff && accountGrant) {
+      accountGrant =
+        (await updateGrant(admin, accountGrant.id, { trial_questions_left: eff, updated_at: nowIso })) ?? accountGrant
     }
   }
 
-  // entitlements: profiles source of truth when logged in
-  let paidUntil: string | null = null
-  let promoUntil: string | null = null
+  // entitlements are always from grants
+  const guestPaid = guestGrant?.paid_until ? String(guestGrant.paid_until) : null
+  const guestPromo = guestGrant?.promo_until ? String(guestGrant.promo_until) : null
+
+  const accPaid = accountGrant?.paid_until ? String(accountGrant.paid_until) : null
+  const accPromo = accountGrant?.promo_until ? String(accountGrant.promo_until) : null
+
+  let paidUntil = isLoggedIn ? laterDateIso(guestPaid, accPaid) : guestPaid
+  let promoUntil = isLoggedIn ? laterDateIso(guestPromo, accPromo) : guestPromo
+
+  // if logged in, propagate merged entitlements to both grants
+  if (isLoggedIn && accountGrant && accountHash) {
+    const needUpdGuest = (paidUntil || null) !== (guestPaid || null) || (promoUntil || null) !== (guestPromo || null)
+    const needUpdAcc = (paidUntil || null) !== (accPaid || null) || (promoUntil || null) !== (accPromo || null)
+
+    if (needUpdGuest) {
+      guestGrant =
+        (await updateGrant(admin, guestGrant.id, { paid_until: paidUntil, promo_until: promoUntil, updated_at: nowIso })) ??
+        guestGrant
+    }
+
+    if (needUpdAcc) {
+      accountGrant =
+        (await updateGrant(admin, accountGrant.id, { paid_until: paidUntil, promo_until: promoUntil, updated_at: nowIso })) ??
+        accountGrant
+    }
+
+    // best-effort: sync subscription meta in profiles, if fields exist
+    try {
+      await admin
+        .from("profiles")
+        .update({
+          subscription_status: isFuture(paidUntil) || isFuture(promoUntil) ? "active" : "inactive",
+          updated_at: nowIso,
+        } as any)
+        .eq("id", user!.id)
+    } catch {}
+  }
+
+  // subscription meta
   let autoRenew = false
   let subscriptionStatus = ""
 
   if (isLoggedIn) {
-    const { data: p } = await admin
-      .from("profiles")
-      .select("paid_until,promo_until,auto_renew,autorenew,subscription_status")
-      .eq("id", user!.id)
-      .maybeSingle()
+    try {
+      const { data: p } = await admin
+        .from("profiles")
+        .select("auto_renew,autorenew,subscription_status")
+        .eq("id", user!.id)
+        .maybeSingle()
 
-    paidUntil = p?.paid_until ? String(p.paid_until) : null
-    promoUntil = p?.promo_until ? String(p.promo_until) : null
-    autoRenew = Boolean(p?.auto_renew ?? p?.autorenew ?? false)
-    subscriptionStatus = String(p?.subscription_status ?? "")
-  }
-
-  // fallback: если профиля нет, берем из grants
-  if (!paidUntil && accountGrant?.paid_until) paidUntil = String(accountGrant.paid_until)
-  if (!promoUntil && accountGrant?.promo_until) promoUntil = String(accountGrant.promo_until)
-
-  // ✅ ВАЖНО: если оплатил как гость, а потом вошёл — закрепляем доступ за аккаунтом
-  if (isLoggedIn) {
-    const gPaid = guestGrant?.paid_until ? String(guestGrant.paid_until) : null
-    const gPromo = guestGrant?.promo_until ? String(guestGrant.promo_until) : null
-
-    const mergedPaid = laterDateIso(paidUntil, gPaid)
-    const mergedPromo = laterDateIso(promoUntil, gPromo)
-
-    const needMerge = mergedPaid !== paidUntil || mergedPromo !== promoUntil
-
-    if (needMerge) {
-      paidUntil = mergedPaid
-      promoUntil = mergedPromo
-
-      try {
-        await admin
-          .from("profiles")
-          .update({
-            paid_until: paidUntil,
-            promo_until: promoUntil,
-            subscription_status: isFuture(paidUntil) || isFuture(promoUntil) ? "active" : "inactive",
-            updated_at: nowIso,
-          } as any)
-          .eq("id", user!.id)
-      } catch {}
-
-      try {
-        if (accountGrant?.id) {
-          await updateGrant(admin, accountGrant.id, {
-            paid_until: paidUntil,
-            promo_until: promoUntil,
-            updated_at: nowIso,
-          })
-        }
-      } catch {}
-    }
+      autoRenew = Boolean((p as any)?.auto_renew ?? (p as any)?.autorenew ?? false)
+      subscriptionStatus = String((p as any)?.subscription_status ?? "")
+    } catch {}
   }
 
   const accessUntil = laterDateIso(paidUntil, promoUntil)
@@ -255,15 +280,19 @@ export async function GET() {
     ok: true,
     isLoggedIn,
     user: isLoggedIn ? { id: user!.id, email: user!.email } : null,
+
     access,
     unlimited,
     hasAccess: unlimited,
+
     trial_questions_left: trialLeft,
     trial_left: trialLeft,
     trialLeft,
+
     paidUntil,
     promoUntil,
     accessUntil,
+
     autoRenew,
     subscriptionStatus: subscriptionStatus || (unlimited ? "active" : "inactive"),
   }

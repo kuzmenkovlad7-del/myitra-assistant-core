@@ -202,44 +202,35 @@ export async function POST(req: NextRequest) {
     const guestGrant = await ensureGrant(admin, guestHash, null, trialDefault, nowIso)
     const accGrant = await ensureGrant(admin, accountHash, userId, trialDefault, nowIso)
 
-    const mergedPromoGuest = laterDateIso(guestGrant.promo_until ?? null, promoUntil)
-    if (mergedPromoGuest && mergedPromoGuest !== String(guestGrant.promo_until ?? "")) {
+    const mergedGuest = laterDateIso(guestGrant.promo_until ?? null, promoUntil)
+    if (mergedGuest && mergedGuest !== String(guestGrant.promo_until ?? "")) {
       await admin
         .from("access_grants")
-        .update({ promo_until: mergedPromoGuest, updated_at: nowIso })
+        .update({ promo_until: mergedGuest, trial_questions_left: 0, updated_at: nowIso })
         .eq("id", guestGrant.id)
     }
 
-    const mergedPromoAcc = laterDateIso(accGrant.promo_until ?? null, promoUntil)
-    if (mergedPromoAcc && mergedPromoAcc !== String(accGrant.promo_until ?? "")) {
+    const mergedAcc = laterDateIso(accGrant.promo_until ?? null, promoUntil)
+    if (mergedAcc && mergedAcc !== String(accGrant.promo_until ?? "")) {
       await admin
         .from("access_grants")
-        .update({ promo_until: mergedPromoAcc, updated_at: nowIso })
+        .update({ promo_until: mergedAcc, trial_questions_left: 0, updated_at: nowIso })
         .eq("id", accGrant.id)
     }
 
-    const { data: prof } = await admin
-      .from("profiles")
-      .select("promo_until")
-      .eq("id", userId)
-      .maybeSingle()
-
-    const mergedProfilePromo = laterDateIso(prof?.promo_until ?? null, promoUntil)
-
-    await admin
-      .from("profiles")
-      .update({
-        promo_until: mergedProfilePromo ?? promoUntil,
-        subscription_status: "active",
-        updated_at: nowIso,
-      })
-      .eq("id", userId)
+    // best-effort profiles sync if fields exist
+    try {
+      await admin
+        .from("profiles")
+        .update({ promo_until: mergedAcc ?? promoUntil, subscription_status: "active", updated_at: nowIso } as any)
+        .eq("id", userId)
+    } catch {}
 
     const res = NextResponse.json(
       {
         ok: true,
-        promo_until: mergedProfilePromo ?? promoUntil,
-        promoUntil: mergedProfilePromo ?? promoUntil,
+        promoUntil: mergedAcc ?? promoUntil,
+        promo_until: mergedAcc ?? promoUntil,
       },
       { status: 200 }
     )

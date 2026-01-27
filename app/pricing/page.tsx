@@ -31,18 +31,6 @@ function fmtDateDMY(v: any) {
   return `${dd}.${mm}.${yyyy}`
 }
 
-function clearClientAuthStorage() {
-  try {
-    for (const k of Object.keys(localStorage)) {
-      if (k.startsWith("sb-") && k.endsWith("-auth-token")) localStorage.removeItem(k)
-    }
-  } catch {}
-  try {
-    sessionStorage.removeItem("turbota_paywall")
-    sessionStorage.removeItem("turbota_conv_id")
-  } catch {}
-}
-
 export default function PricingPage() {
   const { currentLanguage } = useLanguage()
   const router = useRouter()
@@ -227,11 +215,7 @@ export default function PricingPage() {
   }, [])
 
   async function doLogout() {
-    try {
-      await fetch(`/api/auth/clear?next=${encodeURIComponent("/pricing")}`, { method: "POST" })
-    } catch {}
-    clearClientAuthStorage()
-    window.location.assign("/pricing")
+    window.location.assign("/api/auth/logout?next=/pricing")
   }
 
   async function handleSubscribe() {
