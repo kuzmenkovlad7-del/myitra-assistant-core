@@ -23,7 +23,10 @@ async function readAnyBody(req: NextRequest): Promise<any> {
   if (ct.includes("application/x-www-form-urlencoded")) {
     const params = new URLSearchParams(text)
     const out: any = {}
-    for (const [k, v] of params.entries()) out[k] = v
+    params.forEach((v, k) => {
+      out[k] = v
+    })
+
     if (typeof out.response === "string") {
       const j = safeJsonParse(out.response)
       if (j) return j
