@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import crypto from "crypto"
 import { cookies } from "next/headers"
 import { createServerClient } from "@supabase/ssr"
 import { createClient } from "@supabase/supabase-js"
@@ -25,6 +26,10 @@ function clampInt(v: any, fallback: number, min = 0, max = 9999) {
   const n = Number(v)
   if (!Number.isFinite(n)) return fallback
   return Math.max(min, Math.min(max, Math.trunc(n)))
+}
+
+function trialDefaultValue() {
+  return clampInt(process.env.TRIAL_QUESTIONS_LIMIT, 5, 0, 999)
 }
 
 function routeSessionSupabase() {
@@ -55,16 +60,12 @@ function routeSessionSupabase() {
 
 function routeAdminSupabase() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
   const service = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!url || !(service || anon)) {
-    throw new Error(
-      "Missing Supabase env: NEXT_PUBLIC_SUPABASE_URL and (SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY)"
-    )
+  if (!url || !service) {
+    throw new Error("Missing Supabase admin env: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY")
   }
 
-  const sb = createClient(url, service || anon!, {
+  const sb = createClient(url, service, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -87,11 +88,7 @@ async function findGrantByDevice(sb: any, deviceHash: string): Promise<GrantRow 
   return (data ?? null) as GrantRow | null
 }
 
-async function updateGrant(
-  sb: any,
-  id: string,
-  patch: Partial<GrantRow> & { updated_at?: string }
-) {
+async function updateGrant(sb: any, id: string, patch: Partial<GrantRow>) {
   const { data } = await sb.from("access_grants").update(patch).eq("id", id).select("*").maybeSingle()
   return (data ?? null) as GrantRow | null
 }
@@ -99,7 +96,7 @@ async function updateGrant(
 export async function POST(_req: NextRequest) {
   try {
     const nowIso = new Date().toISOString()
-    const trialDefault = clampInt(process.env.NEXT_PUBLIC_TRIAL_QUESTIONS, 5, 0, 999)
+    const trialDefault = trialDefaultValue()
 
     const cookieStore = cookies()
     let deviceUuid = cookieStore.get(DEVICE_COOKIE)?.value ?? null
@@ -127,13 +124,7 @@ export async function POST(_req: NextRequest) {
 
       if (g?.id) {
         const current = typeof g.trial_questions_left === "number" ? g.trial_questions_left : null
-
-        // если после промо осталось 0, возвращаем дефолтный trial (обычно 5)
-        // если было >0, оставляем как есть
-        const restoredTrial =
-          current && current > 0
-            ? current
-            : trialDefault
+        const restoredTrial = current && current > 0 ? current : trialDefault
 
         await updateGrant(adminSb, g.id, {
           promo_until: null,
@@ -145,7 +136,6 @@ export async function POST(_req: NextRequest) {
       }
     }
 
-    // на всякий случай снимаем promo_until и в profiles (если промо писалось туда)
     if (isLoggedIn && userId) {
       try {
         const admin = getSupabaseAdmin()
@@ -163,6 +153,7 @@ export async function POST(_req: NextRequest) {
         path: "/",
         httpOnly: true,
         sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
         maxAge: 60 * 60 * 24 * 365,
       })
     }

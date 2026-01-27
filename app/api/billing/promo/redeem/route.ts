@@ -53,12 +53,6 @@ function laterDateIso(a: any, b: any): string | null {
   return (da!.getTime() >= db!.getTime() ? da! : db!).toISOString()
 }
 
-/**
- * PROMO CODES:
- * - TEST (dev)
- * - DOCTOR12FREE (prod)
- * + ENV PROMO_CODES_JSON: {"SOME2026":30,"VIPYEAR":365}
- */
 function getPromoMap() {
   const base: Record<string, number> = {
     TEST: 365,
@@ -148,16 +142,9 @@ async function ensureGrant(
     g = (data ?? null) as GrantRow | null
   }
 
-  if (!g) {
-    // последний шанс перечитать
-    g = await findGrantByDevice(admin, deviceHash)
-  }
+  if (!g) g = await findGrantByDevice(admin, deviceHash)
+  if (!g) throw new Error("GRANT_CREATE_FAILED")
 
-  if (!g) {
-    throw new Error("GRANT_CREATE_FAILED")
-  }
-
-  // если юзер залогинен, а grant без user_id — привязываем
   if (userId && !g.user_id) {
     const { data } = await admin
       .from("access_grants")
@@ -194,7 +181,6 @@ export async function POST(req: NextRequest) {
 
     const { sb: sessionSb, cookieStore, applyPendingCookies } = routeSessionSupabase()
 
-    // device cookie
     let deviceUuid = cookieStore.get(DEVICE_COOKIE)?.value ?? null
     let needSetDeviceCookie = false
     if (!deviceUuid) {
@@ -202,7 +188,6 @@ export async function POST(req: NextRequest) {
       needSetDeviceCookie = true
     }
 
-    // session user
     const { data: userData } = await sessionSb.auth.getUser()
     const userId = userData?.user?.id ?? null
     if (!userId) {
@@ -214,11 +199,9 @@ export async function POST(req: NextRequest) {
     const guestHash = deviceUuid
     const accountHash = `${ACCOUNT_PREFIX}${userId}`
 
-    // ensure grants
     const guestGrant = await ensureGrant(admin, guestHash, null, trialDefault, nowIso)
     const accGrant = await ensureGrant(admin, accountHash, userId, trialDefault, nowIso)
 
-    // grants: обновляем promo_until (trial НЕ трогаем)
     const mergedPromoGuest = laterDateIso(guestGrant.promo_until ?? null, promoUntil)
     if (mergedPromoGuest && mergedPromoGuest !== String(guestGrant.promo_until ?? "")) {
       await admin
@@ -235,7 +218,6 @@ export async function POST(req: NextRequest) {
         .eq("id", accGrant.id)
     }
 
-    // profiles: это источник правды для account/summary
     const { data: prof } = await admin
       .from("profiles")
       .select("promo_until")
@@ -254,7 +236,11 @@ export async function POST(req: NextRequest) {
       .eq("id", userId)
 
     const res = NextResponse.json(
-      { ok: true, promo_until: mergedProfilePromo ?? promoUntil },
+      {
+        ok: true,
+        promo_until: mergedProfilePromo ?? promoUntil,
+        promoUntil: mergedProfilePromo ?? promoUntil,
+      },
       { status: 200 }
     )
 
@@ -262,7 +248,8 @@ export async function POST(req: NextRequest) {
       res.cookies.set(DEVICE_COOKIE, deviceUuid, {
         path: "/",
         sameSite: "lax",
-        httpOnly: false,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
         maxAge: 60 * 60 * 24 * 365,
       })
     }

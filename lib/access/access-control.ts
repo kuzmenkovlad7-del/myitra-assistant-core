@@ -6,6 +6,7 @@ export type AccessGrant = {
   device_hash: string | null
   trial_questions_left: number | null
   paid_until: string | null
+  promo_until: string | null
 }
 
 const TABLE = "access_grants"
@@ -24,11 +25,20 @@ export function getDeviceHash(req: NextRequest): string {
   return (req.cookies.get("ta_device_hash")?.value || req.headers.get("x-device-hash") || "").trim()
 }
 
-function isPaidActive(paidUntil: string | null): boolean {
-  if (!paidUntil) return false
-  const t = Date.parse(paidUntil)
-  if (!Number.isFinite(t)) return false
-  return t > Date.now()
+function toMs(iso: string | null): number | null {
+  if (!iso) return null
+  const t = Date.parse(iso)
+  return Number.isFinite(t) ? t : null
+}
+
+function isFuture(iso: string | null): boolean {
+  const t = toMs(iso)
+  return typeof t === "number" && t > Date.now()
+}
+
+function hasUnlimited(grant: AccessGrant | null) {
+  if (!grant) return false
+  return isFuture(grant.paid_until ?? null) || isFuture(grant.promo_until ?? null)
 }
 
 export async function getOrCreateGrant(deviceHash: string): Promise<AccessGrant | null> {
@@ -40,7 +50,7 @@ export async function getOrCreateGrant(deviceHash: string): Promise<AccessGrant 
 
   const { data: existing, error: selErr } = await supabase
     .from(TABLE)
-    .select("id,device_hash,trial_questions_left,paid_until")
+    .select("id,device_hash,trial_questions_left,paid_until,promo_until")
     .eq("device_hash", deviceHash)
     .maybeSingle()
 
@@ -52,8 +62,10 @@ export async function getOrCreateGrant(deviceHash: string): Promise<AccessGrant 
     .insert({
       device_hash: deviceHash,
       trial_questions_left: trialDefault,
+      paid_until: null,
+      promo_until: null,
     })
-    .select("id,device_hash,trial_questions_left,paid_until")
+    .select("id,device_hash,trial_questions_left,paid_until,promo_until")
     .single()
 
   if (insErr) throw insErr
@@ -78,10 +90,9 @@ export async function requireAccessByDeviceHash(args: {
   const grant = await getOrCreateGrant(deviceHash)
   if (!grant) return { ok: true, status: 200, grant: null }
 
-  const paid = isPaidActive(grant.paid_until ?? null)
-  const left = Number(grant.trial_questions_left ?? 0)
+  if (hasUnlimited(grant)) return { ok: true, status: 200, grant }
 
-  if (paid) return { ok: true, status: 200, grant }
+  const left = Number(grant.trial_questions_left ?? 0)
 
   if (left > 0) {
     if (!consumeTrial) return { ok: true, status: 200, grant }
@@ -93,7 +104,7 @@ export async function requireAccessByDeviceHash(args: {
       .from(TABLE)
       .update({ trial_questions_left: next, updated_at: new Date().toISOString() })
       .eq("id", grant.id)
-      .select("id,device_hash,trial_questions_left,paid_until")
+      .select("id,device_hash,trial_questions_left,paid_until,promo_until")
       .single()
 
     if (updErr) throw updErr

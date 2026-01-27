@@ -1,35 +1,35 @@
-import { NextResponse } from "next/server";
-import crypto from "crypto";
-import { createClient } from "@supabase/supabase-js";
+import { NextResponse } from "next/server"
+import crypto from "crypto"
+import { createClient } from "@supabase/supabase-js"
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
+export const dynamic = "force-dynamic"
+export const runtime = "nodejs"
 
-const DEVICE_COOKIE = "ta_device_hash";
+const DEVICE_COOKIE = "ta_device_hash"
 
 function hmacMd5HexLower(message: string, secret: string) {
-  return crypto.createHmac("md5", secret).update(message, "utf8").digest("hex");
+  return crypto.createHmac("md5", secret).update(message, "utf8").digest("hex")
 }
 
 function getSupabaseAdmin() {
   const url =
     process.env.NEXT_PUBLIC_SUPABASE_URL ||
     process.env.SUPABASE_URL ||
-    process.env.SUPABASE_PROJECT_URL;
+    process.env.SUPABASE_PROJECT_URL
 
   const key =
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.SUPABASE_SERVICE_ROLE ||
-    process.env.SUPABASE_SERVICE_KEY;
+    process.env.SUPABASE_SERVICE_KEY
 
-  if (!url || !key) return null;
-  return createClient(url, key, { auth: { persistSession: false } });
+  if (!url || !key) return null
+  return createClient(url, key, { auth: { persistSession: false } })
 }
 
 function getCookie(req: Request, name: string) {
-  const raw = req.headers.get("cookie") || "";
-  const m = raw.match(new RegExp(`(?:^|; )${name}=([^;]+)`));
-  return m ? decodeURIComponent(m[1]) : "";
+  const raw = req.headers.get("cookie") || ""
+  const m = raw.match(new RegExp(`(?:^|; )${name}=([^;]+)`))
+  return m ? decodeURIComponent(m[1]) : ""
 }
 
 function htmlEscape(s: string) {
@@ -38,60 +38,65 @@ function htmlEscape(s: string) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+    .replace(/'/g, "&#039;")
 }
 
 function hidden(name: string, value: string) {
-  return `<input type="hidden" name="${htmlEscape(name)}" value="${htmlEscape(value)}" />`;
+  return `<input type="hidden" name="${htmlEscape(name)}" value="${htmlEscape(value)}" />`
 }
 
 function num(v: any, fallback: number) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
+  const n = Number(v)
+  return Number.isFinite(n) ? n : fallback
+}
+
+function buildOrderReference(planId: string) {
+  return `ta_${planId}_${Date.now()}_${crypto.randomBytes(8).toString("hex")}`
 }
 
 async function handler(req: Request) {
-  const url = new URL(req.url);
-  const planId = (url.searchParams.get("planId") || url.searchParams.get("plan") || "monthly").toLowerCase();
-  const debug = url.searchParams.get("debug") === "1";
+  const url = new URL(req.url)
+  const planId = (url.searchParams.get("planId") || url.searchParams.get("plan") || "monthly").toLowerCase()
+  const debug = url.searchParams.get("debug") === "1"
 
   const merchantAccount =
     process.env.WAYFORPAY_MERCHANT_ACCOUNT ||
     process.env.WAYFORPAY_MERCHANT ||
-    "";
+    ""
 
   const merchantDomainName =
     process.env.WAYFORPAY_DOMAIN ||
-    "www.turbotaai.com";
+    "www.turbotaai.com"
 
   const secret =
     process.env.WAYFORPAY_SECRET_KEY ||
     process.env.WAYFORPAY_SECRET ||
-    "";
+    ""
 
-  const currency = "UAH";
+  const currency = "UAH"
 
-  // Цена только из env, дефолт 499
-  // Для теста ставишь 1 в Vercel env и делаешь redeploy
   const monthlyPrice = num(
     process.env.TA_MONTHLY_PRICE_UAH ||
       process.env.MONTHLY_PRICE_UAH ||
       process.env.NEXT_PUBLIC_TA_MONTHLY_PRICE_UAH ||
       499,
     499
-  );
+  )
 
-  const amountNumber = planId === "monthly" ? monthlyPrice : monthlyPrice;
+  const forced = num(process.env.TA_FORCE_AMOUNT_UAH || "", 0)
+  const amountNumber = forced > 0 ? forced : planId === "monthly" ? monthlyPrice : monthlyPrice
 
-  const amount = Number(amountNumber || 0);
-  const amountStr = amount.toFixed(2);
+  const amount = Number(amountNumber || 0)
+  const amountStr = amount.toFixed(2)
 
-  const productName = planId === "monthly" ? "TurbotaAI Monthly" : "TurbotaAI Monthly";
-  const productCount = "1";
-  const productPrice = amountStr;
+  const productName = planId === "monthly" ? "TurbotaAI Monthly" : "TurbotaAI Monthly"
+  const productCount = "1"
+  const productPrice = amountStr
 
-  const orderDate = Math.floor(Date.now() / 1000).toString();
-  const orderReference = `ta_${planId}_${Date.now()}_${crypto.randomBytes(8).toString("hex")}`;
+  const orderDate = Math.floor(Date.now() / 1000).toString()
+
+  const orderReferenceFromQuery = String(url.searchParams.get("orderReference") || "").trim()
+  const orderReference = orderReferenceFromQuery || buildOrderReference(planId)
 
   const signString = [
     merchantAccount,
@@ -103,16 +108,15 @@ async function handler(req: Request) {
     productName,
     productCount,
     productPrice,
-  ].join(";");
+  ].join(";")
 
-  const merchantSignature = secret ? hmacMd5HexLower(signString, secret) : "";
+  const merchantSignature = secret ? hmacMd5HexLower(signString, secret) : ""
 
-  const existingDeviceHash = getCookie(req, DEVICE_COOKIE);
-  const deviceHash = existingDeviceHash || crypto.randomUUID();
+  const existingDeviceHash = getCookie(req, DEVICE_COOKIE)
+  const deviceHash = existingDeviceHash || crypto.randomUUID()
 
-  // Пишем billing_orders, но не тормозим ответ если Supabase завис
   try {
-    const sb = getSupabaseAdmin();
+    const sb = getSupabaseAdmin()
     if (sb) {
       await Promise.race([
         sb.from("billing_orders").upsert([
@@ -133,11 +137,13 @@ async function handler(req: Request) {
               productName,
               productCount,
               productPrice,
+              forcedAmount: forced > 0 ? forced : null,
             },
+            updated_at: new Date().toISOString(),
           },
         ]),
         new Promise((resolve) => setTimeout(resolve, 2000)),
-      ]);
+      ])
     }
   } catch {}
 
@@ -152,12 +158,12 @@ async function handler(req: Request) {
       currency,
       signString,
       merchantSignature,
-    });
+      forcedAmount: forced > 0 ? forced : null,
+    })
   }
 
-  // Важно: returnUrl сразу с orderReference
-  const returnUrl = `${url.origin}/payment/result?orderReference=${encodeURIComponent(orderReference)}`;
-  const serviceUrl = `${url.origin}/api/billing/wayforpay/callback`;
+  const returnUrl = `${url.origin}/payment/result?orderReference=${encodeURIComponent(orderReference)}`
+  const serviceUrl = `${url.origin}/api/billing/wayforpay/callback`
 
   const baseInputs = [
     hidden("merchantAccount", merchantAccount),
@@ -170,13 +176,13 @@ async function handler(req: Request) {
     hidden("merchantSignature", merchantSignature),
     hidden("returnUrl", returnUrl),
     hidden("serviceUrl", serviceUrl),
-  ].join("\n");
+  ].join("\n")
 
   const arrInputs = [
     hidden("productName[]", productName),
     hidden("productCount[]", productCount),
     hidden("productPrice[]", productPrice),
-  ].join("\n");
+  ].join("\n")
 
   const html = `<!doctype html>
 <html lang="uk">
@@ -206,7 +212,7 @@ async function handler(req: Request) {
     }, 50);
   </script>
 </body>
-</html>`;
+</html>`
 
   const res = new NextResponse(html, {
     status: 200,
@@ -214,27 +220,29 @@ async function handler(req: Request) {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
     },
-  });
+  })
 
   res.cookies.set("ta_last_order", orderReference, {
     path: "/",
     maxAge: 60 * 60 * 24 * 30,
     sameSite: "lax",
-  });
+    secure: process.env.NODE_ENV === "production",
+  })
 
   res.cookies.set(DEVICE_COOKIE, deviceHash, {
     path: "/",
     maxAge: 60 * 60 * 24 * 365,
     sameSite: "lax",
-  });
+    secure: process.env.NODE_ENV === "production",
+  })
 
-  return res;
+  return res
 }
 
 export async function GET(req: Request) {
-  return handler(req);
+  return handler(req)
 }
 
 export async function POST(req: Request) {
-  return handler(req);
+  return handler(req)
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { PLANS } from "@/lib/billing/plans"
 import { Button } from "@/components/ui/button"
@@ -8,6 +8,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAuth } from "@/lib/auth/auth-context"
+
+function promoErrorText(httpStatus: number, data: any) {
+  const code = String(data?.errorCode || "").toUpperCase().trim()
+
+  if (httpStatus === 401 || code === "LOGIN_REQUIRED") return "Чтобы активировать промокод, нужно войти в аккаунт"
+  if (code === "EMPTY_CODE") return "Введите промокод"
+  if (code === "INVALID_PROMO") return "Промокод недействителен или уже неактивен"
+  if (code === "REDEEM_FAILED") return "Не удалось активировать промокод, попробуйте еще раз"
+
+  const msg = String(data?.error || data?.message || "").trim()
+  return msg || "Не удалось активировать промокод"
+}
+
+function formatIso(iso: string) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleString()
+}
 
 export default function PricingPage() {
   const router = useRouter()
@@ -26,11 +44,11 @@ export default function PricingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ planId }),
       })
-      const data = await res.json()
-      if (!res.ok || !data?.invoiceUrl) throw new Error(data?.error || "Payment init failed")
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || !data?.invoiceUrl) throw new Error(String(data?.error || "Payment init failed"))
       window.location.href = data.invoiceUrl
     } catch (e: any) {
-      alert(e?.message || "Payment init failed")
+      alert(String(e?.message || "Payment init failed"))
     } finally {
       setLoadingPlan(null)
     }
@@ -45,11 +63,25 @@ export default function PricingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: promo }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || "Promo failed")
-      setPromoMsg(`Промо активировано до: ${data.promoUntil}`)
+      const data = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        setPromoMsg(promoErrorText(res.status, data))
+        return
+      }
+
+      const iso = String(data?.promo_until || data?.promoUntil || "").trim()
+      if (!iso) {
+        setPromoMsg("Промо активировано, но дата не пришла. Обновите профиль")
+      } else {
+        setPromoMsg(`Промо активировано до: ${formatIso(iso)}`)
+      }
+
+      try {
+        window.dispatchEvent(new Event("turbota:refresh"))
+      } catch {}
     } catch (e: any) {
-      setPromoMsg(e?.message || "Promo failed")
+      setPromoMsg(String(e?.message || "Promo failed"))
     } finally {
       setPromoLoading(false)
     }
@@ -90,11 +122,11 @@ export default function PricingPage() {
                 {loadingPlan === p.id ? "Opening payment..." : "Subscribe"}
               </Button>
 
-              {!user && (
+              {!user ? (
                 <p className="text-xs text-slate-500">
                   You can pay without login. For promo activation and history we recommend logging in.
                 </p>
-              )}
+              ) : null}
             </CardContent>
           </Card>
         ))}
@@ -111,15 +143,18 @@ export default function PricingPage() {
               <Label htmlFor="promo">Promo code</Label>
               <Input id="promo" value={promo} onChange={(e) => setPromo(e.target.value)} placeholder="DOCTORS2026" />
             </div>
+
             <Button onClick={redeemPromo} disabled={promoLoading}>
               {promoLoading ? "Activating..." : "Activate promo"}
             </Button>
-            {promoMsg && <p className="text-sm text-slate-700">{promoMsg}</p>}
-            {!user && (
+
+            {promoMsg ? <p className="text-sm text-slate-700">{promoMsg}</p> : null}
+
+            {!user ? (
               <p className="text-xs text-slate-500">
                 Promo activation requires login.
               </p>
-            )}
+            ) : null}
           </CardContent>
         </Card>
 

@@ -11,6 +11,8 @@ type SummaryLike = {
   paid_until?: string | null
   promo_until?: string | null
   access?: string | null
+  autoRenew?: boolean | null
+  subscriptionStatus?: string | null
 }
 
 function isActive(iso?: string | null) {
@@ -25,10 +27,18 @@ function clearClientAuthStorage() {
       if (k.startsWith("sb-") && k.endsWith("-auth-token")) localStorage.removeItem(k)
     }
   } catch {}
+
   try {
     sessionStorage.removeItem("turbota_paywall")
     sessionStorage.removeItem("turbota_conv_id")
   } catch {}
+}
+
+function formatIso(iso?: string | null) {
+  if (!iso) return "Не активно"
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return String(iso)
+  return d.toLocaleString()
 }
 
 export default function ProfilePage() {
@@ -38,12 +48,14 @@ export default function ProfilePage() {
   const [summary, setSummary] = useState<SummaryLike | null>(null)
 
   const access = useMemo(() => {
-    if (!summary) return "Limited"
+    if (!summary) return "Trial"
     if (summary.access) return summary.access
     if (isActive(summary.paid_until)) return "Paid"
     if (isActive(summary.promo_until)) return "Promo"
-    return "Limited"
+    return "Trial"
   }, [summary])
+
+  const unlimited = access === "Paid" || access === "Promo"
 
   const trialLeft = useMemo(() => {
     const v = Number(summary?.trial_questions_left ?? 5)
@@ -59,12 +71,19 @@ export default function ProfilePage() {
       const s: SummaryLike = {
         logged_in: !!(j?.isLoggedIn ?? j?.logged_in ?? j?.user?.id),
         email: j?.user?.email ?? j?.email ?? null,
-        trial_questions_left: j?.trial_questions_left ?? 5,
+        trial_questions_left: j?.trial_questions_left ?? j?.trialLeft ?? 5,
         paid_until: j?.paidUntil ?? j?.paid_until ?? null,
         promo_until: j?.promoUntil ?? j?.promo_until ?? null,
         access: j?.access ?? null,
+        autoRenew: typeof j?.autoRenew === "boolean" ? j.autoRenew : null,
+        subscriptionStatus: j?.subscriptionStatus ?? null,
       }
+
       setSummary(s)
+
+      try {
+        window.dispatchEvent(new Event("turbota:refresh"))
+      } catch {}
     } catch {
       setSummary(null)
     } finally {
@@ -79,12 +98,18 @@ export default function ProfilePage() {
   const isLoggedIn = !!summary?.logged_in
 
   async function doLogout() {
-    try {
-      await fetch(`/api/auth/clear?next=${encodeURIComponent("/profile")}`, { method: "POST" })
-    } catch {}
     clearClientAuthStorage()
-    window.location.assign("/profile")
+    window.location.assign("/api/auth/logout")
   }
+
+  const accessLabel =
+    access === "Paid"
+      ? "Подписка активна"
+      : access === "Promo"
+      ? "Промо активно"
+      : "Бесплатно"
+
+  const subscriptionStatusLabel = String(summary?.subscriptionStatus || "").trim() || (unlimited ? "active" : "inactive")
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10">
@@ -121,20 +146,16 @@ export default function ProfilePage() {
             <div className="text-right">{loading ? "…" : summary?.email || "Гость"}</div>
 
             <div className="text-gray-500">Доступ:</div>
-            <div className="text-right">{loading ? "…" : access === "Paid" ? "Подписка активна" : "Бесплатно"}</div>
+            <div className="text-right">{loading ? "…" : accessLabel}</div>
 
             <div className="text-gray-500">Осталось вопросов:</div>
-            <div className="text-right">{loading ? "…" : trialLeft}</div>
+            <div className="text-right">{loading ? "…" : unlimited ? "∞" : trialLeft}</div>
 
             <div className="text-gray-500">Оплачено до:</div>
-            <div className="text-right">
-              {loading ? "…" : summary?.paid_until ? new Date(summary.paid_until).toLocaleString() : "Не активно"}
-            </div>
+            <div className="text-right">{loading ? "…" : formatIso(summary?.paid_until)}</div>
 
             <div className="text-gray-500">Промо до:</div>
-            <div className="text-right">
-              {loading ? "…" : summary?.promo_until ? new Date(summary.promo_until).toLocaleString() : "Не активно"}
-            </div>
+            <div className="text-right">{loading ? "…" : formatIso(summary?.promo_until)}</div>
           </div>
 
           <div className="mt-5 grid gap-3">
@@ -153,10 +174,10 @@ export default function ProfilePage() {
 
           <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
             <div className="text-gray-500">Статус подписки:</div>
-            <div className="text-right">{loading ? "…" : access === "Paid" ? "Активна" : "Не активна"}</div>
+            <div className="text-right">{loading ? "…" : subscriptionStatusLabel}</div>
 
             <div className="text-gray-500">Автопродление:</div>
-            <div className="text-right">{access === "Paid" ? "Скоро" : "—"}</div>
+            <div className="text-right">{loading ? "…" : summary?.autoRenew ? "Включено" : "Выключено"}</div>
           </div>
 
           <div className="mt-4 space-y-3">
@@ -179,6 +200,10 @@ export default function ProfilePage() {
         ) : (
           <div className="mt-4 text-sm text-gray-600">Войдите, чтобы видеть историю.</div>
         )}
+      </div>
+
+      <div className="mt-6 text-sm text-gray-500">
+        Тест оплаты: чтобы выставить сумму 1 грн, добавьте env TA_FORCE_AMOUNT_UAH=1 и сделайте redeploy. Чтобы вернуть 499, удалите TA_FORCE_AMOUNT_UAH.
       </div>
     </div>
   )
