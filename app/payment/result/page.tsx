@@ -28,7 +28,6 @@ export default function PaymentResultPage() {
   const [lastState, setLastState] = useState<string>("unknown")
 
   const maxAttempts = 10
-
   const canPoll = useMemo(() => Boolean(orderReference), [orderReference])
 
   useEffect(() => {
@@ -48,6 +47,9 @@ export default function PaymentResultPage() {
     }
 
     async function syncOnce(i: number) {
+      if (!alive) return
+      setAttempt(i)
+
       const url = `/api/billing/wayforpay/sync?orderReference=${encodeURIComponent(orderReference)}`
       try {
         const r = await fetch(url, { method: "POST", cache: "no-store" })
@@ -105,7 +107,6 @@ export default function PaymentResultPage() {
 
     setUi("checking")
     setMsg("Перевіряємо оплату…")
-    setAttempt(1)
     syncOnce(1)
 
     return () => {
@@ -137,16 +138,10 @@ export default function PaymentResultPage() {
 
         {showRetry ? (
           <div className="mt-4 flex gap-2">
-            <button
-              onClick={() => location.reload()}
-              className="flex-1 rounded-xl bg-black px-4 py-2 text-white"
-            >
+            <button onClick={() => location.reload()} className="flex-1 rounded-xl bg-black px-4 py-2 text-white">
               Перевірити знову
             </button>
-            <button
-              onClick={() => router.replace("/pricing")}
-              className="flex-1 rounded-xl border px-4 py-2"
-            >
+            <button onClick={() => router.replace("/pricing")} className="flex-1 rounded-xl border px-4 py-2">
               Тарифи
             </button>
           </div>

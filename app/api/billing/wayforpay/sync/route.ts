@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { createHash } from "crypto"
+import { createHash, randomUUID } from "crypto"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -154,7 +154,7 @@ async function upsertGrantByDeviceHash(
   }
 
   const ins = await sb.from("access_grants").insert({
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     user_id: null,
     device_hash: deviceHash,
     trial_questions_left: 0,
@@ -202,7 +202,7 @@ async function upsertGrantByUserId(
     if (upd.error) throw new Error("access_grants user update failed: " + upd.error.message)
   } else {
     const ins = await sb.from("access_grants").insert({
-      id: crypto.randomUUID(),
+      id: randomUUID(),
       user_id: userId,
       device_hash: null,
       trial_questions_left: 0,
@@ -334,11 +334,13 @@ async function handler(req: NextRequest) {
   }
 
   const ops: any[] = []
-
   if (deviceHash) ops.push({ scope: "device", ...(await upsertGrantByDeviceHash(sb, deviceHash, days)) })
   if (userId) ops.push({ scope: "user", ...(await upsertGrantByUserId(sb, userId, days)) })
 
-  const paidUntil = ops.find((x) => x.scope === "user")?.paid_until || ops.find((x) => x.scope === "device")?.paid_until || null
+  const paidUntil =
+    ops.find((x) => x.scope === "user")?.paid_until ||
+    ops.find((x) => x.scope === "device")?.paid_until ||
+    null
 
   const payload: any = {
     ok: true,

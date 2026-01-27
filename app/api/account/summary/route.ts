@@ -50,10 +50,15 @@ function toDateOrNull(v: any): Date | null {
 function laterDateIso(a: any, b: any): string | null {
   const da = toDateOrNull(a)
   const db = toDateOrNull(b)
+
   if (!da && !db) return null
-  if (da && !db) return da.toISOString()
   if (!da && db) return db.toISOString()
-  return (da.getTime() >= db.getTime() ? da : db).toISOString()
+  if (da && !db) return da.toISOString()
+
+  // тут гарантированно оба Date
+  const A = da as Date
+  const B = db as Date
+  return (A.getTime() >= B.getTime() ? A : B).toISOString()
 }
 
 function isFuture(iso: string | null) {
@@ -199,7 +204,6 @@ export async function GET(req: NextRequest) {
 
   const trialDefault = getTrialLimit()
   const nowIso = new Date().toISOString()
-
   const debug = req.nextUrl.searchParams.get("debug") === "1"
 
   let deviceHash = String(cookieStore.get(DEVICE_COOKIE)?.value || "").trim() || null
@@ -223,12 +227,8 @@ export async function GET(req: NextRequest) {
     const aLeft = clampTrial(accountGrant?.trial_questions_left ?? trialDefault, trialDefault)
     const eff = Math.min(gLeft, aLeft)
 
-    if (gLeft !== eff) {
-      await updateGrant(admin, guestGrant.id, { trial_questions_left: eff, updated_at: nowIso })
-    }
-    if (aLeft !== eff) {
-      await updateGrant(admin, accountGrant.id, { trial_questions_left: eff, updated_at: nowIso })
-    }
+    if (gLeft !== eff) await updateGrant(admin, guestGrant.id, { trial_questions_left: eff, updated_at: nowIso })
+    if (aLeft !== eff) await updateGrant(admin, accountGrant.id, { trial_questions_left: eff, updated_at: nowIso })
   }
 
   const guestPaid = guestGrant?.paid_until ? String(guestGrant.paid_until) : null
@@ -258,8 +258,7 @@ export async function GET(req: NextRequest) {
   const access = paidActive ? "Paid" : promoActive ? "Promo" : "Trial"
   const subscriptionStatus = paidActive ? "active" : "inactive"
 
-  const autoRenew =
-    (isLoggedIn ? accountGrant?.auto_renew : guestGrant?.auto_renew) === true
+  const autoRenew = ((isLoggedIn ? accountGrant?.auto_renew : guestGrant?.auto_renew) === true)
 
   const body: any = {
     ok: true,
@@ -274,12 +273,20 @@ export async function GET(req: NextRequest) {
     trial_left: trialLeftRaw,
     trialLeft: trialLeftRaw,
 
-    paidUntil: paidUntil,
-    promoUntil: promoUntil,
-    accessUntil: accessUntil,
+    paidUntil,
+    promoUntil,
+    accessUntil,
 
     autoRenew,
     subscriptionStatus,
+
+    // совместимость со старым фронтом
+    email: user?.email ?? null,
+    questionsLeft: trialLeftRaw,
+    paid_until: paidUntil,
+    promo_until: promoUntil,
+    subscription_status: subscriptionStatus,
+    auto_renew: autoRenew,
   }
 
   if (debug) {

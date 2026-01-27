@@ -30,29 +30,52 @@ function fmtDate(until: string | null) {
   }
 }
 
+function pickNumber(j: any, keys: string[], fallback = 0) {
+  for (const k of keys) {
+    const v = j?.[k]
+    if (typeof v === "number" && Number.isFinite(v)) return v
+  }
+  return fallback
+}
+
 async function loadSummary(): Promise<Summary> {
   const r = await fetch("/api/account/summary", { cache: "no-store" })
   const j = await r.json().catch(() => ({} as any))
 
   const paidUntil = (j?.paidUntil ?? j?.paid_until ?? null) as string | null
   const promoUntil = (j?.promoUntil ?? j?.promo_until ?? null) as string | null
-  const questionsLeft = typeof j?.questionsLeft === "number" ? j.questionsLeft : 0
+
+  const questionsLeft = pickNumber(j, ["trial_questions_left", "trialLeft", "trial_left", "questionsLeft"], 0)
+
+  const email = (j?.user?.email ?? j?.email ?? null) as string | null
 
   const hasPaid = isActive(paidUntil)
   const hasPromo = isActive(promoUntil)
+
+  const accessRaw = String(j?.access || "")
   const access =
-    hasPaid ? "Оплачено" : hasPromo ? "Промо" : questionsLeft > 0 ? "Бесплатно" : "Нет доступа"
+    hasPaid || accessRaw === "Paid"
+      ? "Оплачено"
+      : hasPromo || accessRaw === "Promo"
+        ? "Промо"
+        : questionsLeft > 0
+          ? "Бесплатно"
+          : "Нет доступа"
+
+  const subscription_status = (j?.subscriptionStatus ?? j?.subscription_status ?? (hasPaid || hasPromo ? "active" : "inactive")) as
+    | "active"
+    | "inactive"
+
+  const auto_renew = Boolean(j?.autoRenew ?? j?.auto_renew ?? false)
 
   return {
-    email: (j?.email ?? null) as string | null,
+    email,
     access,
     questionsLeft,
     paid_until: paidUntil,
     promo_until: promoUntil,
-    subscription_status: (j?.subscription_status ?? (hasPaid || hasPromo ? "active" : "inactive")) as
-      | "active"
-      | "inactive",
-    auto_renew: Boolean(j?.auto_renew ?? false),
+    subscription_status,
+    auto_renew,
   }
 }
 
@@ -196,17 +219,11 @@ export default function ProfilePage() {
           </div>
 
           <div className="mt-6 space-y-3">
-            <button
-              className="w-full rounded-xl border px-4 py-2 text-sm font-medium text-gray-400"
-              disabled
-            >
+            <button className="w-full rounded-xl border px-4 py-2 text-sm font-medium text-gray-400" disabled>
               Отменить автопродление
             </button>
 
-            <button
-              className="w-full rounded-xl border px-4 py-2 text-sm font-medium text-gray-400"
-              disabled
-            >
+            <button className="w-full rounded-xl border px-4 py-2 text-sm font-medium text-gray-400" disabled>
               Отменить промокод
             </button>
           </div>
