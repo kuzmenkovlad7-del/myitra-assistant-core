@@ -1,209 +1,223 @@
 "use client"
 
-import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 
-type SummaryLike = {
-  logged_in?: boolean
-  email?: string | null
-  trial_questions_left?: number | null
-  paid_until?: string | null
-  promo_until?: string | null
-  access?: string | null
-  autoRenew?: boolean | null
-  subscriptionStatus?: string | null
+type Summary = {
+  email: string | null
+  access: string
+  questionsLeft: number
+  paid_until: string | null
+  promo_until: string | null
+  subscription_status: "active" | "inactive"
+  auto_renew: boolean
 }
 
-function isActive(iso?: string | null) {
-  if (!iso) return false
-  const t = new Date(iso).getTime()
+function isActive(until: string | null) {
+  if (!until) return false
+  const t = new Date(until).getTime()
   return Number.isFinite(t) && t > Date.now()
 }
 
-function clearClientAuthStorage() {
+function fmtDate(until: string | null) {
+  if (!until) return "Не активно"
   try {
-    for (const k of Object.keys(localStorage)) {
-      if (k.startsWith("sb-") && k.endsWith("-auth-token")) localStorage.removeItem(k)
-    }
-  } catch {}
-
-  try {
-    sessionStorage.removeItem("turbota_paywall")
-    sessionStorage.removeItem("turbota_conv_id")
-  } catch {}
+    const d = new Date(until)
+    if (!Number.isFinite(d.getTime())) return "Не активно"
+    return d.toLocaleDateString("uk-UA")
+  } catch {
+    return "Не активно"
+  }
 }
 
-function formatIso(iso?: string | null) {
-  if (!iso) return "Не активно"
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return String(iso)
-  return d.toLocaleString()
+async function loadSummary(): Promise<Summary> {
+  const r = await fetch("/api/account/summary", { cache: "no-store" })
+  const j = await r.json().catch(() => ({} as any))
+
+  const paidUntil = (j?.paidUntil ?? j?.paid_until ?? null) as string | null
+  const promoUntil = (j?.promoUntil ?? j?.promo_until ?? null) as string | null
+  const questionsLeft = typeof j?.questionsLeft === "number" ? j.questionsLeft : 0
+
+  const hasPaid = isActive(paidUntil)
+  const hasPromo = isActive(promoUntil)
+  const access =
+    hasPaid ? "Оплачено" : hasPromo ? "Промо" : questionsLeft > 0 ? "Бесплатно" : "Нет доступа"
+
+  return {
+    email: (j?.email ?? null) as string | null,
+    access,
+    questionsLeft,
+    paid_until: paidUntil,
+    promo_until: promoUntil,
+    subscription_status: (j?.subscription_status ?? (hasPaid || hasPromo ? "active" : "inactive")) as
+      | "active"
+      | "inactive",
+    auto_renew: Boolean(j?.auto_renew ?? false),
+  }
 }
 
 export default function ProfilePage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  const paidParam = useMemo(() => searchParams.get("paid"), [searchParams])
 
   const [loading, setLoading] = useState(true)
-  const [summary, setSummary] = useState<SummaryLike | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [summary, setSummary] = useState<Summary>({
+    email: null,
+    access: "Бесплатно",
+    questionsLeft: 0,
+    paid_until: null,
+    promo_until: null,
+    subscription_status: "inactive",
+    auto_renew: false,
+  })
 
-  const access = useMemo(() => {
-    if (!summary) return "Trial"
-    if (summary.access) return summary.access
-    if (isActive(summary.paid_until)) return "Paid"
-    if (isActive(summary.promo_until)) return "Promo"
-    return "Trial"
-  }, [summary])
-
-  const unlimited = access === "Paid" || access === "Promo"
-
-  const trialLeft = useMemo(() => {
-    const v = Number(summary?.trial_questions_left ?? 5)
-    return Number.isFinite(v) ? v : 5
-  }, [summary])
-
-  async function loadSummary() {
+  const refresh = useCallback(async () => {
+    setErr(null)
     setLoading(true)
     try {
-      const r = await fetch("/api/account/summary", { cache: "no-store" })
-      const j: any = await r.json().catch(() => null)
-
-      const s: SummaryLike = {
-        logged_in: !!(j?.isLoggedIn ?? j?.logged_in ?? j?.user?.id),
-        email: j?.user?.email ?? j?.email ?? null,
-        trial_questions_left: j?.trial_questions_left ?? j?.trialLeft ?? 5,
-        paid_until: j?.paidUntil ?? j?.paid_until ?? null,
-        promo_until: j?.promoUntil ?? j?.promo_until ?? null,
-        access: j?.access ?? null,
-        autoRenew: typeof j?.autoRenew === "boolean" ? j.autoRenew : null,
-        subscriptionStatus: j?.subscriptionStatus ?? null,
-      }
-
+      const s = await loadSummary()
       setSummary(s)
-
-      try {
-        window.dispatchEvent(new Event("turbota:refresh"))
-      } catch {}
-    } catch {
-      setSummary(null)
+    } catch (e: any) {
+      setErr(String(e?.message || e))
     } finally {
       setLoading(false)
     }
-  }
-
-  useEffect(() => {
-    loadSummary()
   }, [])
 
-  const isLoggedIn = !!summary?.logged_in
+  useEffect(() => {
+    refresh()
+  }, [refresh])
 
-  async function doLogout() {
-    clearClientAuthStorage()
-    window.location.assign("/api/auth/logout")
-  }
+  useEffect(() => {
+    if (paidParam !== "1") return
 
-  const accessLabel =
-    access === "Paid"
-      ? "Подписка активна"
-      : access === "Promo"
-      ? "Промо активно"
-      : "Бесплатно"
+    let alive = true
+    ;(async () => {
+      setSyncing(true)
+      try {
+        await fetch("/api/billing/wayforpay/sync", { method: "POST", cache: "no-store" })
+      } catch {
+      } finally {
+        if (alive) setSyncing(false)
+      }
+      if (alive) await refresh()
+    })()
 
-  const subscriptionStatusLabel = String(summary?.subscriptionStatus || "").trim() || (unlimited ? "active" : "inactive")
+    return () => {
+      alive = false
+    }
+  }, [paidParam, refresh])
+
+  const hasPaid = isActive(summary.paid_until)
+  const hasPromo = isActive(summary.promo_until)
+  const questionsLabel = hasPaid || hasPromo ? "∞" : String(summary.questionsLeft)
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="text-5xl font-semibold tracking-tight">Профиль</div>
-          <div className="mt-2 text-gray-600">Управление доступом и история</div>
-        </div>
-
-        <div className="flex gap-3">
-          <Link href="/pricing" className="rounded-full border px-5 py-2 text-sm">
-            Тарифы
-          </Link>
-
-          {isLoggedIn ? (
-            <button onClick={doLogout} className="rounded-full border px-5 py-2 text-sm">
-              Выйти
-            </button>
-          ) : (
-            <Link href="/login?next=/profile" className="rounded-full border px-5 py-2 text-sm">
-              Войти
-            </Link>
-          )}
-        </div>
+    <div className="mx-auto max-w-6xl px-4 py-8">
+      <div className="mb-8">
+        <h1 className="text-4xl font-semibold">Профиль</h1>
+        <p className="mt-2 text-gray-500">Управление доступом и история</p>
       </div>
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2">
         <div className="rounded-2xl border bg-white p-6 shadow-sm">
-          <div className="text-2xl font-semibold">Аккаунт</div>
-          <div className="mt-1 text-gray-600">Статус входа и доступ</div>
-
-          <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-            <div className="text-gray-500">Email:</div>
-            <div className="text-right">{loading ? "…" : summary?.email || "Гость"}</div>
-
-            <div className="text-gray-500">Доступ:</div>
-            <div className="text-right">{loading ? "…" : accessLabel}</div>
-
-            <div className="text-gray-500">Осталось вопросов:</div>
-            <div className="text-right">{loading ? "…" : unlimited ? "∞" : trialLeft}</div>
-
-            <div className="text-gray-500">Оплачено до:</div>
-            <div className="text-right">{loading ? "…" : formatIso(summary?.paid_until)}</div>
-
-            <div className="text-gray-500">Промо до:</div>
-            <div className="text-right">{loading ? "…" : formatIso(summary?.promo_until)}</div>
+          <div className="mb-6">
+            <div className="text-xl font-semibold">Аккаунт</div>
+            <div className="text-sm text-gray-500">Статус входа и доступ</div>
           </div>
 
-          <div className="mt-5 grid gap-3">
-            <button onClick={loadSummary} className="w-full rounded-xl border px-4 py-2 text-sm">
-              Обновить
+          <div className="space-y-3 text-sm">
+            <div className="flex items-center justify-between">
+              <div className="text-gray-500">Email:</div>
+              <div className="font-medium">{summary.email ? summary.email : "Гость"}</div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="text-gray-500">Доступ:</div>
+              <div className="font-medium">{summary.access}</div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="text-gray-500">Осталось вопросов:</div>
+              <div className="font-medium">{questionsLabel}</div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="text-gray-500">Оплачено до:</div>
+              <div className="font-medium">{fmtDate(summary.paid_until)}</div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="text-gray-500">Промо до:</div>
+              <div className="font-medium">{fmtDate(summary.promo_until)}</div>
+            </div>
+          </div>
+
+          <div className="mt-6 space-y-3">
+            <button
+              className="w-full rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
+              onClick={refresh}
+              disabled={loading || syncing}
+            >
+              {loading ? "Обновление..." : syncing ? "Проверка оплаты..." : "Обновить"}
             </button>
-            <Link href="/pricing" className="w-full rounded-xl border px-4 py-2 text-center text-sm">
+
+            <button
+              className="w-full rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50"
+              onClick={() => router.push("/pricing")}
+            >
               Тарифы
-            </Link>
+            </button>
           </div>
+
+          {err ? <div className="mt-4 text-sm text-red-600">{err}</div> : null}
         </div>
 
         <div className="rounded-2xl border bg-white p-6 shadow-sm">
-          <div className="text-2xl font-semibold">Управление доступом</div>
-          <div className="mt-1 text-gray-600">Подписка и промокод</div>
-
-          <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-            <div className="text-gray-500">Статус подписки:</div>
-            <div className="text-right">{loading ? "…" : subscriptionStatusLabel}</div>
-
-            <div className="text-gray-500">Автопродление:</div>
-            <div className="text-right">{loading ? "…" : summary?.autoRenew ? "Включено" : "Выключено"}</div>
+          <div className="mb-6">
+            <div className="text-xl font-semibold">Управление доступом</div>
+            <div className="text-sm text-gray-500">Подписка и промокод</div>
           </div>
 
-          <div className="mt-4 space-y-3">
-            <button disabled className="w-full rounded-xl border px-4 py-2 text-sm text-gray-400">
+          <div className="space-y-3 text-sm">
+            <div className="flex items-center justify-between">
+              <div className="text-gray-500">Статус подписки:</div>
+              <div className="font-medium">{summary.subscription_status}</div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <div className="text-gray-500">Автопродление:</div>
+              <div className="font-medium">{summary.auto_renew ? "Включено" : "Выключено"}</div>
+            </div>
+          </div>
+
+          <div className="mt-6 space-y-3">
+            <button
+              className="w-full rounded-xl border px-4 py-2 text-sm font-medium text-gray-400"
+              disabled
+            >
               Отменить автопродление
             </button>
-            <button disabled className="w-full rounded-xl border px-4 py-2 text-sm text-gray-400">
+
+            <button
+              className="w-full rounded-xl border px-4 py-2 text-sm font-medium text-gray-400"
+              disabled
+            >
               Отменить промокод
             </button>
           </div>
         </div>
       </div>
 
-      <div className="mt-6 rounded-2xl border bg-white p-6 shadow-sm">
-        <div className="text-2xl font-semibold">История</div>
-        <div className="mt-1 text-gray-600">Сохранённые сессии</div>
+      <div className="mt-8 rounded-2xl border bg-white p-6 shadow-sm">
+        <div className="mb-2 text-xl font-semibold">История</div>
+        <div className="text-sm text-gray-500">Сохранённые сессии</div>
 
-        {isLoggedIn ? (
-          <div className="mt-4 text-sm text-gray-600">История будет доступна в следующем обновлении.</div>
-        ) : (
-          <div className="mt-4 text-sm text-gray-600">Войдите, чтобы видеть историю.</div>
-        )}
-      </div>
-
-      <div className="mt-6 text-sm text-gray-500">
-        Тест оплаты: чтобы выставить сумму 1 грн, добавьте env TA_FORCE_AMOUNT_UAH=1 и сделайте redeploy. Чтобы вернуть 499, удалите TA_FORCE_AMOUNT_UAH.
+        <div className="mt-4 text-sm text-gray-500">Войдите, чтобы видеть историю.</div>
       </div>
     </div>
   )

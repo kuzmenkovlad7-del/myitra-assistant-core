@@ -1,194 +1,226 @@
 import { NextRequest, NextResponse } from "next/server"
-import crypto from "crypto"
 import { createClient } from "@supabase/supabase-js"
+import { randomUUID, createHash } from "crypto"
 
-export const runtime = "nodejs"
-export const dynamic = "force-dynamic"
+const WFP_URL = "https://api.wayforpay.com/api"
 
-function pickEnv(name: string, fallback = "") {
-  const v = (process.env[name] || "").trim()
-  return v || fallback
+function pickEnv(name: string) {
+  const v = process.env[name]
+  return v && String(v).trim() ? String(v).trim() : ""
 }
 
 function mustEnv(name: string) {
-  const v = (process.env[name] || "").trim()
-  if (!v) throw new Error(`Missing env: ${name}`)
+  const v = pickEnv(name)
+  if (!v) throw new Error("Missing env " + name)
   return v
 }
 
-function hmacMd5(data: string, secret: string) {
-  return crypto.createHmac("md5", secret).update(data, "utf8").digest("hex")
-}
-
-function normalizeStatus(txStatus: string) {
-  const s = (txStatus || "").toLowerCase()
-  if (s === "approved") return "paid"
-  if (s === "pending" || s === "inprocessing") return "processing"
-  if (s === "refunded") return "refunded"
-  if (s === "voided" || s === "expired" || s === "declined") return "failed"
+function mapStatus(txStatus: string) {
+  const s = String(txStatus || "").toLowerCase()
+  if (s === "approved" || s === "paid") return "paid"
+  if (s === "pending" || s === "inprocessing") return "pending"
+  if (s === "refunded" || s === "voided") return "refunded"
+  if (s === "declined" || s === "expired" || s === "refused") return "failed"
   return "unknown"
 }
 
-function supabaseAdmin() {
-  const url =
-    pickEnv("NEXT_PUBLIC_SUPABASE_URL") ||
-    pickEnv("SUPABASE_URL") ||
-    pickEnv("SUPABASE_PROJECT_URL")
-
-  const key = pickEnv("SUPABASE_SERVICE_ROLE_KEY")
-
-  if (!url) throw new Error("Missing env: SUPABASE_URL")
-  if (!key) throw new Error("Missing env: SUPABASE_SERVICE_ROLE_KEY")
-
-  return createClient(url, key, { auth: { persistSession: false } })
+function merchantSignature(parts: string[], secret: string) {
+  const base = parts.join(";")
+  return createHash("md5").update(base + ";" + secret).digest("hex")
 }
 
-function addMonthsFromIso(currentIso: string | null, months: number) {
-  const now = new Date()
-  const current = currentIso ? new Date(currentIso) : null
-  const base = current && Number.isFinite(current.getTime()) && current.getTime() > now.getTime() ? current : now
-
-  const d = new Date(base)
-  const day = d.getDate()
-  d.setMonth(d.getMonth() + months)
-  if (d.getDate() !== day) d.setDate(0)
+function addDaysIso(days: number) {
+  const d = new Date(Date.now() + days * 24 * 60 * 60 * 1000)
   return d.toISOString()
 }
 
-async function wayforpayCheckStatus(orderReference: string) {
-  const merchantAccount = mustEnv("WAYFORPAY_MERCHANT_ACCOUNT")
-  const secretKey = mustEnv("WAYFORPAY_SECRET_KEY")
-  const apiUrl = pickEnv("WAYFORPAY_API_URL", "https://api.wayforpay.com/api")
+function sbAdmin() {
+  const url = mustEnv("NEXT_PUBLIC_SUPABASE_URL")
+  const key = mustEnv("SUPABASE_SERVICE_ROLE_KEY")
+  return createClient(url, key, { auth: { persistSession: false } })
+}
 
-  const signature = hmacMd5(`${merchantAccount};${orderReference}`, secretKey)
+async function upsertGrantByDeviceHash(
+  sb: ReturnType<typeof sbAdmin>,
+  deviceHash: string,
+  paidUntilIso: string
+) {
+  const nowIso = new Date().toISOString()
 
-  const payload: any = {
-    transactionType: "CHECK_STATUS",
-    merchantAccount,
-    orderReference,
-    merchantSignature: signature,
-    apiVersion: 1,
+  const existing = await sb
+    .from("access_grants")
+    .select("id")
+    .eq("device_hash", deviceHash)
+    .maybeSingle()
+
+  if (existing.error) {
+    throw new Error("access_grants select failed: " + existing.error.message)
   }
 
-  const r = await fetch(apiUrl, {
+  if (existing.data?.id) {
+    const upd = await sb
+      .from("access_grants")
+      .update({
+        paid_until: paidUntilIso,
+        trial_questions_left: 0,
+        updated_at: nowIso,
+      })
+      .eq("id", existing.data.id)
+
+    if (upd.error) throw new Error("access_grants update failed: " + upd.error.message)
+    return { mode: "update", id: existing.data.id }
+  }
+
+  const ins = await sb.from("access_grants").insert({
+    id: randomUUID(),
+    user_id: null,
+    device_hash: deviceHash,
+    trial_questions_left: 0,
+    paid_until: paidUntilIso,
+    promo_until: null,
+    created_at: nowIso,
+    updated_at: nowIso,
+  })
+
+  if (ins.error) throw new Error("access_grants insert failed: " + ins.error.message)
+  return { mode: "insert" }
+}
+
+async function ensurePaidGrant(sb: ReturnType<typeof sbAdmin>, orderReference: string) {
+  const ord = await sb
+    .from("billing_orders")
+    .select("order_reference, user_id, device_hash, plan_id")
+    .eq("order_reference", orderReference)
+    .maybeSingle()
+
+  if (ord.error) throw new Error("billing_orders select failed: " + ord.error.message)
+  if (!ord.data) throw new Error("Order not found for orderReference")
+
+  const planId = String(ord.data.plan_id || "monthly")
+  const paidUntilIso = addDaysIso(planId === "yearly" ? 366 : 31)
+
+  const ops: any[] = []
+
+  if (ord.data.device_hash) {
+    ops.push(await upsertGrantByDeviceHash(sb, String(ord.data.device_hash), paidUntilIso))
+  }
+
+  if (ord.data.user_id) {
+    const accountKey = "account:" + String(ord.data.user_id)
+    ops.push(await upsertGrantByDeviceHash(sb, accountKey, paidUntilIso))
+  }
+
+  if (!ops.length) {
+    throw new Error("Order has no device_hash and no user_id, cannot grant access")
+  }
+
+  return { paidUntilIso, ops }
+}
+
+async function fetchWfpStatus(orderReference: string) {
+  const merchantAccount = mustEnv("WAYFORPAY_MERCHANT_ACCOUNT")
+  const secret = mustEnv("WAYFORPAY_SECRET_KEY")
+
+  const signature = merchantSignature([merchantAccount, orderReference], secret)
+
+  const payload = {
+    transactionType: "STATUS",
+    merchantAccount,
+    merchantSignature: signature,
+    orderReference,
+  }
+
+  const r = await fetch(WFP_URL, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
     cache: "no-store",
   })
 
-  const json = await r.json().catch(() => ({}))
-  return { httpOk: r.ok, httpStatus: r.status, json }
-}
-
-async function upsertBillingOrder(sb: any, orderReference: string, patch: any) {
-  await sb.from("billing_orders").upsert(
-    {
-      order_reference: orderReference,
-      ...patch,
-    },
-    { onConflict: "order_reference" }
-  )
-}
-
-async function ensurePaidGrant(sb: any, orderReference: string) {
-  const { data: ord } = await sb
-    .from("billing_orders")
-    .select("device_hash,plan_id")
-    .eq("order_reference", orderReference)
-    .maybeSingle()
-
-  const deviceHash = String((ord as any)?.device_hash || "")
-  const planId = String((ord as any)?.plan_id || "monthly")
-
-  if (!deviceHash) return { ok: false, reason: "no_device_hash" }
-
-  const nowIso = new Date().toISOString()
-
-  const { data: existing } = await sb
-    .from("access_grants")
-    .select("id,paid_until")
-    .eq("device_hash", deviceHash)
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  const nextPaidUntil = addMonthsFromIso(existing?.paid_until ? String(existing.paid_until) : null, planId === "monthly" ? 1 : 1)
-
-  if (existing?.id) {
-    await sb
-      .from("access_grants")
-      .update({ paid_until: nextPaidUntil, trial_questions_left: 0, updated_at: nowIso })
-      .eq("id", existing.id)
-  } else {
-    await sb.from("access_grants").insert({
-      id: crypto.randomUUID(),
-      user_id: null,
-      device_hash: deviceHash,
-      trial_questions_left: 0,
-      paid_until: nextPaidUntil,
-      promo_until: null,
-      created_at: nowIso,
-      updated_at: nowIso,
-    })
-  }
-
-  return { ok: true, deviceHash, planId, paidUntil: nextPaidUntil }
+  const j = await r.json().catch(() => ({}))
+  return { httpOk: r.ok, status: r.status, body: j }
 }
 
 async function handler(req: NextRequest) {
   const url = new URL(req.url)
+  const debug = url.searchParams.get("debug") === "1"
 
   const orderReference =
-    (url.searchParams.get("orderReference") || "").trim() ||
-    (req.cookies.get("ta_last_order")?.value || "").trim()
+    url.searchParams.get("orderReference") || (req.cookies.get("ta_last_order")?.value || "")
 
   if (!orderReference) {
-    return NextResponse.json({ ok: false, error: "orderReference is required" }, { status: 400 })
+    return NextResponse.json({ ok: false, error: "Missing orderReference" }, { status: 400 })
   }
 
-  const sb = supabaseAdmin()
-  const { httpOk, httpStatus, json } = await wayforpayCheckStatus(orderReference)
+  const sb = sbAdmin()
 
-  const txStatus = String(json?.transactionStatus || json?.status || "").trim()
-  const state = normalizeStatus(txStatus)
+  const wfp = await fetchWfpStatus(orderReference)
+  const txStatus = String((wfp.body as any)?.transactionStatus || (wfp.body as any)?.status || "")
+  const state = mapStatus(txStatus)
 
-  try {
-    await upsertBillingOrder(sb, orderReference, {
+  const raw = (wfp.body && typeof wfp.body === "object" ? wfp.body : {}) as any
+
+  const upd = await sb
+    .from("billing_orders")
+    .update({
       status: state,
-      currency: json?.currency || null,
-      amount: typeof json?.amount === "number" ? json.amount : Number(json?.amount || 0) || null,
-      raw: json || null,
+      raw,
       updated_at: new Date().toISOString(),
     })
-  } catch {}
+    .eq("order_reference", orderReference)
 
-  let grant: any = null
-  if (state === "paid") {
-    try {
-      grant = await ensurePaidGrant(sb, orderReference)
-    } catch {}
+  const updErr = upd.error ? upd.error.message : null
+
+  if (state !== "paid") {
+    return NextResponse.json(
+      {
+        ok: false,
+        state,
+        txStatus,
+        orderReference,
+        billingUpdated: !upd.error,
+        billingUpdateError: updErr,
+        ...(debug ? { wfp } : {}),
+      },
+      { status: 200 }
+    )
   }
+
+  const grant = await ensurePaidGrant(sb, orderReference)
 
   return NextResponse.json(
     {
-      ok: state === "paid",
-      orderReference,
+      ok: true,
       state,
-      transactionStatus: txStatus || null,
-      httpOk,
-      httpStatus,
+      txStatus,
+      orderReference,
+      billingUpdated: !upd.error,
+      billingUpdateError: updErr,
       grant,
-      wayforpay: json || null,
+      ...(debug ? { wfp } : {}),
     },
-    { status: 200, headers: { "cache-control": "no-store" } }
+    { status: 200 }
   )
 }
 
 export async function GET(req: NextRequest) {
-  return handler(req)
+  try {
+    return await handler(req)
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: "Sync failed", details: String(e?.message || e) },
+      { status: 500 }
+    )
+  }
 }
 
 export async function POST(req: NextRequest) {
-  return handler(req)
+  try {
+    return await handler(req)
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: "Sync failed", details: String(e?.message || e) },
+      { status: 500 }
+    )
+  }
 }
