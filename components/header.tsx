@@ -1,10 +1,12 @@
 "use client"
 
-import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
+import Link from "next/link"
 import { Menu } from "lucide-react"
 
+import { RainbowButton } from "@/components/ui/rainbow-button"
+import { Banner } from "@/components/ui/banner"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { LanguageSelector } from "@/components/language-selector"
@@ -14,19 +16,55 @@ import { useAuth } from "@/lib/auth/auth-context"
 import Logo from "@/components/logo"
 import { APP_NAME } from "@/lib/app-config"
 
-type AnyObj = Record<string, any>
 type MainLink = { href: string; label: string }
 
-function isActiveDate(v: any) {
-  if (!v) return false
-  const d = new Date(String(v))
-  if (Number.isNaN(d.getTime())) return false
-  return d.getTime() > Date.now()
+function tryExtractUserText(init?: any): string | null {
+  try {
+    const body = init?.body
+    if (typeof body !== "string") return null
+    const parsed = JSON.parse(body)
+    return (
+      (typeof parsed?.text === "string" && parsed.text) ||
+      (typeof parsed?.message === "string" && parsed.message) ||
+      (typeof parsed?.prompt === "string" && parsed.prompt) ||
+      (typeof parsed?.input === "string" && parsed.input) ||
+      (typeof parsed?.query === "string" && parsed.query) ||
+      (typeof parsed?.q === "string" && parsed.q) ||
+      null
+    )
+  } catch {
+    return null
+  }
 }
 
-function safeNext(pathname: string | null) {
-  const p = pathname || "/"
-  return p.startsWith("/") ? p : "/"
+function tryExtractAssistantText(data: any): string | null {
+  if (!data) return null
+
+  if (Array.isArray(data) && data.length) {
+    const first: any = data[0]
+    const v =
+      (typeof first?.text === "string" && first.text) ||
+      (typeof first?.output === "string" && first.output) ||
+      (typeof first?.answer === "string" && first.answer) ||
+      (typeof first?.result === "string" && first.result) ||
+      (typeof first?.message === "string" && first.message) ||
+      null
+    if (v) return v
+  }
+
+  return (
+    (typeof data?.text === "string" && data.text) ||
+    (typeof data?.output === "string" && data.output) ||
+    (typeof data?.answer === "string" && data.answer) ||
+    (typeof data?.result === "string" && data.result) ||
+    (typeof data?.message === "string" && data.message) ||
+    null
+  )
+}
+
+function clipText(s: string, max = 4000) {
+  if (!s) return s
+  return s.length > max ? s.slice(0, max) : s
 }
 
 export default function Header() {
@@ -36,11 +74,18 @@ export default function Header() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
-  const [mobileOpen, setMobileOpen] = useState(false)
-  const [summary, setSummary] = useState<AnyObj | null>(null)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  const [trialLeft, setTrialLeft] = useState<number | null>(null)
+  const [trialText, setTrialText] = useState<string | null>(null)
+  const [hasAccess, setHasAccess] = useState<boolean | null>(null)
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null)
+
+  const loggedIn = Boolean(user) || Boolean(isLoggedIn)
 
   const paywall = searchParams?.get("paywall")
-  const showPaywall = pathname === "/pricing" && paywall === "trial"
+  const [paywallDismissed, setPaywallDismissed] = useState(false)
+  const showPaywall = pathname === "/pricing" && paywall === "trial" && !paywallDismissed
 
   const mainLinks: MainLink[] = useMemo(
     () => [
@@ -52,52 +97,103 @@ export default function Header() {
     [t]
   )
 
-  const inFlightRef = useRef(false)
-  const lastRunRef = useRef(0)
+  const loadSummary = () =>
+    fetch("/api/account/summary", { cache: "no-store", credentials: "include" })
 
-  const runSummary = useCallback(async (force = false) => {
+  const inFlightRef = useRef<Promise<void> | null>(null)
+  const lastRunRef = useRef<number>(0)
+
+  const runSummary = (force = false) => {
     const now = Date.now()
-    if (!force && now - lastRunRef.current < 700) return
+
+    // троттлинг, чтобы не долбить summary пачками
+    if (!force && now - lastRunRef.current < 900) return
     if (inFlightRef.current) return
 
     lastRunRef.current = now
-    inFlightRef.current = true
 
-    try {
-      const r1 = await fetch("/api/account/summary", { cache: "no-store", credentials: "include" })
-      const d1 = (await r1.json().catch(() => ({}))) as AnyObj
-
-      let d2: AnyObj = {}
+    inFlightRef.current = (async () => {
       try {
-        const r2 = await fetch("/api/billing/subscription/status", { cache: "no-store", credentials: "include" })
-        d2 = (await r2.json().catch(() => ({}))) as AnyObj
-      } catch {}
+        const r = await loadSummary()
+        const d = await r.json().catch(() => ({}))
 
-      setSummary({ ...d1, ...d2 })
-    } catch {
-      setSummary(null)
-    } finally {
-      inFlightRef.current = false
+        setIsLoggedIn(Boolean(d?.isLoggedIn))
+
+        const access = String(d?.access || "").toLowerCase()
+        const unlimited = Boolean(d?.unlimited) || access === "paid" || access === "promo"
+
+        const left =
+          typeof d?.questionsLeft === "number"
+            ? d.questionsLeft
+            : typeof d?.trial_questions_left === "number"
+            ? d.trial_questions_left
+            : typeof d?.trialLeft === "number"
+            ? d.trialLeft
+            : null
+
+        // для безлимита в бейдже всегда Access Active
+        setTrialLeft(unlimited ? 0 : left)
+
+        // используем существующий перевод Active
+        setTrialText(unlimited ? "Active" : null)
+
+        // hasAccess в хедере используем строго как признак безлимита
+        setHasAccess(unlimited)
+      } catch {}
+      finally {
+        inFlightRef.current = null
+      }
+    })()
+  }
+
+  useEffect(() => {
+    let alive = true
+
+    if (alive) runSummary(true)
+
+    const onRefresh = () => {
+      if (!alive) return
+      runSummary(false)
+    }
+
+    window.addEventListener("turbota:refresh", onRefresh)
+
+    return () => {
+      alive = false
+      window.removeEventListener("turbota:refresh", onRefresh)
     }
   }, [])
 
-  useEffect(() => {
-    runSummary(true)
-  }, [runSummary, pathname])
+  const scrollToSection = (e: any, href: string) => {
+    if (href.startsWith("#")) {
+      e.preventDefault()
+      const el = document.querySelector(href)
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+      setMobileMenuOpen(false)
+    } else {
+      setMobileMenuOpen(false)
+    }
+  }
 
-  useEffect(() => {
-    const onRefresh = () => runSummary(false)
-    window.addEventListener("turbota:refresh", onRefresh)
-    return () => window.removeEventListener("turbota:refresh", onRefresh)
-  }, [runSummary])
+  const scrollToAssistant = () => {
+    const el = document.querySelector("#assistant")
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
 
+  const badgeText =
+    trialText
+      ? `${t("Access")}: ${t(trialText)}`
+      : typeof trialLeft === "number"
+      ? `${t("Trial left")}: ${trialLeft}`
+      : hasAccess
+      ? `${t("Access")}: ${t("Active")}`
+      : null
+
+  // turbota_global_fetch_interceptor
   useEffect(() => {
     if (typeof window === "undefined") return
-    const w = window as any
-    if (w.__turbota_fetch_wrapped) return
 
     const originalFetch = window.fetch.bind(window)
-    w.__turbota_fetch_wrapped = true
 
     window.fetch = (async (input: any, init?: any) => {
       const res = await originalFetch(input, init)
@@ -112,19 +208,15 @@ export default function Header() {
 
         const isAgent = url.includes("/api/turbotaai-agent")
         const isPromo = url.includes("/api/billing/promo/redeem")
-        const isSyncPay = url.includes("/api/billing/wayforpay/sync")
-        const isSubCancel = url.includes("/api/billing/subscription/cancel")
-        const isSubResume = url.includes("/api/billing/subscription/resume")
-        const isPromoCancel = url.includes("/api/billing/promo/cancel")
-
+        const isClear = url.includes("/api/auth/clear")
         const isLogin = url.includes("/api/auth/login")
         const isRegister = url.includes("/api/auth/register")
-        const isClear = url.includes("/api/auth/clear")
 
         if (isAgent && res.status === 402) {
           try {
             sessionStorage.setItem("turbota_paywall", "trial")
           } catch {}
+
           window.dispatchEvent(new Event("turbota:refresh"))
           window.location.assign("/pricing?paywall=trial")
           return res
@@ -137,7 +229,6 @@ export default function Header() {
               headers: { "content-type": "application/json" },
               credentials: "include",
               body: "{}",
-              cache: "no-store",
             })
           } catch {}
           try {
@@ -148,13 +239,74 @@ export default function Header() {
         }
 
         if (isClear && res.ok) {
+          try {
+            for (const k of Object.keys(localStorage)) {
+              if (k.startsWith("sb-") && k.endsWith("-auth-token")) {
+                localStorage.removeItem(k)
+              }
+            }
+          } catch {}
+
+          try {
+            sessionStorage.removeItem("turbota_paywall")
+            sessionStorage.removeItem("turbota_conv_id")
+          } catch {}
+
           window.dispatchEvent(new Event("turbota:refresh"))
           return res
         }
 
-        if ((isPromo || isSyncPay || isSubCancel || isSubResume || isPromoCancel) && res.ok) {
+        if ((isAgent || isPromo) && res.ok) {
           window.dispatchEvent(new Event("turbota:refresh"))
-          return res
+
+          if (isAgent) {
+            const userText = tryExtractUserText(init)
+
+            ;(async () => {
+              try {
+                const convId =
+                  (() => {
+                    try {
+                      return sessionStorage.getItem("turbota_conv_id")
+                    } catch {
+                      return null
+                    }
+                  })() || null
+
+                const cloned = res.clone()
+                const raw = await cloned.text().catch(() => "")
+                let parsed: any = null
+                try {
+                  parsed = raw ? JSON.parse(raw) : null
+                } catch {}
+
+                const assistantText =
+                  tryExtractAssistantText(parsed) || (raw ? clipText(raw) : null)
+
+                if (userText || assistantText) {
+                  const rr = await fetch("/api/history/save", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: JSON.stringify({
+                      conversationId: convId,
+                      userText,
+                      assistantText,
+                    }),
+                  }).catch(() => null)
+
+                  const dd = await rr?.json().catch(() => null)
+                  const newId =
+                    typeof dd?.conversationId === "string" ? dd.conversationId : null
+
+                  if (newId) {
+                    try {
+                      sessionStorage.setItem("turbota_conv_id", newId)
+                    } catch {}
+                  }
+                }
+              } catch {}
+            })()
+          }
         }
       } catch {}
 
@@ -162,132 +314,157 @@ export default function Header() {
     }) as any
 
     return () => {
-      try {
-        window.fetch = originalFetch as any
-      } catch {}
-      try {
-        delete (window as any).__turbota_fetch_wrapped
-      } catch {}
+      window.fetch = originalFetch as any
     }
   }, [])
 
-  const isLoggedIn = Boolean(user) || Boolean(summary?.isLoggedIn ?? summary?.loggedIn ?? summary?.user)
-
-  const paidUntil = summary?.paidUntil ?? summary?.paid_until ?? null
-  const promoUntil = summary?.promoUntil ?? summary?.promo_until ?? null
-  const hasPaid = isActiveDate(paidUntil)
-  const hasPromo = isActiveDate(promoUntil)
-
-  const accessRaw = String(summary?.access ?? "").toLowerCase()
-  const unlimited = Boolean(summary?.unlimited) || accessRaw === "paid" || accessRaw === "promo" || hasPaid || hasPromo
-
-  const left =
-    typeof summary?.questionsLeft === "number"
-      ? summary.questionsLeft
-      : typeof summary?.trial_questions_left === "number"
-      ? summary.trial_questions_left
-      : typeof summary?.trialLeft === "number"
-      ? summary.trialLeft
-      : null
-
-  const badgeText = unlimited
-    ? `${t("Access")}: ${t("Active")}`
-    : typeof left === "number"
-    ? `${t("Trial left")}: ${left}`
-    : null
-
-  const next = encodeURIComponent(safeNext(pathname))
-
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-white/85 backdrop-blur">
+    <header className="sticky top-0 z-40 w-full border-b border-slate-200/80 bg-white/90 backdrop-blur-sm">
       {showPaywall ? (
-        <div className="border-b bg-amber-50">
-          <div className="mx-auto max-w-6xl px-4 py-2 text-sm text-amber-900 flex items-center justify-between gap-3">
-            <div>
-              {t("Trial limit reached")}. {t("Choose a plan to continue")}.
-            </div>
-            <Link href="/pricing" className="underline">
-              {t("Pricing")}
-            </Link>
-          </div>
+        <div className="fixed right-4 top-4 z-[9999] w-[380px]">
+          <Banner
+            show={true}
+            variant="warning"
+            showShade={true}
+            closable={true}
+            onHide={() => setPaywallDismissed(true)}
+            title={t("Free trial is over")}
+            description={t("Subscribe to continue using the assistant.")}
+            action={
+              <div className="flex items-center gap-2">
+                <RainbowButton
+                  className="h-9 px-4 text-sm font-semibold"
+                  onClick={() => {
+                    const btn = document.getElementById(
+                      "turbota-subscribe"
+                    ) as HTMLButtonElement | null
+                    if (btn) btn.click()
+                    else window.location.assign("/pricing")
+                  }}
+                >
+                  {t("Subscribe")}
+                </RainbowButton>
+                <Button
+                  variant="outline"
+                  className="h-9 px-4"
+                  onClick={() => setPaywallDismissed(true)}
+                >
+                  {t("Later")}
+                </Button>
+              </div>
+            }
+          />
         </div>
       ) : null}
 
-      <div className="mx-auto max-w-6xl px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-2">
-              <Logo />
-              <span className="font-semibold">{APP_NAME}</span>
+      <div className="flex h-16 w-full items-center justify-between px-4 sm:px-6 lg:px-10 xl:px-16">
+        <Link
+          href="/"
+          className="flex items-center gap-2 rounded-full px-1 py-1 transition-colors hover:bg-slate-50"
+        >
+          <Logo />
+          <span className="text-xl font-semibold text-slate-900">{APP_NAME}</span>
+        </Link>
+
+        <nav className="hidden items-center gap-6 lg:flex">
+          {mainLinks.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              onClick={(e) => scrollToSection(e, link.href)}
+              className="text-sm font-medium text-slate-700 transition-colors hover:text-slate-900"
+            >
+              {link.label}
             </Link>
-          </div>
+          ))}
+        </nav>
 
-          <nav className="hidden md:flex items-center gap-2">
-            {mainLinks.map((l) => (
-              <Link key={l.href} href={l.href} className="px-3 py-2 text-sm rounded-lg hover:bg-gray-100">
-                {l.label}
-              </Link>
-            ))}
-          </nav>
+        <div className="hidden items-center gap-3 lg:flex">
+          <LanguageSelector />
 
-          <div className="flex items-center gap-2">
-            {badgeText ? (
-              <div className="hidden sm:inline-flex items-center rounded-full border px-3 py-1 text-xs text-gray-700">
-                {badgeText}
-              </div>
-            ) : null}
+          {badgeText ? (
+            <span className="rounded-full bg-slate-50 px-3 py-1 text-xs text-slate-700 ring-1 ring-slate-200">
+              {badgeText}
+            </span>
+          ) : null}
 
-            <LanguageSelector />
+          <Link href={loggedIn ? "/profile" : "/login"}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-slate-200 bg-white px-4 text-sm font-medium text-slate-800 hover:bg-slate-100 hover:text-slate-900"
+            >
+              {loggedIn ? t("Profile") : t("Sign In")}
+            </Button>
+          </Link>
 
-            {isLoggedIn ? (
-              <Link href="/profile">
-                <Button className="rounded-xl">{t("Profile")}</Button>
-              </Link>
-            ) : (
-              <Link href={`/login?next=${next}`}>
-                <Button className="rounded-xl" variant="outline">
-                  {t("Sign In")}
-                </Button>
-              </Link>
-            )}
-
-            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-              <SheetTrigger asChild>
-                <Button variant="outline" className="rounded-xl md:hidden">
-                  <Menu className="h-5 w-5" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="right" className="w-80">
-                <div className="mt-4 flex flex-col gap-2">
-                  {mainLinks.map((l) => (
-                    <Link
-                      key={l.href}
-                      href={l.href}
-                      className="rounded-xl border px-4 py-3 text-sm"
-                      onClick={() => setMobileOpen(false)}
-                    >
-                      {l.label}
-                    </Link>
-                  ))}
-
-                  <div className="mt-3">
-                    {isLoggedIn ? (
-                      <Link href="/profile" onClick={() => setMobileOpen(false)}>
-                        <Button className="w-full rounded-xl">{t("Profile")}</Button>
-                      </Link>
-                    ) : (
-                      <Link href={`/login?next=${next}`} onClick={() => setMobileOpen(false)}>
-                        <Button className="w-full rounded-xl" variant="outline">
-                          {t("Sign In")}
-                        </Button>
-                      </Link>
-                    )}
-                  </div>
-                </div>
-              </SheetContent>
-            </Sheet>
-          </div>
+          <Button
+            onClick={scrollToAssistant}
+            size="sm"
+            className="rounded-full bg-slate-900 px-5 text-sm font-medium text-white shadow-sm hover:bg-slate-800"
+          >
+            {t("Talk Now")}
+          </Button>
         </div>
+
+        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <SheetTrigger asChild className="lg:hidden">
+            <Button variant="ghost" size="icon" className="text-slate-800">
+              <Menu className="h-6 w-6" />
+              <span className="sr-only">Toggle menu</span>
+            </Button>
+          </SheetTrigger>
+
+          <SheetContent side="left" className="w-[300px] border-border bg-white">
+            <div className="flex flex-col gap-6 pt-6">
+              <div className="flex items-center gap-2">
+                <Logo />
+                <span className="text-xl font-semibold text-slate-900">{APP_NAME}</span>
+              </div>
+
+              <nav className="flex flex-col gap-4">
+                {mainLinks.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={(e) => scrollToSection(e, link.href)}
+                    className="text-base font-medium text-slate-800 transition-colors hover:text-slate-900"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </nav>
+
+              <div className="border-t border-slate-200 pt-6">
+                <LanguageSelector />
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <Link
+                  href={loggedIn ? "/profile" : "/login"}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Button
+                    variant="outline"
+                    className="w-full border-slate-200 bg-white text-slate-800 hover:bg-slate-100 hover:text-slate-900"
+                  >
+                    {loggedIn ? t("Profile") : t("Sign In")}
+                  </Button>
+                </Link>
+
+                <Button
+                  onClick={() => {
+                    setMobileMenuOpen(false)
+                    scrollToAssistant()
+                  }}
+                  className="w-full rounded-full bg-slate-900 text-white hover:bg-slate-800"
+                >
+                  {t("Talk Now")}
+                </Button>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
     </header>
   )
