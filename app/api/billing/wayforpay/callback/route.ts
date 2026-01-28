@@ -1,232 +1,227 @@
 import { NextRequest, NextResponse } from "next/server"
-import crypto from "crypto"
 import { createClient } from "@supabase/supabase-js"
+import { createHmac } from "crypto"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-function pickEnv(...keys: string[]) {
-  for (const k of keys) {
-    const v = process.env[k]
-    if (v && String(v).trim()) return String(v).trim()
-  }
-  return ""
+function env(name: string) {
+  return String(process.env[name] || "").trim()
+}
+function mustEnv(name: string) {
+  const v = env(name)
+  if (!v) throw new Error("Missing env " + name)
+  return v
 }
 
-function safeJsonParse(s: string) {
-  try {
-    return JSON.parse(s)
-  } catch {
-    return null
-  }
+function hmacMd5Hex(str: string, key: string) {
+  return createHmac("md5", key).update(str, "utf8").digest("hex")
 }
 
-async function readAnyBody(req: NextRequest): Promise<any> {
+function safeLower(v: any) {
+  return String(v || "").trim().toLowerCase()
+}
+
+function mapTxToStatus(tx: string) {
+  const s = safeLower(tx)
+  if (s === "approved" || s === "paid" || s === "success" || s === "accept") return "paid"
+  if (s === "refunded" || s === "voided" || s === "chargeback") return "refunded"
+  if (s === "declined" || s === "expired" || s === "refused" || s === "rejected") return "failed"
+  if (s === "pending" || s === "inprocessing" || s === "processing" || s === "created") return "pending"
+  return s || "unknown"
+}
+
+function planDays(planId: string) {
+  const p = safeLower(planId)
+  if (p === "yearly" || p === "annual" || p === "year") return 365
+  return 30
+}
+
+function toDateOrNull(v: any): Date | null {
+  if (!v) return null
+  const d = new Date(String(v))
+  if (Number.isNaN(d.getTime())) return null
+  return d
+}
+
+async function extendPaidUntil(sb: any, key: string, days: number, userId: string | null) {
+  const now = new Date()
+  const nowIso = now.toISOString()
+
+  const existing = await sb
+    .from("access_grants")
+    .select("paid_until")
+    .eq("device_hash", key)
+    .maybeSingle()
+
+  const cur = toDateOrNull(existing?.data?.paid_until)
+  const base = cur && cur.getTime() > now.getTime() ? cur : now
+  const next = new Date(base)
+  next.setUTCDate(next.getUTCDate() + days)
+  const paid_until = next.toISOString()
+
+  const payload: any = {
+    device_hash: key,
+    paid_until,
+    trial_questions_left: 0,
+    updated_at: nowIso,
+  }
+  if (userId) payload.user_id = userId
+
+  await sb.from("access_grants").upsert(payload, { onConflict: "device_hash" })
+  return paid_until
+}
+
+async function readBodyAny(req: NextRequest) {
   const ct = (req.headers.get("content-type") || "").toLowerCase()
 
   if (ct.includes("application/json")) {
-    try {
-      return await req.json()
-    } catch {
-      return {}
-    }
+    return await req.json().catch(() => ({}))
   }
 
-  const text = await req.text()
+  const text = await req.text().catch(() => "")
+  if (!text) return {}
 
-  const j = safeJsonParse(text)
-  if (j) return j
+  // попробуем json
+  try {
+    return JSON.parse(text)
+  } catch {}
 
-  // application/x-www-form-urlencoded (WayForPay часто так шлёт)
+  // form-urlencoded
   const params = new URLSearchParams(text)
-  const out: any = {}
+  const obj: any = {}
   params.forEach((v, k) => {
-    out[k] = v
+    if (k.endsWith("[]")) {
+      const kk = k.slice(0, -2)
+      if (!Array.isArray(obj[kk])) obj[kk] = []
+      obj[kk].push(v)
+      return
+    }
+    if (obj[k] === undefined) obj[k] = v
+    else if (Array.isArray(obj[k])) obj[k].push(v)
+    else obj[k] = [obj[k], v]
   })
-
-  // Иногда WFP присылает поле response как JSON строку
-  if (typeof out.response === "string") {
-    const jr = safeJsonParse(out.response)
-    if (jr) return jr
-  }
-
-  return out
+  return obj
 }
 
-function hmacMd5(secret: string, parts: Array<string | number>) {
-  const s = parts.map((x) => String(x)).join(";")
-  return crypto.createHmac("md5", secret).update(s).digest("hex")
-}
-
-function isApproved(tx: string) {
-  const v = String(tx || "").toLowerCase()
-  return v === "approved" || v === "accept" || v === "success" || v === "paid"
-}
-
-function addDaysIso(days: number) {
-  const d = new Date()
-  d.setUTCDate(d.getUTCDate() + days)
-  return d.toISOString()
-}
-
-function makeSupabaseAdmin() {
-  const url =
-    pickEnv("NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_URL") || ""
-  const serviceKey =
-    pickEnv("SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SERVICE_KEY") || ""
-
-  if (!url || !serviceKey) return null
-  return createClient(url, serviceKey, { auth: { persistSession: false } })
+function pick(body: any, key: string) {
+  return body?.[key] ?? body?.[key.toUpperCase()] ?? ""
 }
 
 export async function POST(req: NextRequest) {
-  const body = await readAnyBody(req)
+  try {
+    const body: any = await readBodyAny(req)
 
-  console.log("[WFP CALLBACK] headers:", {
-    ct: req.headers.get("content-type"),
-    ua: req.headers.get("user-agent"),
-    ip: req.headers.get("x-forwarded-for"),
-  })
-  console.log("[WFP CALLBACK] incoming body:", body)
+    const merchantAccount = String(pick(body, "merchantAccount") || env("WAYFORPAY_MERCHANT_ACCOUNT")).trim()
+    const orderReference = String(pick(body, "orderReference")).trim()
+    const amount = String(pick(body, "amount")).trim()
+    const currency = String(pick(body, "currency")).trim()
+    const authCode = String(pick(body, "authCode")).trim()
+    const cardPan = String(pick(body, "cardPan")).trim()
+    const transactionStatus = String(pick(body, "transactionStatus")).trim()
+    const reasonCode = String(pick(body, "reasonCode")).trim()
+    const theirSignature = String(pick(body, "merchantSignature")).trim()
 
-  const orderReference =
-    String(
-      body?.orderReference ||
-      body?.order_reference ||
-      body?.invoice?.orderReference ||
-      ""
-    ) || ""
-
-  const transactionStatus =
-    String(
-      body?.transactionStatus ||
-      body?.status ||
-      body?.invoiceStatus ||
-      ""
-    ) || ""
-
-  const amount = body?.amount ?? body?.orderAmount ?? null
-  const currency = body?.currency ?? body?.orderCurrency ?? null
-
-  if (!orderReference) {
-    console.log("[WFP CALLBACK] missing orderReference, cannot confirm")
-    return NextResponse.json(
-      { ok: false, error: "missing orderReference" },
-      { status: 400, headers: { "cache-control": "no-store" } }
-    )
-  }
-
-  // 1) Пытаемся обновить БД (если есть service role)
-  const supabase = makeSupabaseAdmin()
-  if (!supabase) {
-    console.log("[WFP CALLBACK] supabase admin is not configured (missing SUPABASE_SERVICE_ROLE_KEY or URL)")
-  } else {
-    try {
-      const ord = await supabase
-        .from("billing_orders")
-        .select("order_reference, device_hash, plan_id, user_id")
-        .eq("order_reference", orderReference)
-        .maybeSingle()
-
-      if (ord.error) {
-        console.log("[WFP CALLBACK] billing_orders select error:", ord.error)
-      }
-
-      const deviceHash = ord.data?.device_hash || null
-      const planId = ord.data?.plan_id || "monthly"
-
-      const paid = isApproved(transactionStatus)
-      const newStatus = paid ? "paid" : (transactionStatus ? String(transactionStatus).toLowerCase() : "unknown")
-
-      const up = await supabase
-        .from("billing_orders")
-        .update({
-          status: newStatus,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("order_reference", orderReference)
-
-      if (up.error) {
-        console.log("[WFP CALLBACK] billing_orders update error:", up.error)
-      } else {
-        console.log("[WFP CALLBACK] billing_orders updated:", { orderReference, status: newStatus })
-      }
-
-      // доступ по device_hash
-      if (paid && deviceHash) {
-        const paidUntil = planId === "monthly" ? addDaysIso(30) : addDaysIso(30)
-
-        // upsert-like: пробуем update, если не обновило строк — вставим
-        const upd = await supabase
-          .from("access_grants")
-          .update({
-            plan_id: planId,
-            paid_until: paidUntil,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("device_hash", deviceHash)
-
-        if (upd.error) {
-          console.log("[WFP CALLBACK] access_grants update error:", upd.error)
-        } else {
-          // если 0 строк обновлено — вставим
-          // supabase-js не даёт rowsAffected стабильно, поэтому просто пробуем insert, он может упасть по unique — это ок
-          const ins = await supabase
-            .from("access_grants")
-            .insert({
-              device_hash: deviceHash,
-              plan_id: planId,
-              paid_until: paidUntil,
-            })
-
-          if (ins.error) {
-            // если unique constraint — это нормально, значит update уже сработал
-            console.log("[WFP CALLBACK] access_grants insert result:", ins.error?.message || ins.error)
-          } else {
-            console.log("[WFP CALLBACK] access_grants inserted:", { deviceHash, paidUntil, planId })
-          }
-        }
-
-        console.log("[WFP CALLBACK] access granted:", { deviceHash, paidUntil, planId })
-      } else {
-        console.log("[WFP CALLBACK] not granting access:", { paid, deviceHash })
-      }
-    } catch (e: any) {
-      console.log("[WFP CALLBACK] db update failed:", String(e?.message || e))
+    if (!orderReference) {
+      return NextResponse.json({ ok: false, error: "missing orderReference" }, { status: 400 })
     }
-  }
 
-  // 2) Отвечаем WayForPay accept (иначе будет откат/неподтверждение)
-  const secret = pickEnv(
-    "WAYFORPAY_MERCHANT_SECRET_KEY",
-    "WAYFORPAY_SECRET_KEY",
-    "WAYFORPAY_SECRET",
-    "WFP_SECRET"
-  )
+    const secretKey = mustEnv("WAYFORPAY_SECRET_KEY")
 
-  if (!secret) {
-    console.log("[WFP CALLBACK] MISSING WAYFORPAY SECRET env, cannot sign accept response")
+    // Валидация подписи (как в CHECK_STATUS response):
+    // merchantAccount;orderReference;amount;currency;authCode;cardPan;transactionStatus;reasonCode :contentReference[oaicite:7]{index=7}
+    if (theirSignature) {
+      const signString = [
+        merchantAccount,
+        orderReference,
+        amount,
+        currency,
+        authCode,
+        cardPan,
+        transactionStatus,
+        reasonCode,
+      ].join(";")
+      const our = hmacMd5Hex(signString, secretKey)
+
+      if (our.toLowerCase() !== theirSignature.toLowerCase()) {
+        return NextResponse.json(
+          { ok: false, error: "invalid signature", orderReference },
+          { status: 400, headers: { "cache-control": "no-store" } }
+        )
+      }
+    }
+
+    const sb = createClient(mustEnv("NEXT_PUBLIC_SUPABASE_URL"), mustEnv("SUPABASE_SERVICE_ROLE_KEY"), {
+      auth: { persistSession: false, autoRefreshToken: false },
+    })
+
+    // читаем заказ, чтобы понять plan_id/device_hash/user_id
+    const ord = await sb
+      .from("billing_orders")
+      .select("plan_id, device_hash, user_id")
+      .eq("order_reference", orderReference)
+      .maybeSingle()
+
+    const planId = String((ord.data as any)?.plan_id || "monthly")
+    const deviceHash = String((ord.data as any)?.device_hash || "")
+    const userId = String((ord.data as any)?.user_id || "").trim() || null
+
+    const status = mapTxToStatus(transactionStatus)
+    await sb
+      .from("billing_orders")
+      .update({
+        status,
+        raw: JSON.stringify({ ...body, __event: "wayforpay_callback" }),
+        updated_at: new Date().toISOString(),
+      } as any)
+      .eq("order_reference", orderReference)
+
+    let paidUntil: string | null = null
+    if (status === "paid") {
+      const days = planDays(planId)
+      if (deviceHash) {
+        paidUntil = await extendPaidUntil(sb, deviceHash, days, null)
+      }
+      if (userId) {
+        const accountKey = `account:${userId}`
+        const pu2 = await extendPaidUntil(sb, accountKey, days, userId)
+        paidUntil = paidUntil && toDateOrNull(paidUntil) && toDateOrNull(pu2) && toDateOrNull(pu2)!.getTime() > toDateOrNull(paidUntil)!.getTime()
+          ? pu2
+          : (paidUntil || pu2)
+
+        // обновим profiles (если есть такие поля)
+        try {
+          await sb
+            .from("profiles")
+            .update({
+              paid_until: paidUntil,
+              subscription_status: "active",
+              updated_at: new Date().toISOString(),
+            } as any)
+            .eq("id", userId)
+        } catch {}
+      }
+    }
+
+    // Ответ accept для serviceUrl:
+    // {orderReference, status:"accept", time:<unix>, signature:HMAC_MD5(orderReference;status;time)} :contentReference[oaicite:8]{index=8}
+    const respStatus = "accept"
+    const time = Math.floor(Date.now() / 1000)
+    const respSignString = [orderReference, respStatus, String(time)].join(";")
+    const signature = hmacMd5Hex(respSignString, secretKey)
+
     return NextResponse.json(
-      { ok: false, error: "Missing WayForPay secret env (WAYFORPAY_MERCHANT_SECRET_KEY / WAYFORPAY_SECRET_KEY)" },
+      { orderReference, status: respStatus, time, signature, updated: true, paidUntil },
+      { status: 200, headers: { "cache-control": "no-store" } }
+    )
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: "callback failed", details: String(e?.message || e) },
       { status: 500, headers: { "cache-control": "no-store" } }
     )
   }
-
-  const status = "accept"
-  const time = Math.floor(Date.now() / 1000).toString()
-  const signature = hmacMd5(secret, [orderReference, status, time])
-
-  console.log("[WFP CALLBACK] responding accept:", { orderReference, status, time })
-
-  return NextResponse.json(
-    { orderReference, status, time, signature },
-    { status: 200, headers: { "cache-control": "no-store" } }
-  )
 }
 
 export async function GET() {
-  return NextResponse.json(
-    { ok: true },
-    { status: 200, headers: { "cache-control": "no-store" } }
-  )
+  return NextResponse.json({ ok: true }, { status: 200, headers: { "cache-control": "no-store" } })
 }

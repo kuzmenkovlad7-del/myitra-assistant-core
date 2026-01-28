@@ -1,35 +1,79 @@
 import { NextResponse } from "next/server"
-import crypto from "crypto"
 import { createClient } from "@supabase/supabase-js"
+import { createHmac } from "crypto"
 
+export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 function env(name: string) {
   return String(process.env[name] || "").trim()
 }
+function mustEnv(name: string) {
+  const v = env(name)
+  if (!v) throw new Error("Missing env " + name)
+  return v
+}
+function hmacMd5Hex(str: string, key: string) {
+  return createHmac("md5", key).update(str, "utf8").digest("hex")
+}
+function safeLower(v: any) {
+  return String(v || "").trim().toLowerCase()
+}
+function mapTxToStatus(tx: string) {
+  const s = safeLower(tx)
+  if (s === "approved" || s === "paid" || s === "success" || s === "accept") return "paid"
+  if (s === "refunded" || s === "voided" || s === "chargeback") return "refunded"
+  if (s === "declined" || s === "expired" || s === "refused" || s === "rejected") return "failed"
+  if (s === "pending" || s === "inprocessing" || s === "processing" || s === "created") return "pending"
+  return s || "unknown"
+}
+function planDays(planId: string) {
+  const p = safeLower(planId)
+  if (p === "yearly" || p === "annual" || p === "year") return 365
+  return 30
+}
+function toDateOrNull(v: any): Date | null {
+  if (!v) return null
+  const d = new Date(String(v))
+  if (Number.isNaN(d.getTime())) return null
+  return d
+}
+async function extendPaidUntil(sb: any, key: string, days: number, userId: string | null) {
+  const now = new Date()
+  const nowIso = now.toISOString()
 
-function hmacMd5HexUpper(str: string, key: string) {
-  return crypto.createHmac("md5", key).update(str, "utf8").digest("hex").toUpperCase()
+  const existing = await sb
+    .from("access_grants")
+    .select("paid_until")
+    .eq("device_hash", key)
+    .maybeSingle()
+
+  const cur = toDateOrNull(existing?.data?.paid_until)
+  const base = cur && cur.getTime() > now.getTime() ? cur : now
+  const next = new Date(base)
+  next.setUTCDate(next.getUTCDate() + days)
+  const paid_until = next.toISOString()
+
+  const payload: any = {
+    device_hash: key,
+    paid_until,
+    trial_questions_left: 0,
+    updated_at: nowIso,
+  }
+  if (userId) payload.user_id = userId
+
+  await sb.from("access_grants").upsert(payload, { onConflict: "device_hash" })
+  return paid_until
 }
 
 async function readBody(req: Request) {
   const ct = (req.headers.get("content-type") || "").toLowerCase()
-
-  // JSON
-  if (ct.includes("application/json")) {
-    return await req.json().catch(() => ({}))
-  }
-
-  // text / form-urlencoded
+  if (ct.includes("application/json")) return await req.json().catch(() => ({}))
   const txt = await req.text().catch(() => "")
   if (!txt) return {}
-
-  // иногда может прилететь как JSON строкой
   try {
     return JSON.parse(txt)
   } catch {}
-
-  // form-urlencoded
   const params = new URLSearchParams(txt)
   const obj: any = {}
   params.forEach((value, key) => {
@@ -39,109 +83,115 @@ async function readBody(req: Request) {
       obj[k].push(value)
       return
     }
-
     if (obj[key] === undefined) obj[key] = value
     else if (Array.isArray(obj[key])) obj[key].push(value)
     else obj[key] = [obj[key], value]
   })
   return obj
 }
-
 function pick(body: any, key: string) {
   return body?.[key] ?? body?.[key.toUpperCase()] ?? ""
 }
 
 export async function POST(req: Request) {
-  const body: any = await readBody(req)
+  try {
+    const body: any = await readBody(req)
 
-  const merchantAccount = String(pick(body, "merchantAccount") || env("WAYFORPAY_MERCHANT_ACCOUNT"))
-  const orderReference = String(pick(body, "orderReference"))
-  const amount = String(pick(body, "amount"))
-  const currency = String(pick(body, "currency"))
-  const authCode = String(pick(body, "authCode"))
-  const cardPan = String(pick(body, "cardPan"))
-  const transactionStatus = String(pick(body, "transactionStatus"))
-  const reasonCode = String(pick(body, "reasonCode"))
-  const theirSignature = String(pick(body, "merchantSignature"))
+    const merchantAccount = String(pick(body, "merchantAccount") || env("WAYFORPAY_MERCHANT_ACCOUNT")).trim()
+    const orderReference = String(pick(body, "orderReference")).trim()
+    const amount = String(pick(body, "amount")).trim()
+    const currency = String(pick(body, "currency")).trim()
+    const authCode = String(pick(body, "authCode")).trim()
+    const cardPan = String(pick(body, "cardPan")).trim()
+    const transactionStatus = String(pick(body, "transactionStatus")).trim()
+    const reasonCode = String(pick(body, "reasonCode")).trim()
+    const theirSignature = String(pick(body, "merchantSignature")).trim()
 
-  const secretKey = env("WAYFORPAY_SECRET_KEY") || env("WAYFORPAY_MERCHANT_SECRET_KEY")
+    if (!orderReference || !theirSignature) {
+      return NextResponse.json({ ok: false, error: "Bad webhook payload" }, { status: 400 })
+    }
 
-  if (!orderReference || !theirSignature || !secretKey) {
-    return NextResponse.json(
-      { ok: false, error: "Bad webhook payload", hasOrderReference: !!orderReference, hasSignature: !!theirSignature },
-      { status: 400 }
-    )
-  }
+    const secretKey = mustEnv("WAYFORPAY_SECRET_KEY")
 
-  // Проверяем подпись входящего webhook
-  // merchantAccount;orderReference;amount;currency;authCode;cardPan;transactionStatus;reasonCode
-  const signString = [
-    merchantAccount,
-    orderReference,
-    amount,
-    currency,
-    authCode,
-    cardPan,
-    transactionStatus,
-    reasonCode,
-  ].join(";")
+    // Подпись ответа/статуса в WFP считается по строке:
+    // merchantAccount;orderReference;amount;currency;authCode;cardPan;transactionStatus;reasonCode :contentReference[oaicite:9]{index=9}
+    const signString = [
+      merchantAccount,
+      orderReference,
+      amount,
+      currency,
+      authCode,
+      cardPan,
+      transactionStatus,
+      reasonCode,
+    ].join(";")
 
-  const ourSignature = hmacMd5HexUpper(signString, secretKey)
-  if (ourSignature !== String(theirSignature).toUpperCase()) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Invalid webhook signature",
-        ourSignature,
-        theirSignature,
-      },
-      { status: 400 }
-    )
-  }
+    const ourSignature = hmacMd5Hex(signString, secretKey)
+    if (ourSignature.toLowerCase() !== theirSignature.toLowerCase()) {
+      return NextResponse.json({ ok: false, error: "Invalid webhook signature" }, { status: 400 })
+    }
 
-  // Обновляем заказ в БД
-  const SUPABASE_URL = env("NEXT_PUBLIC_SUPABASE_URL")
-  const SERVICE_ROLE = env("SUPABASE_SERVICE_ROLE_KEY")
-
-  if (SUPABASE_URL && SERVICE_ROLE) {
-    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
+    const sb = createClient(mustEnv("NEXT_PUBLIC_SUPABASE_URL"), mustEnv("SUPABASE_SERVICE_ROLE_KEY"), {
       auth: { persistSession: false, autoRefreshToken: false },
     })
 
-    const ordersTable = env("TA_ORDERS_TABLE") || "billing_orders"
-    const norm = String(transactionStatus || "").toLowerCase()
+    const ord = await sb
+      .from("billing_orders")
+      .select("plan_id, device_hash, user_id")
+      .eq("order_reference", orderReference)
+      .maybeSingle()
 
-    const status =
-      norm === "approved"
-        ? "paid"
-        : norm === "refunded"
-          ? "refunded"
-          : norm === "declined"
-            ? "failed"
-            : norm || "unknown"
+    const planId = String((ord.data as any)?.plan_id || "monthly")
+    const deviceHash = String((ord.data as any)?.device_hash || "")
+    const userId = String((ord.data as any)?.user_id || "").trim() || null
 
-    // обновляем + сохраняем raw
-    await supabase
-      .from(ordersTable)
+    const status = mapTxToStatus(transactionStatus)
+    await sb
+      .from("billing_orders")
       .update({
         status,
         raw: JSON.stringify({ ...body, __event: "wayforpay_webhook" }),
         updated_at: new Date().toISOString(),
-      })
+      } as any)
       .eq("order_reference", orderReference)
+
+    let paidUntil: string | null = null
+    if (status === "paid") {
+      const days = planDays(planId)
+      if (deviceHash) paidUntil = await extendPaidUntil(sb, deviceHash, days, null)
+      if (userId) {
+        const accountKey = `account:${userId}`
+        const pu2 = await extendPaidUntil(sb, accountKey, days, userId)
+        paidUntil =
+          paidUntil && toDateOrNull(paidUntil) && toDateOrNull(pu2) && toDateOrNull(pu2)!.getTime() > toDateOrNull(paidUntil)!.getTime()
+            ? pu2
+            : (paidUntil || pu2)
+
+        try {
+          await sb
+            .from("profiles")
+            .update({
+              paid_until: paidUntil,
+              subscription_status: "active",
+              updated_at: new Date().toISOString(),
+            } as any)
+            .eq("id", userId)
+        } catch {}
+      }
+    }
+
+    // accept-ответ (тот же формат что для serviceUrl подтверждения) :contentReference[oaicite:10]{index=10}
+    const respStatus = "accept"
+    const time = Math.floor(Date.now() / 1000)
+    const respSignString = [orderReference, respStatus, String(time)].join(";")
+    const signature = hmacMd5Hex(respSignString, secretKey)
+
+    return NextResponse.json({ orderReference, status: respStatus, time, signature, updated: true, paidUntil })
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: "webhook failed", details: String(e?.message || e) }, { status: 500 })
   }
+}
 
-  // WayForPay ждёт accept-ответ
-  // signature = HMAC_MD5(orderReference;status;time)
-  const statusResp = "accept"
-  const time = Math.floor(Date.now() / 1000).toString()
-  const respSignString = [orderReference, statusResp, time].join(";")
-  const signature = hmacMd5HexUpper(respSignString, secretKey)
-
-  return NextResponse.json({
-    orderReference,
-    status: statusResp,
-    time: Number(time),
-    signature,
-  })
+export async function GET() {
+  return NextResponse.json({ ok: true }, { status: 200 })
 }
