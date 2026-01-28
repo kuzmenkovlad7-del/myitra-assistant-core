@@ -119,27 +119,26 @@ export default function Header() {
 
         setIsLoggedIn(Boolean(d?.isLoggedIn))
 
+        const access = String(d?.access || "").toLowerCase()
+        const unlimited = Boolean(d?.unlimited) || access === "paid" || access === "promo"
+
         const left =
-          typeof d?.trialLeft === "number"
-            ? d.trialLeft
+          typeof d?.questionsLeft === "number"
+            ? d.questionsLeft
             : typeof d?.trial_questions_left === "number"
             ? d.trial_questions_left
+            : typeof d?.trialLeft === "number"
+            ? d.trialLeft
             : null
-        setTrialLeft(left)
 
-        const txt =
-          typeof d?.trialText === "string"
-            ? d.trialText
-            : d?.access === "Paid"
-            ? "Unlimited"
-            : d?.access === "Promo"
-            ? "Promo"
-            : null
-        setTrialText(txt)
+        // для безлимита в бейдже всегда Access Active
+        setTrialLeft(unlimited ? 0 : left)
 
-        const accessActive =
-          Boolean(d?.hasAccess) || d?.access === "Paid" || d?.access === "Promo"
-        setHasAccess(accessActive)
+        // используем существующий перевод Active
+        setTrialText(unlimited ? "Active" : null)
+
+        // hasAccess в хедере используем строго как признак безлимита
+        setHasAccess(unlimited)
       } catch {}
       finally {
         inFlightRef.current = null

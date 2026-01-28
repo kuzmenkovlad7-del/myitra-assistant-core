@@ -175,22 +175,32 @@ export default function PricingPage() {
 
   const isLoggedIn = Boolean(summary?.isLoggedIn ?? summary?.loggedIn ?? summary?.user)
 
-  const trialLeftNum = Number(
-    summary?.trialLeft ?? summary?.trial_left ?? summary?.trial_questions_left ?? summary?.trialQuestionsLeft ?? 0
-  )
-  const trialLeft = Number.isFinite(trialLeftNum) ? trialLeftNum : 0
+  const accessRaw = String(summary?.access ?? "").toLowerCase()
 
-  const accessRaw = String(summary?.access ?? "")
   const paidUntilRaw = summary?.paidUntil ?? summary?.paid_until ?? null
   const promoUntilRaw = summary?.promoUntil ?? summary?.promo_until ?? null
 
-  const paidActive = accessRaw === "Paid" || (Boolean(summary?.hasAccess) && isActiveDate(paidUntilRaw))
-  const promoActive = accessRaw === "Promo" || isActiveDate(promoUntilRaw)
+  const hasPaid = accessRaw === "paid" || isActiveDate(paidUntilRaw)
+  const hasPromo = accessRaw === "promo" || isActiveDate(promoUntilRaw)
+  const unlimited = Boolean(summary?.unlimited) || hasPaid || hasPromo
 
-  const accessLabel = paidActive ? copy.accessUnlimited : promoActive ? copy.accessPromo : copy.accessFree
+  const questionsLeftNum = Number(
+    summary?.questionsLeft ??
+      summary?.questions_left ??
+      summary?.trialLeft ??
+      summary?.trial_left ??
+      summary?.trial_questions_left ??
+      summary?.trialQuestionsLeft ??
+      0
+  )
+  const questionsLeft = Number.isFinite(questionsLeftNum) ? questionsLeftNum : 0
 
-  const accessUntilPretty = fmtDateDMY(summary?.accessUntil ?? summary?.access_until) || null
-  const questionsLabel = paidActive || promoActive ? copy.unlimited : String(trialLeft)
+  const accessLabel = hasPaid ? copy.accessUnlimited : hasPromo ? copy.accessPromo : copy.accessFree
+
+  // в summary нет accessUntil, показываем реальный until из paidUntil или promoUntil
+  const accessUntilPretty = fmtDateDMY(hasPaid ? paidUntilRaw : hasPromo ? promoUntilRaw : null) || null
+
+  const questionsLabel = unlimited ? copy.unlimited : String(questionsLeft)
 
   useEffect(() => {
     let alive = true
