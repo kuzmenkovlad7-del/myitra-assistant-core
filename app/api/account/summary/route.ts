@@ -373,10 +373,10 @@ export async function GET(_req: NextRequest) {
   }
 
   if (guestGrant?.id) {
-    await admin.from("access_grants").update(patch).eq("id", guestGrant.id).catch(() => null)
+    await admin.from("access_grants").update(patch).eq("id", guestGrant.id)
   }
   if (accGrant?.id) {
-    await admin.from("access_grants").update({ ...patch, user_id: userId }).eq("id", accGrant.id).catch(() => null)
+    await admin.from("access_grants").update({ ...patch, user_id: userId }).eq("id", accGrant.id)
   }
 
   const hasPaid = isFutureIso(mergedPaid)
