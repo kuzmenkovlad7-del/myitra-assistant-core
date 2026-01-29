@@ -51,13 +51,10 @@ async function loadSummary(): Promise<Summary> {
 
   const paidUntil = (j?.paidUntil ?? j?.paid_until ?? null) as string | null
   const promoUntil = (j?.promoUntil ?? j?.promo_until ?? null) as string | null
-
-  const rawQL = j?.questionsLeft
-  const questionsLeft = typeof rawQL === "number" && Number.isFinite(rawQL) ? rawQL : 0
+  const questionsLeft = typeof j?.questionsLeft === "number" ? j.questionsLeft : 0
 
   const hasPaid = isActive(paidUntil)
   const hasPromo = isActive(promoUntil)
-
   const access = accessLabel(j?.access, hasPaid, hasPromo, questionsLeft)
 
   const subRaw = String(j?.subscription_status ?? "").toLowerCase()
@@ -65,8 +62,8 @@ async function loadSummary(): Promise<Summary> {
     (subRaw === "active" || subRaw === "inactive"
       ? (subRaw as "active" | "inactive")
       : hasPaid || hasPromo
-        ? "active"
-        : "inactive")
+      ? "active"
+      : "inactive")
 
   return {
     email: (j?.email ?? null) as string | null,
@@ -82,14 +79,11 @@ async function loadSummary(): Promise<Summary> {
 export default function ProfilePage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-
   const paidParam = useMemo(() => searchParams.get("paid"), [searchParams])
 
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [err, setErr] = useState<string | null>(null)
-  const [actingTop, setActingTop] = useState(false)
-
   const [summary, setSummary] = useState<Summary>({
     email: null,
     access: "Бесплатно",
@@ -99,6 +93,8 @@ export default function ProfilePage() {
     subscription_status: "inactive",
     auto_renew: false,
   })
+
+  const isLoggedIn = Boolean(summary.email)
 
   const refresh = useCallback(async () => {
     setErr(null)
@@ -139,29 +135,18 @@ export default function ProfilePage() {
 
   const hasPaid = isActive(summary.paid_until)
   const hasPromo = isActive(summary.promo_until)
-
-  const isLoggedIn = Boolean(summary.email)
-
   const questionsLabel = hasPaid || hasPromo ? "Безлимит" : String(summary.questionsLeft)
 
-  const goPricing = useCallback(() => {
-    router.push("/pricing")
-  }, [router])
-
-  const goLogin = useCallback(() => {
-    router.push(`/login?next=${encodeURIComponent("/profile")}`)
-  }, [router])
-
-  const doLogout = useCallback(async () => {
-    setActingTop(true)
+  const onLogout = useCallback(async () => {
+    setErr(null)
     try {
-      await fetch("/api/auth/logout", { method: "POST", cache: "no-store" })
-    } catch {
-    } finally {
-      setActingTop(false)
+      let r = await fetch("/api/auth/logout", { method: "POST", cache: "no-store" })
+      if (!r.ok) r = await fetch("/api/auth/logout", { method: "GET", cache: "no-store" })
+      router.push("/")
+      router.refresh()
+    } catch (e: any) {
+      setErr(String(e?.message || e))
     }
-    router.refresh()
-    router.push("/")
   }, [router])
 
   return (
@@ -172,28 +157,25 @@ export default function ProfilePage() {
           <p className="mt-2 text-gray-500">Управление доступом и история</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex gap-3">
           <button
-            className="rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
-            onClick={goPricing}
-            disabled={actingTop}
+            className="rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50"
+            onClick={() => router.push("/pricing")}
           >
             Тарифы
           </button>
 
           {isLoggedIn ? (
             <button
-              className="rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
-              onClick={doLogout}
-              disabled={actingTop}
+              className="rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50"
+              onClick={onLogout}
             >
-              {actingTop ? "Выход..." : "Выйти"}
+              Выйти
             </button>
           ) : (
             <button
-              className="rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-60"
-              onClick={goLogin}
-              disabled={actingTop}
+              className="rounded-xl bg-black px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+              onClick={() => router.push("/login?next=/profile")}
             >
               Войти
             </button>
@@ -246,7 +228,7 @@ export default function ProfilePage() {
 
             <button
               className="w-full rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50"
-              onClick={goPricing}
+              onClick={() => router.push("/pricing")}
             >
               Тарифы
             </button>
@@ -290,9 +272,7 @@ export default function ProfilePage() {
         <div className="text-sm text-gray-500">Сохранённые сессии</div>
 
         {isLoggedIn ? (
-          <div className="mt-4 text-sm text-gray-500">
-            История отображается для вошедших пользователей
-          </div>
+          <div className="mt-4 text-sm text-gray-500">История отображается для вошедших пользователей</div>
         ) : (
           <div className="mt-4 text-sm text-gray-500">Войдите, чтобы видеть историю.</div>
         )}

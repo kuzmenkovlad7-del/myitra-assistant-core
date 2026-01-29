@@ -1,19 +1,25 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 
-type SyncResp = {
+type StatusResp = {
   ok?: boolean
-  state?: "paid" | "pending" | "failed" | "refunded" | "unknown"
+  found?: boolean
   orderReference?: string
-  txStatus?: string
-  reason?: string
-  reasonCode?: any
-  retryable?: boolean
-  paid_until?: string | null
+  planId?: string | null
+  amount?: number | string | null
+  currency?: string | null
+  status?: string
+  transactionStatus?: string | null
+  reason?: string | null
+  reasonCode?: number | string | null
   error?: string
+  details?: string
 }
+
+const MAX_ATTEMPTS = 10
+const SLEEP_MS = 2500
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
@@ -21,147 +27,151 @@ function sleep(ms: number) {
 
 export default function PaymentResultPage() {
   const router = useRouter()
-  const sp = useSearchParams()
-  const orderReference = sp.get("orderReference") || ""
+  const searchParams = useSearchParams()
 
-  const [runId, setRunId] = useState(1)
+  const orderReference = useMemo(() => {
+    return (
+      searchParams.get("orderReference") ||
+      searchParams.get("order_reference") ||
+      searchParams.get("order") ||
+      ""
+    ).trim()
+  }, [searchParams])
+
   const [attempt, setAttempt] = useState(0)
-  const [state, setState] = useState<"checking" | "paid" | "pending" | "failed" | "unknown">("checking")
-  const [msg, setMsg] = useState("Перевіряємо оплату…")
+  const [status, setStatus] = useState<"pending" | "paid" | "failed" | "error">("pending")
   const [details, setDetails] = useState<string | null>(null)
 
-  const canRun = useMemo(() => Boolean(orderReference), [orderReference])
+  const checkOnce = useCallback(async () => {
+    if (!orderReference) {
+      setStatus("error")
+      setDetails("Missing orderReference")
+      return true
+    }
+
+    setAttempt((a) => Math.min(a + 1, MAX_ATTEMPTS))
+
+    try {
+      const r = await fetch(
+        `/api/billing/orders/status?orderReference=${encodeURIComponent(orderReference)}`,
+        { cache: "no-store" }
+      )
+      const j = (await r.json().catch(() => ({}))) as StatusResp
+
+      if (!r.ok || !j?.ok) {
+        setStatus("error")
+        setDetails(j?.error || j?.details || "status request failed")
+        return false
+      }
+
+      const st = String(j?.status || "").toLowerCase()
+
+      if (st === "paid" || st === "approved") {
+        setStatus("paid")
+        setDetails(null)
+        return true
+      }
+
+      if (
+        st === "failed" ||
+        st === "declined" ||
+        st === "expired" ||
+        st === "refunded" ||
+        st === "rejected"
+      ) {
+        setStatus("failed")
+        setDetails(j?.reason ? String(j.reason) : null)
+        return true
+      }
+
+      setStatus("pending")
+      setDetails(null)
+      return false
+    } catch (e: any) {
+      setStatus("error")
+      setDetails(String(e?.message || e))
+      return false
+    }
+  }, [orderReference])
 
   useEffect(() => {
-    if (!canRun) {
-      setState("unknown")
-      setMsg("Немає коду платежу. Поверніться до тарифів і спробуйте ще раз.")
-      return
-    }
+    let cancelled = false
 
-    let alive = true
-    const MAX = 10
-
-    async function syncOnce() {
-      const url = `/api/billing/wayforpay/sync?orderReference=${encodeURIComponent(orderReference)}`
-      const r = await fetch(url, { method: "POST", cache: "no-store" })
-      const j = (await r.json().catch(() => ({}))) as SyncResp
-      return j
-    }
-
-    async function run() {
-      setAttempt(0)
-      setDetails(null)
-      setState("checking")
-      setMsg("Перевіряємо оплату…")
-
-      for (let i = 1; i <= MAX; i++) {
-        if (!alive) return
-        setAttempt(i)
-
-        let j: SyncResp | null = null
-        try {
-          j = await syncOnce()
-        } catch {
-          j = { ok: false, state: "unknown", retryable: true }
-        }
-
-        if (!alive) return
-
-        const st = j?.state || "unknown"
-        const reason = (j?.reason || "").trim()
-        const tx = (j?.txStatus || "").trim()
-
-        if (reason || tx) {
-          const s = [tx ? `Статус: ${tx}` : "", reason ? `Причина: ${reason}` : ""].filter(Boolean).join(" • ")
-          setDetails(s || null)
-        } else {
-          setDetails(null)
-        }
-
-        if (st === "paid" && j?.ok) {
-          setState("paid")
-          setMsg("Оплату підтверджено. Доступ активовано.")
-          setTimeout(() => router.replace("/profile?paid=1"), 600)
-          return
-        }
-
-        if (st === "failed" || st === "refunded") {
-          setState("failed")
-          setMsg("Оплату не прийнято. Спробуйте іншу картку або повторіть оплату.")
-          return
-        }
-
-        if (st === "pending") {
-          setState("pending")
-          setMsg("Оплата в обробці. Зазвичай це займає до кількох хвилин.")
-        } else {
-          setState("checking")
-          setMsg("Оплату поки не підтверджено. Якщо Ви оплатили, зачекайте або натисніть Перевірити знову.")
-        }
-
-        await sleep(1500)
+    ;(async () => {
+      for (let i = 0; i < MAX_ATTEMPTS; i++) {
+        if (cancelled) return
+        const done = await checkOnce()
+        if (done) return
+        await sleep(SLEEP_MS)
       }
+    })()
 
-      if (!alive) return
-
-      if (state === "pending") {
-        setState("pending")
-        setMsg("Оплата все ще в обробці. Спробуйте перевірити пізніше або натисніть Перевірити знову.")
-      } else {
-        setState("unknown")
-        setMsg("Не вдалося підтвердити оплату автоматично. Натисніть Перевірити знову.")
-      }
-    }
-
-    run()
     return () => {
-      alive = false
+      cancelled = true
     }
-  }, [orderReference, router, runId])
+  }, [checkOnce])
 
-  const showButtons = state === "failed" || state === "unknown" || state === "pending"
+  const subtitle = orderReference ? `Чек-код: ${orderReference}` : "Чек-код: —"
 
   return (
-    <div className="min-h-[70vh] flex items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-2xl border bg-white p-6 shadow-sm">
-        <h1 className="text-xl font-semibold">Результат оплати</h1>
+    <div className="mx-auto max-w-6xl px-4 py-16">
+      <div className="mx-auto w-full max-w-xl rounded-2xl border bg-white p-8 shadow-sm">
+        <div className="text-2xl font-semibold">Результат оплати</div>
+        <div className="mt-2 text-sm text-gray-500">{subtitle}</div>
 
-        <div className="mt-2 text-sm text-gray-600">
-          Чек-код: <span className="font-mono text-gray-900">{orderReference || "—"}</span>
-        </div>
+        {status === "paid" ? (
+          <div className="mt-6 rounded-xl bg-green-50 p-4 text-sm text-green-900">
+            Оплату підтверджено. Доступ активовано.
+          </div>
+        ) : status === "failed" ? (
+          <div className="mt-6 rounded-xl bg-red-50 p-4 text-sm text-red-900">
+            Оплата не пройшла.
+            {details ? <div className="mt-2 text-red-700">{details}</div> : null}
+          </div>
+        ) : status === "error" ? (
+          <div className="mt-6 rounded-xl bg-red-50 p-4 text-sm text-red-900">
+            Не вдалося перевірити статус.
+            {details ? <div className="mt-2 text-red-700">{details}</div> : null}
+          </div>
+        ) : (
+          <div className="mt-6 rounded-xl bg-gray-50 p-4 text-sm text-gray-900">
+            Оплату поки не підтверджено. Якщо Ви оплатили, зачекайте або натисніть Перевірити знову.
+            <div className="mt-2 text-gray-500">Спроба: {Math.min(attempt, MAX_ATTEMPTS)}/{MAX_ATTEMPTS}</div>
+          </div>
+        )}
 
-        <div className="mt-4 rounded-xl bg-gray-50 p-4 text-sm text-gray-800">
-          {msg}
-          {state === "checking" ? <div className="mt-2 text-xs text-gray-500">Спроба: {attempt}/10</div> : null}
-          {details ? <div className="mt-2 text-xs text-gray-500">{details}</div> : null}
-        </div>
-
-        {showButtons ? (
-          <div className="mt-4 flex gap-2">
+        <div className="mt-6 flex flex-col gap-3">
+          {status === "paid" ? (
             <button
-              onClick={() => setRunId((v) => v + 1)}
-              className="flex-1 rounded-xl bg-black px-4 py-2 text-white"
+              className="w-full rounded-xl bg-black px-4 py-2 text-sm font-medium text-white hover:opacity-90"
+              onClick={() => router.push("/profile?paid=1")}
+            >
+              Перейти в профіль
+            </button>
+          ) : (
+            <button
+              className="w-full rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50"
+              onClick={() => {
+                setAttempt(0)
+                setStatus("pending")
+                setDetails(null)
+                checkOnce()
+              }}
             >
               Перевірити знову
             </button>
-            <button onClick={() => router.replace("/pricing")} className="flex-1 rounded-xl border px-4 py-2">
-              Тарифи
-            </button>
-          </div>
-        ) : null}
+          )}
 
-        {state === "paid" ? (
           <button
-            onClick={() => router.replace("/profile?paid=1")}
-            className="mt-4 w-full rounded-xl bg-black px-4 py-2 text-white"
+            className="w-full rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50"
+            onClick={() => router.push("/pricing")}
           >
-            Перейти в профіль
+            Тарифи
           </button>
-        ) : null}
+        </div>
 
-        <div className="mt-4 text-xs text-gray-500">
-          Порада: щоб не втратити доступ при очищенні cookie, увійдіть або зареєструйтесь і привʼяжіть доступ до акаунта.
+        <div className="mt-6 text-xs text-gray-500">
+          Порада: щоб не втратити доступ при очищенні cookie, увійдіть або зареєструйтеся і прив’яжіть доступ до акаунта.
         </div>
       </div>
     </div>
