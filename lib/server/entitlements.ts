@@ -27,7 +27,8 @@ function laterIso(a: any, b: any): string | null {
   if (!da && !db) return null
   if (da && !db) return da.toISOString()
   if (!da && db) return db.toISOString()
-  return (da.getTime() >= db.getTime() ? da : db).toISOString()
+  if (da && db) return (da.getTime() >= db.getTime() ? da : db).toISOString()
+  return null
 }
 
 async function readGrantByKey(supabase: any, key: string) {
