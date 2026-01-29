@@ -1,5 +1,7 @@
 "use client"
 
+
+const PAY_FAIL_PUBLIC_TEXT = "Оплату не підтверджено. Перевірте дані картки, ліміт або спробуйте іншу."
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 
@@ -126,7 +128,7 @@ export default function PaymentResultPage() {
         ) : status === "failed" ? (
           <div className="mt-6 rounded-xl bg-red-50 p-4 text-sm text-red-900">
             Оплата не пройшла.
-            {details ? <div className="mt-2 text-red-700">{details}</div> : null}
+            {details ? .<div className="mt-2 text-red-700">."{PAY_FAIL_PUBLIC_TEXT}".</div> : null}
           </div>
         ) : status === "error" ? (
           <div className="mt-6 rounded-xl bg-red-50 p-4 text-sm text-red-900">
