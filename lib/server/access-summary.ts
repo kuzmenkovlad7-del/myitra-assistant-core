@@ -82,7 +82,7 @@ function laterIso(a: any, b: any): string | null {
   if (!da && !db) return null
   if (da && !db) return da.toISOString()
   if (!da && db) return db.toISOString()
-  return (da!.getTime() >= db!.getTime() ? da! : db!).toISOString()
+  return (da.getTime() >= db.getTime() ? da : db).toISOString()
 }
 
 function cookieDomainFromHost(host: string | null) {
@@ -127,16 +127,25 @@ async function getUserFromCookies(): Promise<{ userId: string | null; email: str
 }
 
 async function findGrant(admin: any, key: string): Promise<GrantRow | null> {
-  const { data, error } = await admin.from("access_grants").select("*").eq("device_hash", key).maybeSingle()
+  // ВАЖНО: даже если в БД есть дубли, берём самую свежую запись
+  const { data, error } = await admin
+    .from("access_grants")
+    .select("*")
+    .eq("device_hash", key)
+    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+
   if (error) return null
-  return (data ?? null) as GrantRow | null
+  const row = Array.isArray(data) ? data[0] : null
+  return (row ?? null) as GrantRow | null
 }
 
 async function ensureGrant(admin: any, key: string, userId: string | null, trial: number, nowIso: string): Promise<GrantRow> {
   let g = await findGrant(admin, key)
 
   if (!g) {
-    const ins = await admin
+    await admin
       .from("access_grants")
       .insert({
         id: randomUUID(),
@@ -148,13 +157,9 @@ async function ensureGrant(admin: any, key: string, userId: string | null, trial
         created_at: nowIso,
         updated_at: nowIso,
       } as any)
-      .select("*")
-      .maybeSingle()
-
-    g = (ins.data ?? null) as any
   }
 
-  if (!g) g = await findGrant(admin, key)
+  g = await findGrant(admin, key)
 
   if (g && userId && !g.user_id) {
     const up = await admin
@@ -162,8 +167,10 @@ async function ensureGrant(admin: any, key: string, userId: string | null, trial
       .update({ user_id: userId, updated_at: nowIso } as any)
       .eq("device_hash", key)
       .select("*")
-      .maybeSingle()
-    g = ((up.data ?? g) as any) as GrantRow
+      .limit(1)
+
+    const row = Array.isArray(up?.data) ? up.data[0] : null
+    g = (row ?? g) as any
   }
 
   return (
@@ -181,11 +188,16 @@ async function ensureGrant(admin: any, key: string, userId: string | null, trial
 }
 
 async function readProfile(admin: any, userId: string) {
-  const cols = "paid_until,promo_until,auto_renew,autorenew,subscription_status"
-  const r1 = await admin.from("profiles").select(cols).eq("id", userId).maybeSingle()
+  // В Вашей схеме profiles нет user_id. Используем только id.
+  // paid_until добавили миграцией, но делаем fallback на случай старой схемы.
+  const cols1 = "paid_until,promo_until,auto_renew,subscription_status"
+  const r1 = await admin.from("profiles").select(cols1).eq("id", userId).maybeSingle()
   if (!r1?.error && r1?.data) return r1.data
-  const r2 = await admin.from("profiles").select(cols).eq("user_id", userId).maybeSingle()
+
+  const cols2 = "promo_until,auto_renew,subscription_status"
+  const r2 = await admin.from("profiles").select(cols2).eq("id", userId).maybeSingle()
   if (!r2?.error && r2?.data) return r2.data
+
   return null
 }
 
@@ -256,12 +268,11 @@ export async function buildAccessSummary(req: NextRequest): Promise<{
   const unlimited = hasPaid || hasPromo
   const hasAccess = unlimited || guestTrialLeft > 0
 
-  const access: AccessSummary["access"] = hasPaid ? "paid" : hasPromo ? "promo" : guestTrialLeft > 0 ? "trial" : "none"
+  const access: AccessSummary["access"] =
+    hasPaid ? "paid" : hasPromo ? "promo" : guestTrialLeft > 0 ? "trial" : "none"
 
   const prof = isLoggedIn && userId ? await readProfile(admin, userId) : null
-  const autoRenewRaw = (prof as any)?.auto_renew ?? (prof as any)?.autorenew ?? false
-  const auto_renew = Boolean(autoRenewRaw)
-
+  const auto_renew = Boolean((prof as any)?.auto_renew ?? false)
   const subscription_status = String((prof as any)?.subscription_status || (hasPaid || hasPromo ? "active" : "inactive"))
 
   const s: AccessSummary = {

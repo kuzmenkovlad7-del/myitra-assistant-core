@@ -72,13 +72,17 @@ export async function getOrCreateGrant(deviceHash: string, trialOverride?: numbe
   const supabase = getSupabaseServerClient()
   const trialDefault = typeof trialOverride === "number" ? Math.max(0, Math.floor(trialOverride)) : getTrialLimit()
 
-  const { data: existing, error: selErr } = await supabase
+  // ВАЖНО: если в таблице вдруг есть дубли, берём самую свежую запись
+  const { data: existingArr, error: selErr } = await supabase
     .from(TABLE)
-    .select("id,device_hash,trial_questions_left,paid_until,promo_until")
+    .select("id,device_hash,trial_questions_left,paid_until,promo_until,updated_at,created_at")
     .eq("device_hash", deviceHash)
-    .maybeSingle()
+    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
 
   if (selErr) throw selErr
+  const existing = Array.isArray(existingArr) ? existingArr[0] : null
   if (existing) return existing as AccessGrant
 
   const { data: created, error: insErr } = await supabase
@@ -117,6 +121,7 @@ export async function requireAccessByDeviceHash(args: {
 
   if (hasUnlimited(grant)) return { ok: true, status: 200, grant }
 
+  // если пользователь вошёл, проверяем также account:<userId>
   if (req) {
     const userId = await getUserIdFromReq(req)
     if (userId) {

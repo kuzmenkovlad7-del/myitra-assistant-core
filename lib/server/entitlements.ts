@@ -27,16 +27,20 @@ function laterIso(a: any, b: any): string | null {
   if (!da && !db) return null
   if (da && !db) return da.toISOString()
   if (!da && db) return db.toISOString()
-  return (da!.getTime() >= db!.getTime() ? da! : db!).toISOString()
+  return (da.getTime() >= db.getTime() ? da : db).toISOString()
 }
 
 async function readGrantByKey(supabase: any, key: string) {
   const { data } = await supabase
     .from("access_grants")
-    .select("trial_questions_left,paid_until,promo_until")
+    .select("trial_questions_left,paid_until,promo_until,updated_at,created_at")
     .eq("device_hash", key)
-    .maybeSingle()
-  return data || null
+    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+
+  const row = Array.isArray(data) ? data[0] : null
+  return row || null
 }
 
 export async function getAccessState(principal: Principal): Promise<AccessState> {

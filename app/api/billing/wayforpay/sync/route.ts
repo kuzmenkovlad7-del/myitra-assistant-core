@@ -118,17 +118,24 @@ async function extendPaidUntil(admin: any, key: string, days: number, userId: st
   const now = new Date()
   const nowIso = now.toISOString()
 
-  const { data: existing } = await admin
+  // ВАЖНО: берём самую свежую запись по key
+  const { data: rows, error } = await admin
     .from("access_grants")
-    .select("id,paid_until,device_hash")
+    .select("id,paid_until,device_hash,created_at,updated_at")
     .eq("device_hash", key)
-    .maybeSingle()
+    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
 
-  const current = toDateOrNull(existing?.paid_until)
+  if (error) throw new Error("access_grants select failed: " + error.message)
+
+  const existing = Array.isArray(rows) ? rows[0] : null
+
+  const current = toDateOrNull((existing as any)?.paid_until)
   const base = current && current.getTime() > now.getTime() ? current : now
   const nextPaid = addDays(base, days).toISOString()
 
-  if (existing?.id) {
+  if ((existing as any)?.id) {
     const up = await admin
       .from("access_grants")
       .update({
@@ -138,7 +145,7 @@ async function extendPaidUntil(admin: any, key: string, days: number, userId: st
         updated_at: nowIso,
         ...(userId ? { user_id: userId } : {}),
       } as any)
-      .eq("id", existing.id)
+      .eq("id", (existing as any).id)
 
     if (up.error) throw new Error("access_grants update failed: " + up.error.message)
     return nextPaid
@@ -237,7 +244,7 @@ export async function GET(req: NextRequest) {
     .from("billing_orders")
     .update({
       status: normalized,
-      raw: JSON.stringify({ ...body, __event: "wayforpay_check_status", _sigOk: sigOk }),
+      raw: { ...body, __event: "wayforpay_check_status", _sigOk: sigOk },
       updated_at: new Date().toISOString(),
     } as any)
     .eq("order_reference", orderReference)
@@ -268,19 +275,13 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // profile best-effort
+    // profile best-effort (только по id)
     if (effectiveUserId && paidUntil) {
       try {
         await admin
           .from("profiles")
           .update({ paid_until: paidUntil, subscription_status: "active", updated_at: new Date().toISOString() } as any)
           .eq("id", effectiveUserId)
-      } catch {}
-      try {
-        await admin
-          .from("profiles")
-          .update({ paid_until: paidUntil, subscription_status: "active", updated_at: new Date().toISOString() } as any)
-          .eq("user_id", effectiveUserId)
       } catch {}
     }
   }
