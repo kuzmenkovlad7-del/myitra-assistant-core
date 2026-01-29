@@ -190,47 +190,45 @@ export async function POST(req: NextRequest) {
 
     const { data: userData } = await sessionSb.auth.getUser()
     const userId = userData?.user?.id ?? null
-    if (!userId) {
-      return NextResponse.json({ ok: false, errorCode: "LOGIN_REQUIRED" }, { status: 401 })
-    }
 
     const admin = getSupabaseAdmin()
 
     const guestHash = deviceUuid
-    const accountHash = `${ACCOUNT_PREFIX}${userId}`
+    const accountHash = userId ? `${ACCOUNT_PREFIX}${userId}` : null
 
-    const guestGrant = await ensureGrant(admin, guestHash, null, trialDefault, nowIso)
-    const accGrant = await ensureGrant(admin, accountHash, userId, trialDefault, nowIso)
+    const guestGrant = await ensureGrant(admin, guestHash, userId ?? null, trialDefault, nowIso)
+    const mergedGuest = laterDateIso(guestGrant.promo_until ?? null, promoUntil) ?? promoUntil
 
-    const mergedGuest = laterDateIso(guestGrant.promo_until ?? null, promoUntil)
-    if (mergedGuest && mergedGuest !== String(guestGrant.promo_until ?? "")) {
-      await admin
-        .from("access_grants")
-        .update({ promo_until: mergedGuest, trial_questions_left: 0, updated_at: nowIso })
-        .eq("id", guestGrant.id)
-    }
+    await admin
+      .from("access_grants")
+      .update({ promo_until: mergedGuest, trial_questions_left: 0, updated_at: nowIso })
+      .eq("id", guestGrant.id)
 
-    const mergedAcc = laterDateIso(accGrant.promo_until ?? null, promoUntil)
-    if (mergedAcc && mergedAcc !== String(accGrant.promo_until ?? "")) {
+    let mergedAcc: string | null = null
+
+    if (userId && accountHash) {
+      const accGrant = await ensureGrant(admin, accountHash, userId, trialDefault, nowIso)
+      mergedAcc = laterDateIso(accGrant.promo_until ?? null, mergedGuest) ?? mergedGuest
+
       await admin
         .from("access_grants")
         .update({ promo_until: mergedAcc, trial_questions_left: 0, updated_at: nowIso })
         .eq("id", accGrant.id)
-    }
 
-    // best-effort profiles sync if fields exist
-    try {
-      await admin
-        .from("profiles")
-        .update({ promo_until: mergedAcc ?? promoUntil, subscription_status: "active", updated_at: nowIso } as any)
-        .eq("id", userId)
-    } catch {}
+      try {
+        await admin
+          .from("profiles")
+          .update({ promo_until: mergedAcc, subscription_status: "active", updated_at: nowIso } as any)
+          .eq("id", userId)
+      } catch {}
+    }
 
     const res = NextResponse.json(
       {
         ok: true,
-        promoUntil: mergedAcc ?? promoUntil,
-        promo_until: mergedAcc ?? promoUntil,
+        promo_until: mergedAcc ?? mergedGuest,
+        promoUntil: mergedAcc ?? mergedGuest,
+        guest: !userId,
       },
       { status: 200 }
     )
@@ -238,8 +236,8 @@ export async function POST(req: NextRequest) {
     if (needSetDeviceCookie) {
       res.cookies.set(DEVICE_COOKIE, deviceUuid, {
         path: "/",
-        sameSite: "lax",
         httpOnly: true,
+        sameSite: "lax",
         secure: process.env.NODE_ENV === "production",
         maxAge: 60 * 60 * 24 * 365,
       })
@@ -248,7 +246,7 @@ export async function POST(req: NextRequest) {
     applyPendingCookies(res)
     res.headers.set("cache-control", "no-store, max-age=0")
     return res
-  } catch {
+  } catch (_e: any) {
     return NextResponse.json({ ok: false, errorCode: "REDEEM_FAILED" }, { status: 200 })
   }
 }

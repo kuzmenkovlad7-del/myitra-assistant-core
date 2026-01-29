@@ -408,7 +408,6 @@ export default function PricingPage() {
                 </Button>
               </div>
 
-              {!isLoggedIn ? <div className="mt-2 text-xs text-muted-foreground">{copy.promoNeedLogin}</div> : null}
               {promoMsg ? <p className="mt-2 text-sm text-muted-foreground">{promoMsg}</p> : null}
             </CardContent>
           </Card>

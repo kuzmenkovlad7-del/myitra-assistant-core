@@ -1,119 +1,113 @@
 "use client"
 
+import { useEffect, useRef, useState } from "react"
+import { useSearchParams } from "next/navigation"
 
-const PAY_FAIL_PUBLIC_TEXT = "Оплату не підтверджено. Перевірте дані картки, ліміт або спробуйте іншу."
-import { useCallback, useEffect, useMemo, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+type OrderStatus = "pending" | "paid" | "failed"
 
 type StatusResp = {
   ok?: boolean
-  found?: boolean
-  orderReference?: string
-  planId?: string | null
-  amount?: number | string | null
-  currency?: string | null
   status?: string
+  order?: { status?: string }
   transactionStatus?: string | null
   reason?: string | null
-  reasonCode?: number | string | null
-  error?: string
-  details?: string
+  details?: string | null
 }
 
-const MAX_ATTEMPTS = 10
-const SLEEP_MS = 2500
+const PAY_FAIL_PUBLIC_TEXT = "Оплату не підтверджено. Перевірте дані картки, ліміт або спробуйте іншу."
+const MAX_TRIES = 10
+const RETRY_MS = 2500
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms))
+function normalizeStatus(v: any): OrderStatus {
+  const s = String(v || "").toLowerCase()
+  if (s === "paid" || s === "approved" || s === "success") return "paid"
+  if (s === "failed" || s === "declined" || s === "expired" || s === "canceled" || s === "cancelled") return "failed"
+  return "pending"
+}
+
+async function fetchStatus(orderReference: string): Promise<{ st: OrderStatus; details: string | null }> {
+  const r = await fetch(`/api/billing/orders/status?orderReference=${encodeURIComponent(orderReference)}`, {
+    method: "GET",
+    cache: "no-store",
+  })
+  const j: StatusResp = await r.json().catch(() => ({} as any))
+
+  const st = normalizeStatus((j as any)?.status ?? (j as any)?.order?.status)
+  const d = (j as any)?.reason ?? (j as any)?.transactionStatus ?? (j as any)?.details ?? null
+  return { st, details: d ? String(d) : null }
 }
 
 export default function PaymentResultPage() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
+  const sp = useSearchParams()
+  const orderReference = (sp.get("orderReference") || "").trim()
+  const debug = sp.get("debug") === "1"
 
-  const orderReference = useMemo(() => {
-    return (
-      searchParams.get("orderReference") ||
-      searchParams.get("order_reference") ||
-      searchParams.get("order") ||
-      ""
-    ).trim()
-  }, [searchParams])
-
-  const [attempt, setAttempt] = useState(0)
-  const [status, setStatus] = useState<"pending" | "paid" | "failed" | "error">("pending")
+  const [status, setStatus] = useState<OrderStatus>("pending")
   const [details, setDetails] = useState<string | null>(null)
+  const [tries, setTries] = useState(0)
+  const [loading, setLoading] = useState(false)
 
-  const checkOnce = useCallback(async () => {
-    if (!orderReference) {
-      setStatus("error")
-      setDetails("Missing orderReference")
-      return true
-    }
+  const timerRef = useRef<any>(null)
 
-    setAttempt((a) => Math.min(a + 1, MAX_ATTEMPTS))
+  const subtitle = orderReference ? `Чек-код: ${orderReference}` : "Чек-код: —"
 
+  const checkOnce = async () => {
+    if (!orderReference) return
+    setLoading(true)
     try {
-      const r = await fetch(
-        `/api/billing/orders/status?orderReference=${encodeURIComponent(orderReference)}`,
-        { cache: "no-store" }
-      )
-      const j = (await r.json().catch(() => ({}))) as StatusResp
-
-      if (!r.ok || !j?.ok) {
-        setStatus("error")
-        setDetails(j?.error || j?.details || "status request failed")
-        return false
-      }
-
-      const st = String(j?.status || "").toLowerCase()
-
-      if (st === "paid" || st === "approved") {
-        setStatus("paid")
-        setDetails(null)
-        return true
-      }
-
-      if (
-        st === "failed" ||
-        st === "declined" ||
-        st === "expired" ||
-        st === "refunded" ||
-        st === "rejected"
-      ) {
-        setStatus("failed")
-        setDetails(j?.reason ? String(j.reason) : null)
-        return true
-      }
-
-      setStatus("pending")
-      setDetails(null)
-      return false
+      const res = await fetchStatus(orderReference)
+      setStatus(res.st)
+      setDetails(res.details)
     } catch (e: any) {
-      setStatus("error")
-      setDetails(String(e?.message || e))
-      return false
+      setStatus("pending")
+      setDetails(String(e?.message || e) || null)
+    } finally {
+      setLoading(false)
     }
-  }, [orderReference])
+  }
 
   useEffect(() => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    setTries(0)
+    setStatus("pending")
+    setDetails(null)
+
+    if (!orderReference) return
+
     let cancelled = false
 
-    ;(async () => {
-      for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    const loop = async (n: number) => {
+      if (cancelled) return
+      setTries(n)
+      try {
+        const res = await fetchStatus(orderReference)
         if (cancelled) return
-        const done = await checkOnce()
-        if (done) return
-        await sleep(SLEEP_MS)
+        setStatus(res.st)
+        setDetails(res.details)
+
+        if (res.st === "pending" && n < MAX_TRIES) {
+          timerRef.current = setTimeout(() => loop(n + 1), RETRY_MS)
+        }
+      } catch (e: any) {
+        if (cancelled) return
+        setStatus("pending")
+        setDetails(String(e?.message || e) || null)
+        if (n < MAX_TRIES) timerRef.current = setTimeout(() => loop(n + 1), RETRY_MS)
       }
-    })()
+    }
+
+    loop(1)
 
     return () => {
       cancelled = true
+      if (timerRef.current) clearTimeout(timerRef.current)
     }
-  }, [checkOnce])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderReference])
 
-  const subtitle = orderReference ? `Чек-код: ${orderReference}` : "Чек-код: —"
+  const showPaid = status === "paid"
+  const showFailed = status === "failed"
+  const showPending = status === "pending"
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-16">
@@ -121,60 +115,63 @@ export default function PaymentResultPage() {
         <div className="text-2xl font-semibold">Результат оплати</div>
         <div className="mt-2 text-sm text-gray-500">{subtitle}</div>
 
-        {status === "paid" ? (
+        {showPaid ? (
           <div className="mt-6 rounded-xl bg-green-50 p-4 text-sm text-green-900">
             Оплату підтверджено. Доступ активовано.
           </div>
-        ) : status === "failed" ? (
-          <div className="mt-6 rounded-xl bg-red-50 p-4 text-sm text-red-900">
-            Оплата не пройшла.
-            {details ? .<div className="mt-2 text-red-700">."{PAY_FAIL_PUBLIC_TEXT}".</div> : null}
-          </div>
-        ) : status === "error" ? (
-          <div className="mt-6 rounded-xl bg-red-50 p-4 text-sm text-red-900">
-            Не вдалося перевірити статус.
-            {details ? <div className="mt-2 text-red-700">{details}</div> : null}
-          </div>
-        ) : (
+        ) : null}
+
+        {showPending ? (
           <div className="mt-6 rounded-xl bg-gray-50 p-4 text-sm text-gray-900">
             Оплату поки не підтверджено. Якщо Ви оплатили, зачекайте або натисніть Перевірити знову.
-            <div className="mt-2 text-gray-500">Спроба: {Math.min(attempt, MAX_ATTEMPTS)}/{MAX_ATTEMPTS}</div>
+            <div className="mt-2 text-xs text-gray-500">
+              Спроба: {tries}/{MAX_TRIES}
+            </div>
           </div>
-        )}
+        ) : null}
 
-        <div className="mt-6 flex flex-col gap-3">
-          {status === "paid" ? (
+        {showFailed ? (
+          <div className="mt-6 rounded-xl bg-red-50 p-4 text-sm text-red-900">
+            Оплата не пройшла.
+            <div className="mt-2 text-red-700">{PAY_FAIL_PUBLIC_TEXT}</div>
+            {debug && details ? <div className="mt-2 text-xs text-red-700">Debug: {details}</div> : null}
+          </div>
+        ) : null}
+
+        <div className="mt-6 space-y-3">
+          {showPaid ? (
             <button
-              className="w-full rounded-xl bg-black px-4 py-2 text-sm font-medium text-white hover:opacity-90"
-              onClick={() => router.push("/profile?paid=1")}
+              className="w-full rounded-xl bg-black px-4 py-2 text-sm font-medium text-white"
+              onClick={() => window.location.assign("/profile")}
             >
               Перейти в профіль
             </button>
           ) : (
             <button
-              className="w-full rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50"
-              onClick={() => {
-                setAttempt(0)
-                setStatus("pending")
-                setDetails(null)
-                checkOnce()
+              className="w-full rounded-xl border px-4 py-2 text-sm font-medium"
+              disabled={loading || !orderReference}
+              onClick={async () => {
+                if (timerRef.current) clearTimeout(timerRef.current)
+                await checkOnce()
               }}
             >
-              Перевірити знову
+              {loading ? "Перевіряємо..." : "Перевірити знову"}
             </button>
           )}
 
           <button
-            className="w-full rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50"
-            onClick={() => router.push("/pricing")}
+            className="w-full rounded-xl border px-4 py-2 text-sm font-medium"
+            onClick={() => window.location.assign("/pricing")}
           >
             Тарифи
           </button>
         </div>
 
-        <div className="mt-6 text-xs text-gray-500">
-          Порада: щоб не втратити доступ при очищенні cookie, увійдіть або зареєструйтеся і прив’яжіть доступ до акаунта.
-        </div>
+        {showPaid ? (
+          <div className="mt-6 text-xs text-gray-500">
+            Порада: щоб не втратити доступ при очищенні cookie, увійдіть або зареєструйтесь і привʼяжіть доступ до аккаунта.
+          </div>
+        ) : null}
       </div>
     </div>
   )
