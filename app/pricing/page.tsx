@@ -241,6 +241,11 @@ export default function PricingPage() {
       })
 
       const d = await r.json().catch(() => ({}))
+      if (d?.error === "already_active") {
+        setPayMsg("Доступ вже активний. Перейдіть у профіль.")
+        setPayLoading(false)
+        return
+      }
       if (!r.ok || !d?.invoiceUrl) throw new Error(d?.error || copy.payFailed)
 
       window.location.assign(String(d.invoiceUrl))
@@ -254,12 +259,8 @@ export default function PricingPage() {
 
   async function handleActivatePromo() {
     setPromoMsg(null)
-
-    if (!isLoggedIn) {
-      setPromoMsg(copy.promoNeedLogin)
-      router.push("/login?next=/pricing")
-      return
-    }
+    const code = promoCode.trim()
+    if (!code) return
 
     setPromoLoading(true)
 
@@ -268,17 +269,24 @@ export default function PricingPage() {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ code: promoCode.trim() }),
+        body: JSON.stringify({ code }),
       })
 
       const d = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(d?.error || "Promo activation failed")
+      if (!r.ok || d?.ok === false) {
+        const ec = String(d?.errorCode || "").toUpperCase()
+        const msg = ec === "INVALID_PROMO" ? "Недійсний промокод"
+          : ec === "EMPTY_CODE" ? "Введіть промокод"
+          : d?.error || "Promo activation failed"
+        throw new Error(msg)
+      }
 
       setPromoMsg(copy.promoOk)
+      setPromoCode("")
+      window.dispatchEvent(new Event("turbota:refresh"))
 
       const s = await fetch("/api/account/summary", { cache: "no-store", credentials: "include" }).then((x) => x.json())
       setSummary(s)
-      setPromoCode("")
     } catch (e: any) {
       setPromoMsg(e?.message || "Promo activation failed")
     } finally {

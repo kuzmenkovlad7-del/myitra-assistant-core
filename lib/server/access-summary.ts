@@ -256,7 +256,39 @@ export async function buildAccessSummary(req: NextRequest): Promise<{
   }
 
   const guest = await ensureGrant(admin, deviceHash, null, trial, nowIso)
-  const account = accountKey ? await ensureGrant(admin, accountKey, userId!, 0, nowIso) : null
+  let account = accountKey ? await ensureGrant(admin, accountKey, userId!, 0, nowIso) : null
+
+  // ── Auto-claim: persist guest dates into account grant ───────────
+  if (userId && account) {
+    const gPaid = guest.paid_until || null
+    const gPromo = guest.promo_until || null
+    const aPaid = account.paid_until || null
+    const aPromo = account.promo_until || null
+
+    const bestPaid = laterIso(gPaid, aPaid)
+    const bestPromo = laterIso(gPromo, aPromo)
+
+    const needClaim =
+      (bestPaid && bestPaid !== aPaid) ||
+      (bestPromo && bestPromo !== aPromo)
+
+    if (needClaim && accountKey) {
+      const patch: Record<string, any> = { updated_at: nowIso }
+      if (bestPaid && bestPaid !== aPaid) patch.paid_until = bestPaid
+      if (bestPromo && bestPromo !== aPromo) patch.promo_until = bestPromo
+
+      await admin
+        .from("access_grants")
+        .update(patch)
+        .eq("device_hash", accountKey)
+
+      account = {
+        ...account,
+        paid_until: bestPaid || account.paid_until,
+        promo_until: bestPromo || account.promo_until,
+      }
+    }
+  }
 
   const guestTrialLeft = Math.max(0, Math.min(trial, Number(guest.trial_questions_left ?? trial)))
 
@@ -265,7 +297,7 @@ export async function buildAccessSummary(req: NextRequest): Promise<{
   const accessUntil = laterIso(mergedPaid, mergedPromo)
 
   const hasPaid = isFuture(mergedPaid)
-  const hasPromo = !hasPaid && isFuture(mergedPromo)
+  const hasPromo = isFuture(mergedPromo)
   const unlimited = hasPaid || hasPromo
   const hasAccess = unlimited || guestTrialLeft > 0
 
@@ -273,6 +305,21 @@ export async function buildAccessSummary(req: NextRequest): Promise<{
     hasPaid ? "paid" : hasPromo ? "promo" : guestTrialLeft > 0 ? "trial" : "none"
 
   const prof = isLoggedIn && userId ? await readProfile(admin, userId) : null
+
+  // Sync profiles metadata from grants if needed
+  if (prof && userId) {
+    const profPaid = (prof as any)?.paid_until || null
+    const profPromo = (prof as any)?.promo_until || null
+    const needSync =
+      (mergedPaid && mergedPaid !== profPaid) ||
+      (mergedPromo && mergedPromo !== profPromo)
+    if (needSync) {
+      const sp: Record<string, any> = { updated_at: nowIso }
+      if (mergedPaid && mergedPaid !== profPaid) sp.paid_until = mergedPaid
+      if (mergedPromo && mergedPromo !== profPromo) sp.promo_until = mergedPromo
+      await admin.from("profiles").update(sp).eq("id", userId)
+    }
+  }
   const auto_renew = Boolean((prof as any)?.auto_renew ?? false)
   const subscription_status = String((prof as any)?.subscription_status || (hasPaid || hasPromo ? "active" : "inactive"))
 

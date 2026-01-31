@@ -166,13 +166,13 @@ export async function POST(req: NextRequest) {
     const code = raw.toUpperCase()
 
     if (!code) {
-      return NextResponse.json({ ok: false, errorCode: "EMPTY_CODE" }, { status: 200 })
+      return NextResponse.json({ ok: false, errorCode: "EMPTY_CODE" }, { status: 400 })
     }
 
     const PROMO_MAP = getPromoMap()
     const days = PROMO_MAP[code]
     if (!days) {
-      return NextResponse.json({ ok: false, errorCode: "INVALID_PROMO" }, { status: 200 })
+      return NextResponse.json({ ok: false, errorCode: "INVALID_PROMO" }, { status: 400 })
     }
 
     const trialDefault = getTrialLimit()
@@ -247,6 +247,6 @@ export async function POST(req: NextRequest) {
     res.headers.set("cache-control", "no-store, max-age=0")
     return res
   } catch (_e: any) {
-    return NextResponse.json({ ok: false, errorCode: "REDEEM_FAILED" }, { status: 200 })
+    return NextResponse.json({ ok: false, errorCode: "REDEEM_FAILED" }, { status: 500 })
   }
 }
